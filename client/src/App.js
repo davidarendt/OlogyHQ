@@ -31,9 +31,25 @@ function App() {
   };
 
   const handleNavigate = (pageName, props = {}) => {
+    window.history.pushState({ pageName, props }, '', '');
     setPage(pageName);
     setPageProps(props);
   };
+
+  useEffect(() => {
+    const onPop = (e) => {
+      const state = e.state;
+      if (state && state.pageName) {
+        setPage(state.pageName);
+        setPageProps(state.props || {});
+      } else {
+        setPage('dashboard');
+        setPageProps({});
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   if (loading) return null;
   if (!user) return <Login onLogin={setUser} />;

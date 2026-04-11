@@ -173,7 +173,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
   const openUrl    = selected ? driveOpenUrl(selected.pdf_url) : null;
 
   return (
-    <div className={`bg-gray-900 flex flex-col ${selected ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className="bg-gray-900 min-h-screen flex flex-col">
 
       {/* Nav — always visible */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -188,7 +188,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
 
       {selected ? (
         /* ── Invoice view ───────────────────────────────────────────────────── */
-        <div className="flex flex-col flex-1" style={{ height: 'calc(100vh - 65px)' }}>
+        <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 65px)' }}>
           {/* Invoice sub-header */}
           <div className="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-4">
