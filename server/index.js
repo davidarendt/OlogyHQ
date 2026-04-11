@@ -176,6 +176,10 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
 // Delete a user
 app.delete('/api/users/:id', authenticateToken, async (req, res) => {
   try {
+    const target = await pool.query('SELECT email FROM users WHERE id = $1', [req.params.id]);
+    if (target.rows.length > 0 && target.rows[0].email.toLowerCase() === 'david@ologybrewing.com') {
+      return res.status(403).json({ message: 'This user cannot be deleted.' });
+    }
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
     res.json({ message: 'User deleted' });
   } catch (err) {
