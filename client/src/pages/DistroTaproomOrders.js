@@ -237,10 +237,10 @@ export default function DistroTaproomOrders({ user, onBack }) {
         </div>
       ) : (
         /* ── Calendar view ──────────────────────────────────────────────────── */
-        <main className="max-w-7xl mx-auto w-full px-6 py-10">
-          <div className="mb-8">
-            <h2 className="text-white text-4xl font-bold">Distro / Taproom Orders</h2>
-            <p className="text-gray-400 mt-2">Outgoing invoices — click any order to view</p>
+        <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10">
+          <div className="mb-6 sm:mb-8">
+            <h2 className="text-white text-2xl sm:text-4xl font-bold">Distro / Taproom Orders</h2>
+            <p className="text-gray-400 mt-1 text-sm sm:mt-2">Outgoing invoices — tap any order to view</p>
           </div>
 
           {error && (
@@ -252,25 +252,24 @@ export default function DistroTaproomOrders({ user, onBack }) {
           {loading ? (
             <div className="text-gray-500 text-sm">Loading orders…</div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-6 sm:space-y-8">
               {[0, 1].map(week => (
                 <div key={week}>
                   <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">
                     {week === 0 ? 'This Week' : 'Next Week'}
                   </h3>
-                  <div className="grid grid-cols-5 gap-4">
+
+                  {/* Desktop: 5-column grid */}
+                  <div className="hidden sm:grid grid-cols-5 gap-4">
                     {days.slice(week * 5, week * 5 + 5).map(day => {
                       const key       = toDateKey(day);
                       const dayOrders = ordersByDay[key] || [];
                       const isToday   = key === todayKey;
-
                       return (
                         <div
                           key={key}
                           className={`rounded-xl border p-3 min-h-32 ${
-                            isToday
-                              ? 'border-orange-500 bg-orange-500/5'
-                              : 'border-gray-700 bg-gray-800'
+                            isToday ? 'border-orange-500 bg-orange-500/5' : 'border-gray-700 bg-gray-800'
                           }`}
                         >
                           <div className={`text-xs font-semibold mb-2.5 ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
@@ -282,11 +281,39 @@ export default function DistroTaproomOrders({ user, onBack }) {
                               <p className="text-gray-700 text-xs">—</p>
                             ) : (
                               dayOrders.map((o, i) => (
-                                <OrderCard
-                                  key={i}
-                                  order={o}
-                                  onClick={o.tentative ? undefined : () => setSelected(o)}
-                                />
+                                <OrderCard key={i} order={o} onClick={o.tentative ? undefined : () => setSelected(o)} />
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Mobile: stacked list, hide empty days */}
+                  <div className="sm:hidden space-y-2">
+                    {days.slice(week * 5, week * 5 + 5).map(day => {
+                      const key       = toDateKey(day);
+                      const dayOrders = ordersByDay[key] || [];
+                      const isToday   = key === todayKey;
+                      if (dayOrders.length === 0 && !isToday) return null;
+                      return (
+                        <div
+                          key={key}
+                          className={`rounded-xl border p-3 ${
+                            isToday ? 'border-orange-500 bg-orange-500/5' : 'border-gray-700 bg-gray-800'
+                          }`}
+                        >
+                          <div className={`text-xs font-semibold mb-2 ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
+                            {fmtDay(day)}
+                            {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                          </div>
+                          <div className="space-y-1.5">
+                            {dayOrders.length === 0 ? (
+                              <p className="text-gray-600 text-xs">No orders</p>
+                            ) : (
+                              dayOrders.map((o, i) => (
+                                <OrderCard key={i} order={o} onClick={o.tentative ? undefined : () => setSelected(o)} />
                               ))
                             )}
                           </div>
