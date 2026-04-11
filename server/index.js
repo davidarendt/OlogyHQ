@@ -902,10 +902,11 @@ app.get('/api/distro-orders', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
+app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
   try {
-    const { fileIds } = req.body;
-    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+    const raw = req.query.fileIds || '';
+    const fileIds = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (fileIds.length === 0) {
       return res.status(400).json({ message: 'fileIds required' });
     }
     const { PDFDocument } = require('pdf-lib');
