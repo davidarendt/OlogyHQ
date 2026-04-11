@@ -2,6 +2,7 @@ const serverless = require('serverless-http');
 const app = require('../../server/index');
 
 const handler = serverless(app, {
+  binary: ['application/pdf', 'image/*', 'application/octet-stream'],
   request(req, event) {
     if (event.body) {
       const ct = (event.headers || {})['content-type'] || '';
