@@ -111,7 +111,7 @@ function DropZone({ files, previews, onChange, maxFiles = 10, label = 'Drop file
               )}
               <button
                 onClick={e => { e.stopPropagation(); remove(i); }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-400 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-400 rounded-full text-white text-xs flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
               >✕</button>
             </div>
           ))}
@@ -327,26 +327,28 @@ function ProductionPhotos({ user, canUpload, onBack }) {
     <div className="min-h-screen bg-gray-900">
 
       {/* Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
           <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
           <span className="text-white font-semibold text-xl">HQ</span>
         </button>
-        <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Back to Dashboard</button>
+        <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Back</button>
       </nav>
 
-      <main className="max-w-3xl mx-auto px-6 py-10">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
         {/* Header + tabs */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-white text-4xl font-bold">Production Photos</h2>
-            <p className="text-gray-400 mt-2">Submit distro and keg return documentation</p>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-white text-2xl sm:text-4xl font-bold">Production Photos</h2>
+              <p className="text-gray-400 mt-1 text-sm sm:mt-2">Submit distro and keg return documentation</p>
+            </div>
           </div>
-          <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700">
+          <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700 w-full sm:w-auto sm:inline-flex">
             {['form', 'log'].map(v => (
               <button key={v} onClick={() => setView(v)}
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
+                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
                   view === v ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
                 }`}>
                 {v === 'form' ? 'New Submission' : 'Submission Log'}
@@ -543,55 +545,101 @@ function ProductionPhotos({ user, canUpload, onBack }) {
 
         {/* ── LOG ──────────────────────────────────────────────────────────── */}
         {view === 'log' && (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          <div>
             {submissions.length === 0 ? (
-              <div className="py-16 text-center text-gray-500 text-sm">No submissions yet.</div>
+              <div className="bg-gray-800 rounded-xl border border-gray-700 py-16 text-center text-gray-500 text-sm">No submissions yet.</div>
             ) : (
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Date</th>
-                    <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Name</th>
-                    <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Type</th>
-                    <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden sm:table-cell">Distributor</th>
-                    <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden md:table-cell">Photos</th>
-                    <th className="px-6 py-4" />
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Mobile cards */}
+                <div className="sm:hidden space-y-3">
                   {submissions.map(s => (
-                    <tr key={s.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
-                      <td className="px-6 py-4 text-white text-sm whitespace-nowrap">{fmtDate(s.submission_date)}</td>
-                      <td className="px-6 py-4 text-white text-sm">{s.submitted_by_name}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded text-white"
+                    <div key={s.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <p className="text-white text-sm font-semibold">{s.submitted_by_name}</p>
+                          <p className="text-gray-400 text-xs mt-0.5">{fmtDate(s.submission_date)}</p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded text-white shrink-0"
                           style={{ backgroundColor: s.submission_type === 'distro' ? '#FF6B00' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
                           {fmtType(s.submission_type)}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 text-sm hidden sm:table-cell">
-                        {s.distributor === 'Other' ? s.other_distributor : (s.distributor || '—')}
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 text-sm hidden md:table-cell">
-                        {s.photo_count} photo{s.photo_count !== 1 ? 's' : ''}
-                        {s.packing_slip_unavailable
-                          ? <span className="ml-2 text-amber-400 text-xs">⚠ no slip</span>
-                          : s.slip_count > 0
-                            ? <span className="ml-2 text-gray-500 text-xs">+ {s.slip_count} slip</span>
-                            : null}
-                      </td>
-                      <td className="px-6 py-4 flex items-center gap-4">
-                        <button onClick={() => openDetail(s.id)}
-                          className="text-sm text-gray-400 hover:text-white transition">View</button>
-                        {user.role === 'admin' && (
-                          <button onClick={() => handleDelete(s.id)}
-                            className="text-sm text-red-500 hover:text-red-400 transition">Delete</button>
-                        )}
-                      </td>
-                    </tr>
+                      </div>
+                      {(s.distributor || s.other_distributor) && (
+                        <p className="text-gray-400 text-xs mb-2">
+                          {s.distributor === 'Other' ? s.other_distributor : s.distributor}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <div className="text-gray-500 text-xs">
+                          {s.photo_count} photo{s.photo_count !== 1 ? 's' : ''}
+                          {s.packing_slip_unavailable
+                            ? <span className="ml-2 text-amber-400">⚠ no slip</span>
+                            : s.slip_count > 0
+                              ? <span className="ml-2">+ {s.slip_count} slip</span>
+                              : null}
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <button onClick={() => openDetail(s.id)}
+                            className="text-sm text-gray-400 hover:text-white transition">View</button>
+                          {user.role === 'admin' && (
+                            <button onClick={() => handleDelete(s.id)}
+                              className="text-sm text-red-500 hover:text-red-400 transition">Delete</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden sm:block bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Date</th>
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Name</th>
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Type</th>
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Distributor</th>
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden md:table-cell">Photos</th>
+                        <th className="px-6 py-4" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {submissions.map(s => (
+                        <tr key={s.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
+                          <td className="px-6 py-4 text-white text-sm whitespace-nowrap">{fmtDate(s.submission_date)}</td>
+                          <td className="px-6 py-4 text-white text-sm">{s.submitted_by_name}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded text-white"
+                              style={{ backgroundColor: s.submission_type === 'distro' ? '#FF6B00' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
+                              {fmtType(s.submission_type)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-400 text-sm">
+                            {s.distributor === 'Other' ? s.other_distributor : (s.distributor || '—')}
+                          </td>
+                          <td className="px-6 py-4 text-gray-400 text-sm hidden md:table-cell">
+                            {s.photo_count} photo{s.photo_count !== 1 ? 's' : ''}
+                            {s.packing_slip_unavailable
+                              ? <span className="ml-2 text-amber-400 text-xs">⚠ no slip</span>
+                              : s.slip_count > 0
+                                ? <span className="ml-2 text-gray-500 text-xs">+ {s.slip_count} slip</span>
+                                : null}
+                          </td>
+                          <td className="px-6 py-4 flex items-center gap-4">
+                            <button onClick={() => openDetail(s.id)}
+                              className="text-sm text-gray-400 hover:text-white transition">View</button>
+                            {user.role === 'admin' && (
+                              <button onClick={() => handleDelete(s.id)}
+                                className="text-sm text-red-500 hover:text-red-400 transition">Delete</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
