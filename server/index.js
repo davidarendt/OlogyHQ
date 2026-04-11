@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
@@ -130,6 +131,65 @@ app.get('/api/me', authenticateToken, (req, res) => {
 app.post('/api/logout', (req, res) => {
   res.clearCookie('token');
   res.json({ message: 'Logged out' });
+});
+
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email required' });
+    const result = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    // Always respond the same way to prevent email enumeration
+    if (result.rows.length === 0) {
+      return res.json({ message: 'If that email is in our system, a reset link has been sent.' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await pool.query(
+      'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
+      [token, expires, result.rows[0].id]
+    );
+    const resetUrl = `${process.env.CLIENT_URL || 'https://ologyhq.netlify.app'}/?reset=${token}`;
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: `"OlogyHQ" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'OlogyHQ — Password Reset',
+      html: `<p>Someone requested a password reset for your OlogyHQ account.</p>
+             <p><a href="${resetUrl}">Click here to set a new password</a></p>
+             <p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+    });
+    res.json({ message: 'If that email is in our system, a reset link has been sent.' });
+  } catch (err) {
+    console.error('forgot-password error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ message: 'Token and password required' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    const result = await pool.query(
+      'SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+      [token]
+    );
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    await pool.query(
+      'UPDATE users SET password = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+      [hashed, result.rows[0].id]
+    );
+    res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('reset-password error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // Get all users
