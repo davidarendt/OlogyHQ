@@ -10,7 +10,7 @@ const TOOL_META = {
   'sops-checklists':     { icon: '📋', description: 'Standard operating procedures and checklists',        page: 'sops-checklists' },
   'cocktail-keeper':     { icon: '🍹', description: 'Browse and manage cocktail recipes',                  page: null },
   'taproom-inspections': { icon: '✅', description: 'Conduct and review taproom quality inspections',      page: null },
-  'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'user-management' },
+  'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'usermanagement' },
 };
 
 const DEFAULT_META = { icon: '🔧', description: '', page: null };
