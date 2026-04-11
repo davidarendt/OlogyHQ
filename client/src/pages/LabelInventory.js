@@ -91,7 +91,7 @@ function OrderEmailModal({ labels, onClose, onSent }) {
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-600 text-gray-300 text-sm hover:bg-gray-700 transition">Cancel</button>
           <button onClick={handleSend} disabled={sending}
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 transition"
-            style={{ backgroundColor: '#FF6B00' }}>
+            style={{ backgroundColor: '#F05A28' }}>
             {sending ? 'Sending…' : 'Send Email'}
           </button>
         </div>
@@ -220,7 +220,7 @@ function EditModal({ label, isNew, onClose, onSaved }) {
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-600 text-gray-300 text-sm hover:bg-gray-700 transition">Cancel</button>
           <button onClick={handleSave} disabled={saving}
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 transition"
-            style={{ backgroundColor: '#FF6B00' }}>
+            style={{ backgroundColor: '#F05A28' }}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -279,7 +279,7 @@ function EmailModal({ onClose }) {
             className="flex-1 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           <button onClick={add} disabled={adding}
             className="px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 transition"
-            style={{ backgroundColor: '#FF6B00' }}>Add</button>
+            style={{ backgroundColor: '#F05A28' }}>Add</button>
         </div>
         <button onClick={onClose} className="w-full py-2.5 rounded-xl border border-gray-600 text-gray-300 text-sm hover:bg-gray-700 transition">Done</button>
       </div>
@@ -349,8 +349,8 @@ export default function LabelInventory({ user, onBack, canUpload }) {
     <div className="min-h-screen bg-gray-900">
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Back to Dashboard</button>
       </nav>
@@ -361,7 +361,7 @@ export default function LabelInventory({ user, onBack, canUpload }) {
         <div className="mb-6 sm:mb-8">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-white text-2xl sm:text-4xl font-bold">Label Inventory</h2>
+              <h2 className="text-cream text-2xl sm:text-4xl font-bold">Label Inventory</h2>
               <p className="text-gray-500 text-xs sm:text-sm mt-1">Last updated: {fmtDate(lastUpdated.toISOString())}</p>
             </div>
             {isAdmin && (
@@ -380,7 +380,7 @@ export default function LabelInventory({ user, onBack, canUpload }) {
           {view === 'inventory' && isAdmin && (
             <button onClick={() => setShowOrderModal(true)}
               className="mt-3 px-4 py-2 rounded-xl border border-orange-500/60 text-sm font-semibold transition hover:border-orange-500"
-              style={{ color: '#FF6B00' }}>
+              style={{ color: '#F05A28' }}>
               Send Order Email
             </button>
           )}
@@ -402,7 +402,7 @@ export default function LabelInventory({ user, onBack, canUpload }) {
                   {needReorder.map(l => (
                     <div key={l.id} className="flex items-center justify-between text-sm">
                       <span className="text-gray-300">{l.name}</span>
-                      <span className="font-semibold ml-3" style={{ color: '#FF6B00' }}>{fmtNum(calcOrder(l))}</span>
+                      <span className="font-semibold ml-3" style={{ color: '#F05A28' }}>{fmtNum(calcOrder(l))}</span>
                     </div>
                   ))}
                 </div>
@@ -501,7 +501,7 @@ export default function LabelInventory({ user, onBack, canUpload }) {
                   </button>
                   <button onClick={() => setEditing('new')}
                     className="px-4 py-2 rounded-xl text-white text-sm font-semibold transition hover:opacity-90"
-                    style={{ backgroundColor: '#FF6B00' }}>
+                    style={{ backgroundColor: '#F05A28' }}>
                     + Add Label
                   </button>
                 </div>

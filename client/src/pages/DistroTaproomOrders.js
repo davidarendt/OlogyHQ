@@ -130,9 +130,9 @@ function OrderCard({ order, onClick }) {
     <button
       onClick={onClick}
       className="w-full text-left px-2.5 py-2 rounded-lg text-xs transition hover:opacity-80 group"
-      style={{ backgroundColor: 'rgba(255,107,0,0.12)', border: '1px solid rgba(255,107,0,0.3)' }}
+      style={{ backgroundColor: 'rgba(240,90,40,0.12)', border: '1px solid rgba(240,90,40,0.3)' }}
     >
-      <div className="font-semibold truncate group-hover:text-orange-400 transition" style={{ color: '#FF6B00' }}>
+      <div className="font-semibold truncate group-hover:text-orange-400 transition" style={{ color: '#F05A28' }}>
         {order.recipient}
       </div>
       {order.invoice_number && (
@@ -197,8 +197,8 @@ export default function DistroTaproomOrders({ user, onBack }) {
       {/* Nav — always visible */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between flex-shrink-0">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Back to Dashboard
@@ -232,7 +232,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
                 target="_blank"
                 rel="noreferrer"
                 className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ backgroundColor: '#FF6B00' }}
+                style={{ backgroundColor: '#F05A28' }}
               >
                 Open / Print
               </a>
@@ -258,7 +258,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
         /* ── Calendar view ──────────────────────────────────────────────────── */
         <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10">
           <div className="mb-6 sm:mb-8">
-            <h2 className="text-white text-2xl sm:text-4xl font-bold">Distro / Taproom Orders</h2>
+            <h2 className="text-cream text-2xl sm:text-4xl font-bold">Distro / Taproom Orders</h2>
             <p className="text-gray-400 mt-1 text-sm sm:mt-2">Outgoing invoices — tap any order to view</p>
           </div>
 
@@ -294,7 +294,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
                           <div className={`text-xs font-semibold mb-2.5 flex items-center justify-between ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
                             <span>
                               {fmtDay(day)}
-                              {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                              {isToday && <span className="ml-1" style={{ color: '#F05A28' }}>●</span>}
                             </span>
                             {dayOrders.filter(o => !o.tentative && o.pdf_url).length > 0 && (
                               <button
@@ -302,7 +302,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
                                 disabled={!!printingDay}
                                 title="Print all invoices for this day"
                                 className="ml-1 transition flex-shrink-0 disabled:opacity-40"
-                                style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
+                                style={{ color: '#F05A28', fontSize: '14px', lineHeight: 1 }}
                               >
                                 {printingDay === key ? '⏳' : '🖨'}
                               </button>
@@ -338,7 +338,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
                           <div className={`text-xs font-semibold mb-2 flex items-center justify-between ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
                             <span>
                               {fmtDay(day)}
-                              {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                              {isToday && <span className="ml-1" style={{ color: '#F05A28' }}>●</span>}
                             </span>
                             {dayOrders.filter(o => !o.tentative && o.pdf_url).length > 0 && (
                               <button
@@ -346,7 +346,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
                                 disabled={!!printingDay}
                                 title="Print all invoices for this day"
                                 className="ml-1 transition flex-shrink-0 disabled:opacity-40"
-                                style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
+                                style={{ color: '#F05A28', fontSize: '14px', lineHeight: 1 }}
                               >
                                 {printingDay === key ? '⏳' : '🖨'}
                               </button>

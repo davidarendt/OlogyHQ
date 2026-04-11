@@ -113,7 +113,7 @@ function DocModal({ doc, onClose, onSaved }) {
           </button>
           <button onClick={handleSave} disabled={saving}
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition disabled:opacity-50"
-            style={{ backgroundColor: '#FF6B00' }}>
+            style={{ backgroundColor: '#F05A28' }}>
             {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Upload'}
           </button>
         </div>
@@ -146,7 +146,7 @@ function ViewerModal({ doc, onClose }) {
           <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
             <p className="text-sm">Preview not available for this file type.</p>
             <a href={downloadUrl} className="px-5 py-2 rounded-lg text-white text-sm font-semibold"
-              style={{ backgroundColor: '#FF6B00' }}>Download to view</a>
+              style={{ backgroundColor: '#F05A28' }}>Download to view</a>
           </div>
         )}
       </div>
@@ -163,7 +163,7 @@ function DocCard({ doc, onView }) {
       className="group relative bg-gray-800 rounded-2xl border border-gray-700 hover:border-orange-500 transition-all duration-200 text-left overflow-hidden flex flex-col hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5"
     >
       {/* Top accent stripe */}
-      <div className="h-1 w-full" style={{ backgroundColor: '#FF6B00' }} />
+      <div className="h-1 w-full" style={{ backgroundColor: '#F05A28' }} />
 
       <div className="p-5 flex flex-col gap-3 flex-1">
         {/* File type badge */}
@@ -232,8 +232,8 @@ export default function SOPsChecklists({ user, canUpload, onBack }) {
       {/* Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Back to Dashboard
@@ -244,7 +244,7 @@ export default function SOPsChecklists({ user, canUpload, onBack }) {
         {/* Header */}
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h2 className="text-white text-4xl font-bold">SOPs & Checklists</h2>
+            <h2 className="text-cream text-4xl font-bold">SOPs & Checklists</h2>
             <p className="text-gray-400 mt-2">Standard operating procedures and checklists</p>
           </div>
           {canUpload && (
@@ -280,7 +280,7 @@ export default function SOPsChecklists({ user, canUpload, onBack }) {
             <div className="flex justify-end mb-4">
               <button onClick={() => setEditing('new')}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold transition hover:opacity-90"
-                style={{ backgroundColor: '#FF6B00' }}>
+                style={{ backgroundColor: '#F05A28' }}>
                 + Upload Document
               </button>
             </div>

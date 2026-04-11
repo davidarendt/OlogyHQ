@@ -91,8 +91,8 @@ function UserManagement({ user, onBack, onNavigate }) {
     <div className="min-h-screen bg-gray-900">
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Back to Dashboard
@@ -101,7 +101,7 @@ function UserManagement({ user, onBack, onNavigate }) {
 
       <main className="max-w-4xl mx-auto px-6 py-10">
         <div className="mb-8 text-center">
-          <h2 className="text-white text-4xl font-bold">User Management</h2>
+          <h2 className="text-cream text-4xl font-bold">User Management</h2>
         </div>
 
         {error && <div className="bg-red-500/20 border border-red-500/40 text-red-300 p-3 rounded mb-4 text-sm">{error}</div>}
@@ -111,7 +111,7 @@ function UserManagement({ user, onBack, onNavigate }) {
           <button
             onClick={() => { setShowAddForm(!showAddForm); setError(''); setSuccess(''); }}
             className="px-4 py-2 rounded font-semibold text-white transition"
-            style={{ backgroundColor: '#FF6B00' }}
+            style={{ backgroundColor: '#F05A28' }}
           >
             {showAddForm ? 'Cancel' : '+ Invite New User'}
           </button>
@@ -161,7 +161,7 @@ function UserManagement({ user, onBack, onNavigate }) {
                 <button
                   type="submit"
                   className="px-6 py-2 rounded font-semibold text-white transition"
-                  style={{ backgroundColor: '#FF6B00' }}
+                  style={{ backgroundColor: '#F05A28' }}
                 >
                   Send Invite
                 </button>

@@ -80,10 +80,10 @@ function HexCard({ doc, onDownload }) {
         inset:      0,
         clipPath:   'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
         background: hovered
-          ? 'linear-gradient(135deg, #FF8C00, #FF6B00)'
-          : 'linear-gradient(135deg, #FF6B00, #c24d00)',
+          ? 'linear-gradient(135deg, #D94F22, #F05A28)'
+          : 'linear-gradient(135deg, #F05A28, #b33f1a)',
         filter: hovered
-          ? 'drop-shadow(0 0 14px rgba(255,107,0,0.85))'
+          ? 'drop-shadow(0 0 14px rgba(240,90,40,0.85))'
           : 'drop-shadow(0 4px 8px rgba(0,0,0,0.7))',
         transition: 'background 0.2s ease, filter 0.2s ease',
       }} />
@@ -279,8 +279,8 @@ function HRDocuments({ user, canUpload, onBack }) {
       {/* Top Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Back to Dashboard
@@ -292,7 +292,7 @@ function HRDocuments({ user, canUpload, onBack }) {
         {/* Page Header */}
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h2 className="text-white text-4xl font-bold">HR Documents</h2>
+            <h2 className="text-cream text-4xl font-bold">HR Documents</h2>
             <p className="text-gray-400 mt-2">
               {mode === 'library' ? 'Company policies, handbooks, and employee forms' : 'Upload, edit, and manage documents'}
             </p>
@@ -317,7 +317,7 @@ function HRDocuments({ user, canUpload, onBack }) {
                 <button
                   onClick={() => fileInputRef.current.click()}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-white text-sm transition"
-                  style={{ backgroundColor: '#FF6B00' }}
+                  style={{ backgroundColor: '#F05A28' }}
                 >
                   <span className="text-lg leading-none">↑</span>
                   Upload Document
@@ -380,7 +380,7 @@ function HRDocuments({ user, canUpload, onBack }) {
                 <button
                   onClick={() => fileInputRef.current.click()}
                   className="underline hover:text-white transition"
-                  style={{ color: '#FF6B00' }}
+                  style={{ color: '#F05A28' }}
                 >
                   browse to upload
                 </button>
@@ -533,7 +533,7 @@ function HRDocuments({ user, canUpload, onBack }) {
                 onClick={editingDoc ? handleSaveEdit : handleUpload}
                 disabled={uploading}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#FF6B00' }}
+                style={{ backgroundColor: '#F05A28' }}
               >
                 {uploading ? (
                   <>

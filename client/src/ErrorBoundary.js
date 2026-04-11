@@ -25,7 +25,7 @@ class ErrorBoundary extends Component {
             <button
               onClick={() => window.location.reload()}
               className="px-6 py-2 rounded-lg text-white font-semibold text-sm"
-              style={{ backgroundColor: '#FF6B00' }}
+              style={{ backgroundColor: '#F05A28' }}
             >
               Reload
             </button>

@@ -14,8 +14,8 @@ function NavBar({ onBack }) {
   return (
     <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
       <button onClick={onBack} className="flex items-center gap-3">
-        <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-        <span className="text-white font-semibold text-xl">HQ</span>
+        <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+        <span className="text-cream font-semibold text-xl">HQ</span>
         <span className="text-gray-400 ml-2">/ Taproom Inventory</span>
       </button>
       <div />
@@ -343,7 +343,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
             onClick={() => setStep('review')}
             disabled={beers.length === 0}
             className="px-6 py-2 rounded-lg font-semibold text-white disabled:opacity-40"
-            style={{ background: '#FF6B00' }}
+            style={{ background: '#F05A28' }}
           >
             Review & Submit
           </button>
@@ -433,7 +433,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
             onClick={handleSubmit}
             disabled={submitting}
             className="px-6 py-2 rounded-lg font-semibold text-white disabled:opacity-50"
-            style={{ background: '#FF6B00' }}
+            style={{ background: '#F05A28' }}
           >
             {submitting ? 'Submitting...' : 'Submit Count'}
           </button>
@@ -448,7 +448,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
       <div className="text-5xl mb-4">✅</div>
       <h3 className="text-white text-2xl font-semibold mb-2">Count Submitted</h3>
       <p className="text-gray-400 mb-8">{location.label} — {sessionDate}</p>
-      <button onClick={reset} className="px-6 py-2 rounded-lg font-semibold text-white" style={{ background: '#FF6B00' }}>
+      <button onClick={reset} className="px-6 py-2 rounded-lg font-semibold text-white" style={{ background: '#F05A28' }}>
         New Count
       </button>
     </div>
@@ -705,7 +705,7 @@ function ManageTab() {
           <button
             onClick={() => setAdding(true)}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg"
-            style={{ background: '#FF6B00' }}
+            style={{ background: '#F05A28' }}
           >
             + Add Beer
           </button>
@@ -750,7 +750,7 @@ function ManageTab() {
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={addBeer} className="text-sm text-white px-4 py-1.5 rounded" style={{ background: '#FF6B00' }}>Add</button>
+            <button onClick={addBeer} className="text-sm text-white px-4 py-1.5 rounded" style={{ background: '#F05A28' }}>Add</button>
             <button onClick={() => { setAdding(false); setNewName(''); setNewLocs([]); }} className="text-sm text-gray-400 hover:text-white px-3 py-1.5">Cancel</button>
           </div>
         </div>
@@ -786,7 +786,7 @@ function ManageTab() {
           <button
             onClick={saveSettings}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg"
-            style={{ background: '#FF6B00' }}
+            style={{ background: '#F05A28' }}
           >
             Save Settings
           </button>
@@ -1031,7 +1031,7 @@ function DeliveriesTab({ user }) {
             onClick={handleSave}
             disabled={saving || !preview.location}
             className="px-6 py-2 rounded-lg font-semibold text-white disabled:opacity-50"
-            style={{ background: '#FF6B00' }}
+            style={{ background: '#F05A28' }}
           >
             {saving ? 'Saving...' : 'Confirm Delivery'}
           </button>
@@ -1051,7 +1051,7 @@ function DeliveriesTab({ user }) {
         <div className="text-5xl mb-4">📦</div>
         <h3 className="text-white text-2xl font-semibold mb-2">Delivery Logged</h3>
         <p className="text-gray-400 mb-8">{preview?.locationLabel} · {preview?.deliveryDate}</p>
-        <button onClick={() => setView('list')} className="px-6 py-2 rounded-lg font-semibold text-white" style={{ background: '#FF6B00' }}>
+        <button onClick={() => setView('list')} className="px-6 py-2 rounded-lg font-semibold text-white" style={{ background: '#F05A28' }}>
           Back to Deliveries
         </button>
       </div>
@@ -1131,7 +1131,7 @@ function DeliveriesTab({ user }) {
           >
             {syncing ? 'Syncing...' : '↻ Sync from Sheet'}
           </button>
-          <label className={`px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer ${parsing ? 'opacity-50 pointer-events-none' : ''}`} style={{ background: '#FF6B00' }}>
+          <label className={`px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer ${parsing ? 'opacity-50 pointer-events-none' : ''}`} style={{ background: '#F05A28' }}>
             {parsing ? 'Parsing PDF...' : '+ Upload PDF'}
             <input type="file" accept=".pdf" className="hidden" onChange={handleFileChange} disabled={parsing} />
           </label>

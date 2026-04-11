@@ -29,8 +29,8 @@ function Dashboard({ user, onLogout, onNavigate }) {
       {/* Top Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={() => {}} className="flex items-center gap-3 cursor-default">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <div className="flex items-center gap-4">
           <span className="text-gray-400 text-sm">Welcome, {user.name}</span>
@@ -43,7 +43,7 @@ function Dashboard({ user, onLogout, onNavigate }) {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="mb-8 text-center">
-          <h2 className="text-white text-4xl font-bold">Dashboard</h2>
+          <h2 className="text-cream text-4xl font-bold">Dashboard</h2>
         </div>
 
         {/* Tool Cards */}
@@ -79,7 +79,7 @@ function Dashboard({ user, onLogout, onNavigate }) {
                 {!isLive && (
                   <div
                     className="absolute top-4 right-[-28px] rotate-45 text-xs font-bold tracking-widest px-10 py-1 text-white"
-                    style={{ backgroundColor: '#FF6B00' }}
+                    style={{ backgroundColor: '#F05A28' }}
                   >
                     SOON
                   </div>

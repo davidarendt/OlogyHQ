@@ -189,7 +189,7 @@ function DetailModal({ submission, onClose }) {
             <div key={set.id}>
               <div className="flex items-center gap-3 mb-3">
                 {set.photo_type && (
-                  <span className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded" style={{ backgroundColor: '#FF6B00', color: 'white' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded" style={{ backgroundColor: '#F05A28', color: 'white' }}>
                     {set.photo_type}
                   </span>
                 )}
@@ -329,8 +329,8 @@ function ProductionPhotos({ user, canUpload, onBack }) {
       {/* Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Back</button>
       </nav>
@@ -341,7 +341,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
         <div className="mb-6 sm:mb-8">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-white text-2xl sm:text-4xl font-bold">Production Photos</h2>
+              <h2 className="text-cream text-2xl sm:text-4xl font-bold">Production Photos</h2>
               <p className="text-gray-400 mt-1 text-sm sm:mt-2">Submit distro and keg return documentation</p>
             </div>
           </div>
@@ -396,7 +396,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           ? 'border-orange-500 text-white'
                           : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-white'
                       }`}
-                      style={form.type === val ? { backgroundColor: 'rgba(255,107,0,0.15)' } : {}}>
+                      style={form.type === val ? { backgroundColor: 'rgba(240,90,40,0.15)' } : {}}>
                       {label}
                     </button>
                   ))}
@@ -534,7 +534,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
             {form.type && (
               <button type="submit" disabled={submitting}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#FF6B00' }}>
+                style={{ backgroundColor: '#F05A28' }}>
                 {submitting ? (
                   <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Submitting…</>
                 ) : 'Submit'}
@@ -560,7 +560,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           <p className="text-gray-400 text-xs mt-0.5">{fmtDate(s.submission_date)}</p>
                         </div>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded text-white shrink-0"
-                          style={{ backgroundColor: s.submission_type === 'distro' ? '#FF6B00' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
+                          style={{ backgroundColor: s.submission_type === 'distro' ? '#F05A28' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
                           {fmtType(s.submission_type)}
                         </span>
                       </div>
@@ -611,7 +611,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           <td className="px-6 py-4 text-white text-sm">{s.submitted_by_name}</td>
                           <td className="px-6 py-4">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded text-white"
-                              style={{ backgroundColor: s.submission_type === 'distro' ? '#FF6B00' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
+                              style={{ backgroundColor: s.submission_type === 'distro' ? '#F05A28' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
                               {fmtType(s.submission_type)}
                             </span>
                           </td>

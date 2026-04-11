@@ -92,7 +92,7 @@ function Login({ onLogin }) {
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
 
-        <h1 className="text-3xl font-bold text-white mb-2 text-center">OlogyHQ</h1>
+        <h1 className="text-3xl font-bold text-cream mb-2 text-center">OlogyHQ</h1>
         <p className="text-gray-400 text-center mb-6">
           {view === 'login' && 'Sign in to your account'}
           {view === 'forgot' && 'Reset your password'}
@@ -117,7 +117,7 @@ function Login({ onLogin }) {
               <input
                 type="email"
                 className="w-full bg-gray-700 text-white p-3 rounded focus:outline-none focus:ring-2"
-                style={{ '--tw-ring-color': '#FF6B00' }}
+                style={{ '--tw-ring-color': '#F05A28' }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -146,7 +146,7 @@ function Login({ onLogin }) {
               type="submit"
               disabled={loading}
               className="w-full text-white font-bold p-3 rounded transition disabled:opacity-50"
-              style={{ backgroundColor: '#FF6B00' }}
+              style={{ backgroundColor: '#F05A28' }}
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
@@ -172,7 +172,7 @@ function Login({ onLogin }) {
               type="submit"
               disabled={loading || !!message}
               className="w-full text-white font-bold p-3 rounded transition disabled:opacity-50 mb-3"
-              style={{ backgroundColor: '#FF6B00' }}
+              style={{ backgroundColor: '#F05A28' }}
             >
               {loading ? 'Sending…' : 'Send Reset Link'}
             </button>
@@ -213,7 +213,7 @@ function Login({ onLogin }) {
               type="submit"
               disabled={loading}
               className="w-full text-white font-bold p-3 rounded transition disabled:opacity-50"
-              style={{ backgroundColor: '#FF6B00' }}
+              style={{ backgroundColor: '#F05A28' }}
             >
               {loading ? 'Updating…' : 'Set New Password'}
             </button>

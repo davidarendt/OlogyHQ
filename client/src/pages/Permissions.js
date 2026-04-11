@@ -59,8 +59,8 @@ function Permissions({ onBack, onHome }) {
     <div className="min-h-screen bg-gray-900">
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <button onClick={onHome} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#FF6B00' }}>OLOGY</span>
-          <span className="text-white font-semibold text-xl">HQ</span>
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Back to User Management
@@ -69,7 +69,7 @@ function Permissions({ onBack, onHome }) {
 
       <main className="px-6 py-10">
         <div className="mb-8 text-center">
-          <h2 className="text-white text-4xl font-bold">Role Permissions</h2>
+          <h2 className="text-cream text-4xl font-bold">Role Permissions</h2>
           <p className="text-gray-400 mt-2">Toggle which tools each role can access</p>
         </div>
 
