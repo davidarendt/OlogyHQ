@@ -8,23 +8,38 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const pdfParse   = require('pdf-parse');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
 const pool = require('./db');
 const app = express();
 
-// HR Documents file storage
-const hrUploadDir = path.join(__dirname, 'uploads', 'hr-documents');
-try { if (!fs.existsSync(hrUploadDir)) fs.mkdirSync(hrUploadDir, { recursive: true }); } catch (e) {}
+// File storage — memory storage for serverless; files uploaded to Supabase Storage
+const memoryStorage = multer.memoryStorage();
+const hrUpload         = multer({ storage: memoryStorage, limits: { fileSize: 25 * 1024 * 1024 } });
+const hrUploadDir      = path.join(__dirname, 'uploads', 'hr-documents'); // local dev fallback path ref
 
-const hrStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, hrUploadDir),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
-  },
-});
-const hrUpload = multer({ storage: hrStorage, limits: { fileSize: 25 * 1024 * 1024 } });
+// Helper: upload buffer to Supabase Storage, return public filename
+async function uploadToSupabase(bucket, filename, buffer, mimetype) {
+  const { error } = await supabase.storage.from(bucket).upload(filename, buffer, {
+    contentType: mimetype,
+    upsert: false,
+  });
+  if (error) throw error;
+  return filename;
+}
+
+// Helper: get a signed URL (1 hour) for a file in Supabase Storage
+async function getSignedUrl(bucket, filename) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filename, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
 
 // Middleware to check HR Documents upload permission
 const checkHRPermission = async (req, res, next) => {
@@ -294,11 +309,15 @@ app.post('/api/hr-documents', authenticateToken, checkHRPermission, hrUpload.sin
   try { roles = JSON.parse(req.body.roles || '[]'); } catch {}
 
   try {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = unique + path.extname(req.file.originalname);
+    await uploadToSupabase('hr-documents', filename, req.file.buffer, req.file.mimetype);
+
     const result = await pool.query(
       `INSERT INTO hr_documents (name, filename, mimetype, size, uploaded_by_id, uploaded_by_name, sort_order)
        VALUES ($1, $2, $3, $4, $5, $6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM hr_documents))
        RETURNING *`,
-      [displayName, req.file.filename, req.file.mimetype, req.file.size, req.user.id, req.user.name]
+      [displayName, filename, req.file.mimetype, req.file.size, req.user.id, req.user.name]
     );
     const doc = result.rows[0];
     if (roles.length > 0) {
@@ -373,9 +392,8 @@ app.get('/api/hr-documents/:id/view', authenticateToken, checkHRView, async (req
     const result = await pool.query('SELECT * FROM hr_documents WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ message: 'Document not found' });
     const doc = result.rows[0];
-    const filePath = path.join(hrUploadDir, doc.filename);
-    res.setHeader('Content-Disposition', `inline; filename="${doc.name}"`);
-    res.sendFile(filePath);
+    const url = await getSignedUrl('hr-documents', doc.filename);
+    res.redirect(url);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -388,8 +406,8 @@ app.get('/api/hr-documents/:id/download', authenticateToken, checkHRView, async 
     const result = await pool.query('SELECT * FROM hr_documents WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ message: 'Document not found' });
     const doc = result.rows[0];
-    const filePath = path.join(hrUploadDir, doc.filename);
-    res.download(filePath, doc.name);
+    const url = await getSignedUrl('hr-documents', doc.filename);
+    res.redirect(url);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -402,8 +420,7 @@ app.delete('/api/hr-documents/:id', authenticateToken, checkHRPermission, async 
     const result = await pool.query('SELECT * FROM hr_documents WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ message: 'Document not found' });
     const doc = result.rows[0];
-    const filePath = path.join(hrUploadDir, doc.filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await supabase.storage.from('hr-documents').remove([doc.filename]);
     await pool.query('DELETE FROM hr_documents WHERE id = $1', [req.params.id]);
     res.json({ message: 'Document deleted' });
   } catch (err) {
@@ -415,23 +432,16 @@ app.delete('/api/hr-documents/:id', authenticateToken, checkHRPermission, async 
 // ── Production Photos ─────────────────────────────────────────────────────────
 
 const productionUploadDir = path.join(__dirname, 'uploads', 'production-photos');
-try { if (!fs.existsSync(productionUploadDir)) fs.mkdirSync(productionUploadDir, { recursive: true }); } catch (e) {}
-
-const productionStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, productionUploadDir),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
-  },
-});
-const productionUpload = multer({ storage: productionStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+const productionUpload = multer({ storage: memoryStorage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Serve a production photo inline — must come before /:id route
-app.get('/api/production/photo/:filename', authenticateToken, (req, res) => {
-  const filePath = path.join(productionUploadDir, path.basename(req.params.filename));
-  if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Not found' });
-  res.setHeader('Content-Disposition', 'inline');
-  res.sendFile(filePath);
+app.get('/api/production/photo/:filename', authenticateToken, async (req, res) => {
+  try {
+    const url = await getSignedUrl('production-photos', path.basename(req.params.filename));
+    res.redirect(url);
+  } catch (err) {
+    res.status(404).json({ message: 'Not found' });
+  }
 });
 
 // List submissions
@@ -505,9 +515,12 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
 
     // Packing slips
     for (const file of files.filter(f => f.fieldname === 'packing_slips')) {
+      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const filename = unique + path.extname(file.originalname);
+      await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
       await pool.query(
         'INSERT INTO production_photos (submission_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,true,$2,$3,$4)',
-        [sub.id, file.filename, file.originalname, file.mimetype]
+        [sub.id, filename, file.originalname, file.mimetype]
       );
     }
 
@@ -524,9 +537,12 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
       const setId = setResult.rows[0].id;
 
       for (const file of setFiles) {
+        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        const filename = unique + path.extname(file.originalname);
+        await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
         await pool.query(
           'INSERT INTO production_photos (submission_id, photo_set_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,$2,false,$3,$4,$5)',
-          [sub.id, setId, file.filename, file.originalname, file.mimetype]
+          [sub.id, setId, filename, file.originalname, file.mimetype]
         );
       }
     }
@@ -542,12 +558,9 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
 app.delete('/api/production/:id', authenticateToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
   try {
-    // Fetch filenames so we can delete files from disk
     const photos = await pool.query('SELECT filename FROM production_photos WHERE submission_id = $1', [req.params.id]);
-    photos.rows.forEach(p => {
-      const fp = path.join(productionUploadDir, p.filename);
-      if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    });
+    const filenames = photos.rows.map(p => p.filename);
+    if (filenames.length) await supabase.storage.from('production-photos').remove(filenames);
     await pool.query('DELETE FROM production_photos WHERE submission_id = $1', [req.params.id]);
     await pool.query('DELETE FROM production_photo_sets WHERE submission_id = $1', [req.params.id]);
     await pool.query('DELETE FROM production_submissions WHERE id = $1', [req.params.id]);
@@ -560,14 +573,7 @@ app.delete('/api/production/:id', authenticateToken, async (req, res) => {
 
 // ── SOPs & Checklists ─────────────────────────────────────────────────────────
 const sopUploadDir = path.join(__dirname, 'uploads', 'sop-documents');
-try { if (!fs.existsSync(sopUploadDir)) fs.mkdirSync(sopUploadDir, { recursive: true }); } catch (e) {}
-
-const sopUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, sopUploadDir),
-    filename:    (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname)}`),
-  }),
-});
+const sopUpload = multer({ storage: memoryStorage });
 
 function checkSOPPermission(req, res, next) {
   pool.query(
@@ -612,11 +618,14 @@ app.post('/api/sop-documents', authenticateToken, checkSOPPermission, sopUpload.
   try {
     const { name, roles } = req.body;
     const parsedRoles = JSON.parse(roles || '[]');
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = unique + path.extname(req.file.originalname);
+    await uploadToSupabase('sop-documents', filename, req.file.buffer, req.file.mimetype);
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM sop_documents');
     const doc = await pool.query(
       `INSERT INTO sop_documents (name, filename, mimetype, size, uploaded_by_id, uploaded_by_name, sort_order)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [name, req.file.filename, req.file.mimetype, req.file.size,
+      [name, filename, req.file.mimetype, req.file.size,
        req.user.id, req.user.name, maxSort.rows[0].m + 1]
     );
     for (const role of parsedRoles) {
@@ -665,9 +674,8 @@ app.get('/api/sop-documents/:id/view', authenticateToken, async (req, res) => {
   try {
     const doc = await pool.query('SELECT * FROM sop_documents WHERE id=$1', [req.params.id]);
     if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
-    const filePath = path.join(sopUploadDir, doc.rows[0].filename);
-    res.setHeader('Content-Disposition', 'inline');
-    res.sendFile(filePath);
+    const url = await getSignedUrl('sop-documents', doc.rows[0].filename);
+    res.redirect(url);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -679,9 +687,8 @@ app.get('/api/sop-documents/:id/download', authenticateToken, async (req, res) =
   try {
     const doc = await pool.query('SELECT * FROM sop_documents WHERE id=$1', [req.params.id]);
     if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
-    const filePath = path.join(sopUploadDir, doc.rows[0].filename);
-    res.setHeader('Content-Disposition', `attachment; filename="${doc.rows[0].name}"`);
-    res.sendFile(filePath);
+    const url = await getSignedUrl('sop-documents', doc.rows[0].filename);
+    res.redirect(url);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -693,8 +700,7 @@ app.delete('/api/sop-documents/:id', authenticateToken, checkSOPPermission, asyn
   try {
     const doc = await pool.query('SELECT * FROM sop_documents WHERE id=$1', [req.params.id]);
     if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
-    const filePath = path.join(sopUploadDir, doc.rows[0].filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await supabase.storage.from('sop-documents').remove([doc.rows[0].filename]);
     await pool.query('DELETE FROM sop_documents WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
   } catch (err) {
