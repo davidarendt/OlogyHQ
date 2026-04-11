@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -108,62 +108,10 @@ function buildTentatives(orders, days) {
   return tentatives;
 }
 
-// ── Print all PDFs for a single day ───────────────────────────────────────────
-function printDay(day, dayOrders) {
-  const realOrders = dayOrders.filter(o => !o.tentative);
-  if (realOrders.length === 0) return;
-
-  const title = fmtDay(day);
-
-  const pages = realOrders.map(o => {
-    const url = drivePreviewUrl(o.pdf_url);
-    const label = o.recipient + (o.invoice_number ? ' \u2014 #' + o.invoice_number : '');
-    if (!url) {
-      return `<div class="page no-pdf"><p>${label}</p><span>No PDF linked</span></div>`;
-    }
-    return `<div class="page"><iframe src="${url}" title="${label}"></iframe></div>`;
-  }).join('');
-
-  const html = `<!DOCTYPE html><html><head><title>Orders \u2013 ${title}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #fff; }
-  .page { width: 100%; height: 100vh; page-break-after: always; }
-  .page iframe { width: 100%; height: 100%; border: none; display: block; }
-  .no-pdf { display: flex; flex-direction: column; align-items: center;
-            justify-content: center; font-family: sans-serif; color: #333; gap: 8px; }
-  .no-pdf p { font-size: 18px; }
-  .no-pdf span { font-size: 13px; color: #999; }
-  #status { position: fixed; bottom: 16px; right: 16px; background: #222;
-            color: #fff; font-family: sans-serif; font-size: 13px;
-            padding: 8px 14px; border-radius: 8px; }
-  @media print { #status { display: none; } }
-</style>
-</head><body>
-${pages}
-<div id="status">Loading PDFs\u2026</div>
-<script>
-  var iframes = Array.from(document.querySelectorAll('iframe'));
-  var loaded = 0;
-  var status = document.getElementById('status');
-  function update() {
-    loaded++;
-    status.textContent = loaded + ' / ' + iframes.length + ' loaded';
-    if (loaded >= iframes.length) {
-      status.textContent = 'Ready \u2014 opening print dialog\u2026';
-      setTimeout(function(){ window.print(); }, 300);
-    }
-  }
-  if (iframes.length === 0) { window.print(); }
-  else {
-    iframes.forEach(function(f) { f.addEventListener('load', update); });
-    setTimeout(function(){ window.print(); }, 8000);
-  }
-</script>
-</body></html>`;
-
-  const w = window.open('', '_blank');
-  if (w) { w.document.write(html); w.document.close(); }
+function extractFileId(url) {
+  if (!url) return null;
+  const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
 }
 
 // ── Order card ────────────────────────────────────────────────────────────────
@@ -196,10 +144,37 @@ function OrderCard({ order, onClick }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DistroTaproomOrders({ user, onBack }) {
-  const [orders, setOrders]     = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
-  const [selected, setSelected] = useState(null);
+  const [orders, setOrders]       = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [selected, setSelected]   = useState(null);
+  const [printingDay, setPrintingDay] = useState(null);
+
+  const handlePrintDay = useCallback(async (dateKey, dayOrders) => {
+    const fileIds = dayOrders
+      .filter(o => !o.tentative && o.pdf_url)
+      .map(o => extractFileId(o.pdf_url))
+      .filter(Boolean);
+    if (fileIds.length === 0) return;
+    setPrintingDay(dateKey);
+    try {
+      const res = await fetch(`${API}/api/distro-orders/print-day`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds }),
+      });
+      if (!res.ok) throw new Error('Server error');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank');
+      if (w) w.addEventListener('load', () => URL.revokeObjectURL(url));
+    } catch (e) {
+      alert('Could not load invoices: ' + e.message);
+    } finally {
+      setPrintingDay(null);
+    }
+  }, []);
 
   const days     = getTwoWeekDays();
   const todayKey = toDateKey(new Date());
@@ -335,14 +310,15 @@ export default function DistroTaproomOrders({ user, onBack }) {
                               {fmtDay(day)}
                               {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
                             </span>
-                            {dayOrders.filter(o => !o.tentative).length > 0 && (
+                            {dayOrders.filter(o => !o.tentative && o.pdf_url).length > 0 && (
                               <button
-                                onClick={() => printDay(day, dayOrders)}
-                                title="Print day's orders"
-                                className="ml-1 transition flex-shrink-0"
+                                onClick={() => handlePrintDay(key, dayOrders)}
+                                disabled={!!printingDay}
+                                title="Print all invoices for this day"
+                                className="ml-1 transition flex-shrink-0 disabled:opacity-40"
                                 style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
                               >
-                                🖨
+                                {printingDay === key ? '⏳' : '🖨'}
                               </button>
                             )}
                           </div>
@@ -378,14 +354,15 @@ export default function DistroTaproomOrders({ user, onBack }) {
                               {fmtDay(day)}
                               {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
                             </span>
-                            {dayOrders.filter(o => !o.tentative).length > 0 && (
+                            {dayOrders.filter(o => !o.tentative && o.pdf_url).length > 0 && (
                               <button
-                                onClick={() => printDay(day, dayOrders)}
-                                title="Print day's orders"
-                                className="ml-1 transition flex-shrink-0"
+                                onClick={() => handlePrintDay(key, dayOrders)}
+                                disabled={!!printingDay}
+                                title="Print all invoices for this day"
+                                className="ml-1 transition flex-shrink-0 disabled:opacity-40"
                                 style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
                               >
-                                🖨
+                                {printingDay === key ? '⏳' : '🖨'}
                               </button>
                             )}
                           </div>
