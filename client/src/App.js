@@ -19,7 +19,13 @@ function App() {
   useEffect(() => {
     fetch(`${process.env.REACT_APP_API_URL || ''}/api/me`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setUser(data); })
+      .then((data) => {
+        if (data) {
+          setUser(data);
+          // Seed initial history state so back button stays within the app
+          window.history.replaceState({ pageName: 'dashboard', props: {} }, '');
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
