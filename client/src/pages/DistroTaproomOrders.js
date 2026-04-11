@@ -139,7 +139,7 @@ function printDay(day, dayOrders) {
   <thead><tr><th>Customer</th><th>Invoice</th></tr></thead>
   <tbody>${rows || '<tr><td colspan="2" style="color:#999">No orders</td></tr>'}</tbody>
 </table>
-<script>window.onload = function(){ window.print(); }<\/script>
+<script>window.onload = function(){ window.print(); }</script>
 </body></html>`;
 
   const w = window.open('', '_blank');
