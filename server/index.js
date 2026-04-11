@@ -15,7 +15,7 @@ const app = express();
 
 // HR Documents file storage
 const hrUploadDir = path.join(__dirname, 'uploads', 'hr-documents');
-if (!fs.existsSync(hrUploadDir)) fs.mkdirSync(hrUploadDir, { recursive: true });
+if (require.main === module && !fs.existsSync(hrUploadDir)) fs.mkdirSync(hrUploadDir, { recursive: true });
 
 const hrStorage = multer.diskStorage({
   destination: hrUploadDir,
@@ -415,7 +415,7 @@ app.delete('/api/hr-documents/:id', authenticateToken, checkHRPermission, async 
 // ── Production Photos ─────────────────────────────────────────────────────────
 
 const productionUploadDir = path.join(__dirname, 'uploads', 'production-photos');
-if (!fs.existsSync(productionUploadDir)) fs.mkdirSync(productionUploadDir, { recursive: true });
+if (require.main === module && !fs.existsSync(productionUploadDir)) fs.mkdirSync(productionUploadDir, { recursive: true });
 
 const productionStorage = multer.diskStorage({
   destination: productionUploadDir,
@@ -560,7 +560,7 @@ app.delete('/api/production/:id', authenticateToken, async (req, res) => {
 
 // ── SOPs & Checklists ─────────────────────────────────────────────────────────
 const sopUploadDir = path.join(__dirname, 'uploads', 'sop-documents');
-if (!fs.existsSync(sopUploadDir)) fs.mkdirSync(sopUploadDir, { recursive: true });
+if (require.main === module && !fs.existsSync(sopUploadDir)) fs.mkdirSync(sopUploadDir, { recursive: true });
 
 const sopUpload = multer({
   storage: multer.diskStorage({
