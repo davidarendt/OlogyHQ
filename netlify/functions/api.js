@@ -4,7 +4,8 @@ const app = require('../../server/index');
 const handler = serverless(app);
 
 exports.handler = async (event, context) => {
-  // Netlify strips /api from the path via the redirect rule — add it back for Express
-  event.path = '/api' + (event.path || '/');
+  // Ensure path starts with /api for Express routing
+  const p = event.path || '/';
+  event.path = p.startsWith('/api') ? p : '/api' + p;
   return handler(event, context);
 };
