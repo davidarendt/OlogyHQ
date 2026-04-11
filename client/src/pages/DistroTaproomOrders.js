@@ -108,38 +108,58 @@ function buildTentatives(orders, days) {
   return tentatives;
 }
 
-// ── Print a single day's orders ───────────────────────────────────────────────
+// ── Print all PDFs for a single day ───────────────────────────────────────────
 function printDay(day, dayOrders) {
-  const title = fmtDay(day);
   const realOrders = dayOrders.filter(o => !o.tentative);
-  const tentOrders = dayOrders.filter(o => o.tentative);
+  if (realOrders.length === 0) return;
 
-  const rows = [
-    ...realOrders.map(o =>
-      `<tr><td>${o.recipient}</td><td>${o.invoice_number ? '#' + o.invoice_number : '—'}</td></tr>`
-    ),
-    ...tentOrders.map(o =>
-      `<tr style="color:#999"><td>${o.recipient} <em>(tentative)</em></td><td>—</td></tr>`
-    ),
-  ].join('');
+  const title = fmtDay(day);
+
+  const pages = realOrders.map(o => {
+    const url = drivePreviewUrl(o.pdf_url);
+    const label = o.recipient + (o.invoice_number ? ' \u2014 #' + o.invoice_number : '');
+    if (!url) {
+      return `<div class="page no-pdf"><p>${label}</p><span>No PDF linked</span></div>`;
+    }
+    return `<div class="page"><iframe src="${url}" title="${label}"></iframe></div>`;
+  }).join('');
 
   const html = `<!DOCTYPE html><html><head><title>Orders \u2013 ${title}</title>
 <style>
-  body { font-family: sans-serif; padding: 32px; color: #111; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  p { font-size: 13px; color: #666; margin: 0 0 20px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; border-bottom: 2px solid #333; padding: 6px 8px; font-size: 13px; }
-  td { padding: 9px 8px; border-bottom: 1px solid #ddd; font-size: 15px; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #fff; }
+  .page { width: 100%; height: 100vh; page-break-after: always; }
+  .page iframe { width: 100%; height: 100%; border: none; display: block; }
+  .no-pdf { display: flex; flex-direction: column; align-items: center;
+            justify-content: center; font-family: sans-serif; color: #333; gap: 8px; }
+  .no-pdf p { font-size: 18px; }
+  .no-pdf span { font-size: 13px; color: #999; }
+  #status { position: fixed; bottom: 16px; right: 16px; background: #222;
+            color: #fff; font-family: sans-serif; font-size: 13px;
+            padding: 8px 14px; border-radius: 8px; }
+  @media print { #status { display: none; } }
 </style>
 </head><body>
-<h1>Outgoing Orders</h1>
-<p>${title}</p>
-<table>
-  <thead><tr><th>Customer</th><th>Invoice</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="2" style="color:#999">No orders</td></tr>'}</tbody>
-</table>
-<script>window.onload = function(){ window.print(); }</script>
+${pages}
+<div id="status">Loading PDFs\u2026</div>
+<script>
+  var iframes = Array.from(document.querySelectorAll('iframe'));
+  var loaded = 0;
+  var status = document.getElementById('status');
+  function update() {
+    loaded++;
+    status.textContent = loaded + ' / ' + iframes.length + ' loaded';
+    if (loaded >= iframes.length) {
+      status.textContent = 'Ready \u2014 opening print dialog\u2026';
+      setTimeout(function(){ window.print(); }, 300);
+    }
+  }
+  if (iframes.length === 0) { window.print(); }
+  else {
+    iframes.forEach(function(f) { f.addEventListener('load', update); });
+    setTimeout(function(){ window.print(); }, 8000);
+  }
+</script>
 </body></html>`;
 
   const w = window.open('', '_blank');
