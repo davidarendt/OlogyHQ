@@ -70,7 +70,7 @@ function App() {
   if (page === 'production-photos') return <ProductionPhotos user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'distro-taproom-orders') return <DistroTaproomOrders user={user} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'sops-checklists') return <SOPsChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
-  if (page === 'label-inventory') return <LabelInventory user={user} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'label-inventory') return <LabelInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'taproom-inventory') return <TaproomInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;

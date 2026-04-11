@@ -288,7 +288,7 @@ function EmailModal({ onClose }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function LabelInventory({ user, onBack }) {
+export default function LabelInventory({ user, onBack, canUpload }) {
   const [labels, setLabels]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [view, setView]           = useState('inventory'); // 'inventory' | 'manage'
@@ -297,7 +297,7 @@ export default function LabelInventory({ user, onBack }) {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [sendMsg, setSendMsg]               = useState('');
 
-  const isAdmin = user.role === 'admin';
+  const isAdmin = !!canUpload;
 
   const fetchLabels = () => {
     fetch(`${API}/api/label-inventory`, { credentials: 'include' })
