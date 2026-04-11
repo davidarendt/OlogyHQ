@@ -36,6 +36,8 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
   const [deliveryCount, setDeliveryCount] = useState(0);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [beerSearch, setBeerSearch] = useState('');
+  const searchRef = useRef();
 
   // Dirty = on the form step with at least one count entered
   const isDirty = step === 'form' && Object.values(counts).some(c =>
@@ -177,6 +179,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     setCounts({});
     setPrevious(null);
     setNotes('');
+    setBeerSearch('');
   };
 
   if (step === 'location') {
@@ -248,9 +251,34 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
           <p className="text-gray-500 text-sm text-center py-8">No beers set up for this location. Use Manage Beers to add them.</p>
         )}
 
+        {beers.length > 0 && (
+          <div className="sticky top-0 z-10 pb-3 pt-1 -mx-6 px-6" style={{ backgroundColor: '#111827' }}>
+            <div className="relative">
+              <input
+                ref={searchRef}
+                type="text"
+                value={beerSearch}
+                onChange={e => setBeerSearch(e.target.value)}
+                placeholder="Search beers…"
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-8 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-orange-500"
+              />
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              {beerSearch && (
+                <button
+                  onClick={() => { setBeerSearch(''); searchRef.current?.focus(); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-lg leading-none"
+                >×</button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3 mb-4">
           {beers.filter(b =>
-            !previous || ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => expectedBaseline(b.id, f) > 0)
+            (!previous || ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => expectedBaseline(b.id, f) > 0)) &&
+            (!beerSearch || b.name.toLowerCase().includes(beerSearch.toLowerCase()))
           ).map(b => {
             const rowFlagged = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'orange');
             const rowRed     = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'red');
