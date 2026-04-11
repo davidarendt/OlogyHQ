@@ -63,7 +63,7 @@ app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true,
 }));
-app.use(express.json());
+app.use((req, res, next) => req.body !== undefined ? next() : express.json()(req, res, next));
 app.use(cookieParser());
 
 // Middleware to verify JWT token
@@ -84,11 +84,8 @@ app.post('/api/login', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
     const user = result.rows[0];
-    console.log('Login debug - user found:', !!user, 'email:', email);
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-    console.log('Login debug - hash prefix:', user.password.substring(0, 10), 'hash len:', user.password.length);
     const validPassword = await bcrypt.compare(password, user.password);
-    console.log('Login debug - validPassword:', validPassword);
     if (!validPassword) return res.status(401).json({ message: 'Invalid credentials' });
     const token = jwt.sign(
       { id: user.id, name: user.name, role: user.role },
