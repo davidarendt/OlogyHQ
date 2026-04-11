@@ -315,11 +315,12 @@ export default function DistroTaproomOrders({ user, onBack }) {
                               {fmtDay(day)}
                               {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
                             </span>
-                            {dayOrders.length > 0 && (
+                            {dayOrders.filter(o => !o.tentative).length > 0 && (
                               <button
                                 onClick={() => printDay(day, dayOrders)}
                                 title="Print day's orders"
-                                className="ml-1 opacity-40 hover:opacity-100 transition text-gray-400 hover:text-white"
+                                className="ml-1 transition flex-shrink-0"
+                                style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
                               >
                                 🖨
                               </button>
@@ -357,11 +358,12 @@ export default function DistroTaproomOrders({ user, onBack }) {
                               {fmtDay(day)}
                               {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
                             </span>
-                            {dayOrders.length > 0 && (
+                            {dayOrders.filter(o => !o.tentative).length > 0 && (
                               <button
                                 onClick={() => printDay(day, dayOrders)}
                                 title="Print day's orders"
-                                className="ml-1 opacity-40 hover:opacity-100 transition text-gray-400 hover:text-white"
+                                className="ml-1 transition flex-shrink-0"
+                                style={{ color: '#FF6B00', fontSize: '14px', lineHeight: 1 }}
                               >
                                 🖨
                               </button>
