@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -150,31 +150,17 @@ export default function DistroTaproomOrders({ user, onBack }) {
   const [selected, setSelected]   = useState(null);
   const [printingDay, setPrintingDay] = useState(null);
 
-  const handlePrintDay = useCallback(async (dateKey, dayOrders) => {
+  const handlePrintDay = (dateKey, dayOrders) => {
     const fileIds = dayOrders
       .filter(o => !o.tentative && o.pdf_url)
       .map(o => extractFileId(o.pdf_url))
       .filter(Boolean);
     if (fileIds.length === 0) return;
     setPrintingDay(dateKey);
-    try {
-      const res = await fetch(`${API}/api/distro-orders/print-day`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileIds }),
-      });
-      if (!res.ok) throw new Error('Server error');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, '_blank');
-      if (w) w.addEventListener('load', () => URL.revokeObjectURL(url));
-    } catch (e) {
-      alert('Could not load invoices: ' + e.message);
-    } finally {
-      setPrintingDay(null);
-    }
-  }, []);
+    const url = `${API}/api/distro-orders/print-day?fileIds=${fileIds.join(',')}`;
+    window.open(url, '_blank');
+    setTimeout(() => setPrintingDay(null), 3000);
+  };
 
   const days     = getTwoWeekDays();
   const todayKey = toDateKey(new Date());
