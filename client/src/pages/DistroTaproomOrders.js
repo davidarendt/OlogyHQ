@@ -173,7 +173,7 @@ export default function DistroTaproomOrders({ user, onBack }) {
   const openUrl    = selected ? driveOpenUrl(selected.pdf_url) : null;
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
 
       {/* Nav — always visible */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between flex-shrink-0">
