@@ -108,6 +108,44 @@ function buildTentatives(orders, days) {
   return tentatives;
 }
 
+// ── Print a single day's orders ───────────────────────────────────────────────
+function printDay(day, dayOrders) {
+  const title = fmtDay(day);
+  const realOrders = dayOrders.filter(o => !o.tentative);
+  const tentOrders = dayOrders.filter(o => o.tentative);
+
+  const rows = [
+    ...realOrders.map(o =>
+      `<tr><td>${o.recipient}</td><td>${o.invoice_number ? '#' + o.invoice_number : '—'}</td></tr>`
+    ),
+    ...tentOrders.map(o =>
+      `<tr style="color:#999"><td>${o.recipient} <em>(tentative)</em></td><td>—</td></tr>`
+    ),
+  ].join('');
+
+  const html = `<!DOCTYPE html><html><head><title>Orders \u2013 ${title}</title>
+<style>
+  body { font-family: sans-serif; padding: 32px; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { font-size: 13px; color: #666; margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; border-bottom: 2px solid #333; padding: 6px 8px; font-size: 13px; }
+  td { padding: 9px 8px; border-bottom: 1px solid #ddd; font-size: 15px; }
+</style>
+</head><body>
+<h1>Outgoing Orders</h1>
+<p>${title}</p>
+<table>
+  <thead><tr><th>Customer</th><th>Invoice</th></tr></thead>
+  <tbody>${rows || '<tr><td colspan="2" style="color:#999">No orders</td></tr>'}</tbody>
+</table>
+<script>window.onload = function(){ window.print(); }<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
 // ── Order card ────────────────────────────────────────────────────────────────
 function OrderCard({ order, onClick }) {
   if (order.tentative) {
@@ -272,9 +310,20 @@ export default function DistroTaproomOrders({ user, onBack }) {
                             isToday ? 'border-orange-500 bg-orange-500/5' : 'border-gray-700 bg-gray-800'
                           }`}
                         >
-                          <div className={`text-xs font-semibold mb-2.5 ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
-                            {fmtDay(day)}
-                            {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                          <div className={`text-xs font-semibold mb-2.5 flex items-center justify-between ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
+                            <span>
+                              {fmtDay(day)}
+                              {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                            </span>
+                            {dayOrders.length > 0 && (
+                              <button
+                                onClick={() => printDay(day, dayOrders)}
+                                title="Print day's orders"
+                                className="ml-1 opacity-40 hover:opacity-100 transition text-gray-400 hover:text-white"
+                              >
+                                🖨
+                              </button>
+                            )}
                           </div>
                           <div className="space-y-1.5">
                             {dayOrders.length === 0 ? (
@@ -303,9 +352,20 @@ export default function DistroTaproomOrders({ user, onBack }) {
                             isToday ? 'border-orange-500 bg-orange-500/5' : 'border-gray-700 bg-gray-800'
                           }`}
                         >
-                          <div className={`text-xs font-semibold mb-2 ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
-                            {fmtDay(day)}
-                            {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                          <div className={`text-xs font-semibold mb-2 flex items-center justify-between ${isToday ? 'text-orange-400' : 'text-gray-400'}`}>
+                            <span>
+                              {fmtDay(day)}
+                              {isToday && <span className="ml-1" style={{ color: '#FF6B00' }}>●</span>}
+                            </span>
+                            {dayOrders.length > 0 && (
+                              <button
+                                onClick={() => printDay(day, dayOrders)}
+                                title="Print day's orders"
+                                className="ml-1 opacity-40 hover:opacity-100 transition text-gray-400 hover:text-white"
+                              >
+                                🖨
+                              </button>
+                            )}
                           </div>
                           <div className="space-y-1.5">
                             {dayOrders.length === 0 ? (
