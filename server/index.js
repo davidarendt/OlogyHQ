@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const pdfParse   = require('pdf-parse');
+const { PDFDocument } = require('pdf-lib');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
@@ -913,13 +914,21 @@ app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
     if (fileIds.length === 0) {
       return res.status(400).json({ message: 'fileIds required' });
     }
-    const { PDFDocument } = require('pdf-lib');
     const merged = await PDFDocument.create();
     for (const fileId of fileIds) {
       try {
-        const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const r = await fetch(url, { redirect: 'follow' });
-        if (!r.ok) { console.warn('Could not fetch PDF', fileId); continue; }
+        // Use usercontent domain — drive.google.com/uc redirects to this now
+        const url = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0`;
+        const r = await fetch(url, {
+          redirect: 'follow',
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        if (!r.ok) { console.warn('Could not fetch PDF', fileId, r.status); continue; }
+        const contentType = r.headers.get('content-type') || '';
+        if (!contentType.includes('pdf')) {
+          console.warn('Not a PDF response for', fileId, contentType);
+          continue;
+        }
         const buf = await r.arrayBuffer();
         const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
         const pages = await merged.copyPages(pdf, pdf.getPageIndices());
