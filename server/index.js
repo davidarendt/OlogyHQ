@@ -194,7 +194,8 @@ app.get('/api/my-tools', authenticateToken, async (req, res) => {
           WHERE p.tool_id = t.id AND p.role = $1 AND p.permission_level = 'upload'
         )) AS has_upload_permission
        FROM tools t
-       WHERE t.visible_to_all = true
+       WHERE $1 = 'admin'
+          OR t.visible_to_all = true
           OR EXISTS (
             SELECT 1 FROM permissions p
             WHERE p.tool_id = t.id AND p.role = $1 AND p.permission_level = 'view'
