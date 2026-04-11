@@ -1,0 +1,23 @@
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  role VARCHAR(50) DEFAULT 'staff',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE tools (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  slug VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE permissions (
+  id SERIAL PRIMARY KEY,
+  role VARCHAR(50) NOT NULL,
+  tool_id INTEGER REFERENCES tools(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
