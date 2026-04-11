@@ -901,6 +901,37 @@ app.get('/api/distro-orders', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
+  try {
+    const { fileIds } = req.body;
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return res.status(400).json({ message: 'fileIds required' });
+    }
+    const { PDFDocument } = require('pdf-lib');
+    const merged = await PDFDocument.create();
+    for (const fileId of fileIds) {
+      try {
+        const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        const r = await fetch(url, { redirect: 'follow' });
+        if (!r.ok) { console.warn('Could not fetch PDF', fileId); continue; }
+        const buf = await r.arrayBuffer();
+        const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
+        const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+      } catch (e) {
+        console.error('Failed to process PDF', fileId, e.message);
+      }
+    }
+    const bytes = await merged.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="invoices.pdf"');
+    res.send(Buffer.from(bytes));
+  } catch (err) {
+    console.error('print-day error:', err);
+    res.status(500).json({ message: 'Failed to merge PDFs' });
+  }
+});
+
 // ── Taproom Inventory ──────────────────────────────────────────────────────
 
 const TAPROOM_INPUT_SHEET_ID = '1aJ2R6OEvO5ixG-AsWdJlRSIsiMczEBOi_pk9Ra8Xuu0';
