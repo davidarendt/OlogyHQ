@@ -1,9 +1,18 @@
 [build]
-  base    = "client"
-  command = "npm run build"
-  publish = "build"
+  command = "cd client && npm install && npm run build"
+  publish = "client/build"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 [[redirects]]
-  from   = "/*"
-  to     = "/index.html"
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200

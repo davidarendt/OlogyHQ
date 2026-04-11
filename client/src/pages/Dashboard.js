@@ -18,7 +18,7 @@ function Dashboard({ user, onLogout, onNavigate }) {
   const [tools, setTools] = useState([]);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/my-tools', { credentials: 'include' })
+    fetch(`${process.env.REACT_APP_API_URL || ''}/api/my-tools`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => setTools(Array.isArray(data) ? data : []));
   }, []);

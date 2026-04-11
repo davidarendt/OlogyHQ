@@ -19,8 +19,8 @@ function Permissions({ onBack, onHome }) {
 
   const fetchData = async () => {
     const [toolsRes, permsRes] = await Promise.all([
-      fetch('http://localhost:5000/api/tools', { credentials: 'include' }),
-      fetch('http://localhost:5000/api/permissions', { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/tools`, { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/permissions`, { credentials: 'include' }),
     ]);
     setTools(await toolsRes.json());
     setPermissions(await permsRes.json());
@@ -33,14 +33,14 @@ function Permissions({ onBack, onHome }) {
 
   const togglePermission = async (role, tool_id, permission_level = 'view') => {
     if (hasPermission(role, tool_id, permission_level)) {
-      await fetch('http://localhost:5000/api/permissions', {
+      await fetch(`${process.env.REACT_APP_API_URL || ''}/api/permissions`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ role, tool_id, permission_level }),
       });
     } else {
-      await fetch('http://localhost:5000/api/permissions', {
+      await fetch(`${process.env.REACT_APP_API_URL || ''}/api/permissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

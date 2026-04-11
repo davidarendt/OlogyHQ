@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API = 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || '';
 
 // Recurring customers that get a tentative Thursday if no invoice exists that week
 const RECURRING = [

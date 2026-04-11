@@ -1,13 +1,12 @@
 const express = require('express');
 const cors = require('cors');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const cron       = require('node-cron');
 const pdfParse   = require('pdf-parse');
 require('dotenv').config();
 
@@ -825,32 +824,34 @@ app.post('/api/label-inventory/send-order-email', authenticateToken, async (req,
   } catch (err) { console.error(err); res.status(500).json({ message: `Failed to send email: ${err.message}` }); }
 });
 
-// ── Scheduled label emails (Eastern Time) ─────────────────────────────────────
-// Thursday 2:00 PM ET
-cron.schedule('0 14 * * 4', async () => {
-  console.log('[cron] Sending Thursday label order email');
-  try { await sendLabelOrderEmail(); } catch (err) { console.error('[cron] Email failed:', err.message); }
-}, { timezone: 'America/New_York' });
+// ── Scheduled label emails — local dev only (production uses Netlify Scheduled Functions) ──
+if (require.main === module) {
+  const cron = require('node-cron');
+  // Thursday 2:00 PM ET
+  cron.schedule('0 14 * * 4', async () => {
+    console.log('[cron] Sending Thursday label order email');
+    try { await sendLabelOrderEmail(); } catch (err) { console.error('[cron] Email failed:', err.message); }
+  }, { timezone: 'America/New_York' });
 
-// Friday 8:00 AM ET — only if inventory hasn't been updated since Thursday 2pm
-cron.schedule('0 8 * * 5', async () => {
-  console.log('[cron] Friday check — verifying label inventory update');
-  try {
-    const result = await pool.query('SELECT MAX(updated_at) AS last FROM label_inventory');
-    const lastUpdated = new Date(result.rows[0].last);
-    // Get this week's Thursday at 2pm ET
-    const now = new Date();
-    const thursday = new Date(now);
-    thursday.setDate(now.getDate() - 1); // Friday - 1 = Thursday
-    thursday.setHours(14, 0, 0, 0);
-    if (lastUpdated < thursday) {
-      console.log('[cron] Inventory not updated since Thursday — sending reminder');
-      await sendLabelOrderEmail();
-    } else {
-      console.log('[cron] Inventory updated since Thursday — skipping reminder');
-    }
-  } catch (err) { console.error('[cron] Friday check failed:', err.message); }
-}, { timezone: 'America/New_York' });
+  // Friday 8:00 AM ET — only if inventory hasn't been updated since Thursday 2pm
+  cron.schedule('0 8 * * 5', async () => {
+    console.log('[cron] Friday check — verifying label inventory update');
+    try {
+      const result = await pool.query('SELECT MAX(updated_at) AS last FROM label_inventory');
+      const lastUpdated = new Date(result.rows[0].last);
+      const now = new Date();
+      const thursday = new Date(now);
+      thursday.setDate(now.getDate() - 1);
+      thursday.setHours(14, 0, 0, 0);
+      if (lastUpdated < thursday) {
+        console.log('[cron] Inventory not updated since Thursday — sending reminder');
+        await sendLabelOrderEmail();
+      } else {
+        console.log('[cron] Inventory updated since Thursday — skipping reminder');
+      }
+    } catch (err) { console.error('[cron] Friday check failed:', err.message); }
+  }, { timezone: 'America/New_York' });
+}
 
 // ── Distro / Taproom Orders (Google Sheet) ────────────────────────────────────
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Teo4JcdQRY8mmnUZOcS3NTZIIhhwWj6YoqFom6tqp6E/gviz/tq?tqx=out:csv&sheet=Invoice%20Log';
@@ -1450,21 +1451,24 @@ async function syncDeliveriesFromSheet(fromDate, toDate) {
   return results;
 }
 
-// Saturday 6:00 AM ET — auto-sync taproom deliveries (Mon–Fri of the week that just ended)
-cron.schedule('0 6 * * 6', async () => {
-  console.log('[cron] Saturday sync — importing taproom deliveries from Invoice Log sheet');
-  try {
-    const now = new Date();
-    const friday = new Date(now); friday.setDate(now.getDate() - 1);   // yesterday = Friday
-    const monday = new Date(friday); monday.setDate(friday.getDate() - 4); // Mon of same week
-    const fmt = d => d.toISOString().slice(0, 10);
-    const results = await syncDeliveriesFromSheet(fmt(monday), fmt(friday));
-    console.log(`[cron] Delivery sync complete — imported: ${results.imported}, skipped: ${results.skipped}, noLocation: ${results.noLocation}, failed: ${results.failed.length}`);
-    if (results.failed.length) console.error('[cron] Failures:', results.failed);
-  } catch (err) {
-    console.error('[cron] Saturday delivery sync failed:', err.message);
-  }
-}, { timezone: 'America/New_York' });
+// Saturday delivery sync — local dev only (production uses Netlify Scheduled Functions)
+if (require.main === module) {
+  const cron = require('node-cron');
+  cron.schedule('0 6 * * 6', async () => {
+    console.log('[cron] Saturday sync — importing taproom deliveries from Invoice Log sheet');
+    try {
+      const now = new Date();
+      const friday = new Date(now); friday.setDate(now.getDate() - 1);
+      const monday = new Date(friday); monday.setDate(friday.getDate() - 4);
+      const fmt = d => d.toISOString().slice(0, 10);
+      const results = await syncDeliveriesFromSheet(fmt(monday), fmt(friday));
+      console.log(`[cron] Delivery sync complete — imported: ${results.imported}, skipped: ${results.skipped}, noLocation: ${results.noLocation}, failed: ${results.failed.length}`);
+      if (results.failed.length) console.error('[cron] Failures:', results.failed);
+    } catch (err) {
+      console.error('[cron] Saturday delivery sync failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+}
 
 // POST parse a delivery PDF — returns structured preview, does NOT save
 app.post('/api/taproom-deliveries/parse-pdf', authenticateToken, deliveryUpload.single('pdf'), async (req, res) => {
@@ -1554,7 +1558,11 @@ app.delete('/api/taproom-deliveries/:id', authenticateToken, async (req, res) =>
   }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

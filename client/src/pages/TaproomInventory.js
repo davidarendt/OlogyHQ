@@ -55,8 +55,8 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
   const selectLocation = useCallback(async (loc) => {
     setLocation(loc);
     const [beersRes, prevRes] = await Promise.all([
-      fetch(`http://localhost:5000/api/taproom-beers?location=${loc.id}`, { credentials: 'include' }),
-      fetch(`http://localhost:5000/api/taproom-inventory/latest/${loc.id}`, { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers?location=${loc.id}`, { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory/latest/${loc.id}`, { credentials: 'include' }),
     ]);
     const beerList = await beersRes.json();
     const prev = await prevRes.json();
@@ -68,7 +68,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     let numDeliveries = 0;
     if (prev?.session_date) {
       const delRes = await fetch(
-        `http://localhost:5000/api/taproom-deliveries?location=${loc.id}&since=${prev.session_date}`,
+        `${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries?location=${loc.id}&since=${prev.session_date}`,
         { credentials: 'include' }
       );
       const deliveries = await delRes.json();
@@ -154,7 +154,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
       half_bbl:  parseFloat(counts[b.id]?.half_bbl)  || 0,
     }));
     try {
-      await fetch('http://localhost:5000/api/taproom-inventory', {
+      await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -437,7 +437,7 @@ function HistoryTab({ user }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const url = `http://localhost:5000/api/taproom-inventory?limit=50${filterLoc ? `&location=${filterLoc}` : ''}`;
+    const url = `${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory?limit=50${filterLoc ? `&location=${filterLoc}` : ''}`;
     const res = await fetch(url, { credentials: 'include' });
     setSessions(await res.json());
     setLoading(false);
@@ -446,13 +446,13 @@ function HistoryTab({ user }) {
   useEffect(() => { load(); }, [load]);
 
   const openSession = async (s) => {
-    const res = await fetch(`http://localhost:5000/api/taproom-inventory/${s.id}`, { credentials: 'include' });
+    const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory/${s.id}`, { credentials: 'include' });
     setSelected(await res.json());
   };
 
   const deleteSession = async (id) => {
     if (!window.confirm('Delete this inventory session?')) return;
-    await fetch(`http://localhost:5000/api/taproom-inventory/${id}`, { method: 'DELETE', credentials: 'include' });
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory/${id}`, { method: 'DELETE', credentials: 'include' });
     setSelected(null);
     load();
   };
@@ -572,8 +572,8 @@ function ManageTab() {
 
   const load = async () => {
     const [beersRes, settingsRes] = await Promise.all([
-      fetch('http://localhost:5000/api/taproom-beers', { credentials: 'include' }),
-      fetch('http://localhost:5000/api/taproom-settings', { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers`, { credentials: 'include' }),
+      fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-settings`, { credentials: 'include' }),
     ]);
     setBeers(await beersRes.json());
     const s = await settingsRes.json();
@@ -587,7 +587,7 @@ function ManageTab() {
   useEffect(() => { load(); }, []);
 
   const saveSettings = async () => {
-    await fetch('http://localhost:5000/api/taproom-settings', {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -599,7 +599,7 @@ function ManageTab() {
 
   const toggleLocation = async (beer, loc) => {
     const isActive = beer.locations.includes(loc);
-    await fetch('http://localhost:5000/api/taproom-beer-locations', {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beer-locations`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -610,7 +610,7 @@ function ManageTab() {
 
   const deleteBeer = async (b) => {
     if (!window.confirm(`Delete "${b.name}"?`)) return;
-    await fetch(`http://localhost:5000/api/taproom-beers/${b.id}`, { method: 'DELETE', credentials: 'include' });
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers/${b.id}`, { method: 'DELETE', credentials: 'include' });
     load();
   };
 
@@ -618,7 +618,7 @@ function ManageTab() {
     setImporting(true);
     setImportMsg('');
     try {
-      const res = await fetch('http://localhost:5000/api/taproom-beers/import-sheet', { method: 'POST', credentials: 'include' });
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers/import-sheet`, { method: 'POST', credentials: 'include' });
       const data = await res.json();
       if (data.message) { setImportMsg(`Error: ${data.message}`); return; }
       setImportMsg(`Imported — ${data.beersAdded} new beers, ${data.locationsAdded} location links, ${data.sessionsCreated} baseline sessions created`);
@@ -632,7 +632,7 @@ function ManageTab() {
 
   const addBeer = async () => {
     if (!newName.trim()) return;
-    await fetch('http://localhost:5000/api/taproom-beers', {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -832,7 +832,7 @@ function DeliveriesTab({ user }) {
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
-    const url = `http://localhost:5000/api/taproom-deliveries${filterLoc ? `?location=${filterLoc}` : ''}`;
+    const url = `${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries${filterLoc ? `?location=${filterLoc}` : ''}`;
     const res = await fetch(url, { credentials: 'include' });
     setDeliveries(await res.json());
     setLoading(false);
@@ -848,7 +848,7 @@ function DeliveriesTab({ user }) {
     const form = new FormData();
     form.append('pdf', file);
     try {
-      const res = await fetch('http://localhost:5000/api/taproom-deliveries/parse-pdf', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries/parse-pdf`, {
         method: 'POST',
         credentials: 'include',
         body: form,
@@ -876,7 +876,7 @@ function DeliveriesTab({ user }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch('http://localhost:5000/api/taproom-deliveries', {
+      await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -899,7 +899,7 @@ function DeliveriesTab({ user }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this delivery record?')) return;
-    await fetch(`http://localhost:5000/api/taproom-deliveries/${id}`, { method: 'DELETE', credentials: 'include' });
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries/${id}`, { method: 'DELETE', credentials: 'include' });
     loadDeliveries();
   };
 
@@ -907,7 +907,7 @@ function DeliveriesTab({ user }) {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch('http://localhost:5000/api/taproom-deliveries/sync-sheet', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries/sync-sheet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1173,7 +1173,7 @@ function TaproomInventory({ user, canUpload, onBack }) {
   };
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/taproom-settings', { credentials: 'include' })
+    fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-settings`, { credentials: 'include' })
       .then(r => r.json())
       .then(s => setThresholds({
         four_pack_threshold: parseFloat(s.four_pack_threshold),

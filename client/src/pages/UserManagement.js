@@ -8,7 +8,7 @@ function UserManagement({ user, onBack, onNavigate }) {
   const [success, setSuccess] = useState('');
 
   const fetchUsers = async () => {
-    const res = await fetch('http://localhost:5000/api/users', {
+    const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users`, {
       credentials: 'include',
     });
     const data = await res.json();
@@ -21,7 +21,7 @@ function UserManagement({ user, onBack, onNavigate }) {
     e.preventDefault();
     setError('');
     try {
-      const res = await fetch('http://localhost:5000/api/users', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -39,7 +39,7 @@ function UserManagement({ user, onBack, onNavigate }) {
   };
 
   const handleRoleChange = async (id, role) => {
-    await fetch(`http://localhost:5000/api/users/${id}`, {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -51,7 +51,7 @@ function UserManagement({ user, onBack, onNavigate }) {
   const handleDelete = async (id, name) => {
     if (id === user.id) { setError("You can't delete your own account!"); return; }
     if (!window.confirm(`Are you sure you want to delete ${name}?`)) return;
-    await fetch(`http://localhost:5000/api/users/${id}`, {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users/${id}`, {
       method: 'DELETE',
       credentials: 'include',
     });

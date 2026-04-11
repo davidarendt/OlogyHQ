@@ -135,7 +135,7 @@ function HRDocuments({ user, canUpload, onBack }) {
 
   const fetchDocuments = async () => {
     try {
-      const res  = await fetch('http://localhost:5000/api/hr-documents', { credentials: 'include' });
+      const res  = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents`, { credentials: 'include' });
       const data = await res.json();
       setDocuments(Array.isArray(data) ? data : []);
     } catch {
@@ -189,7 +189,7 @@ function HRDocuments({ user, canUpload, onBack }) {
     formData.append('name',  docName.trim());
     formData.append('roles', JSON.stringify(selectedRoles));
     try {
-      const res  = await fetch('http://localhost:5000/api/hr-documents', { method: 'POST', credentials: 'include', body: formData });
+      const res  = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents`, { method: 'POST', credentials: 'include', body: formData });
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
       setSuccess(`"${data.name}" uploaded successfully.`);
@@ -207,7 +207,7 @@ function HRDocuments({ user, canUpload, onBack }) {
     setError('');
     setUploading(true);
     try {
-      const res  = await fetch(`http://localhost:5000/api/hr-documents/${editingDoc.id}`, {
+      const res  = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents/${editingDoc.id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: docName.trim(), roles: selectedRoles }),
@@ -226,7 +226,7 @@ function HRDocuments({ user, canUpload, onBack }) {
     if (!window.confirm(`Delete "${doc.name}"?`)) return;
     setError('');
     try {
-      const res = await fetch(`http://localhost:5000/api/hr-documents/${doc.id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents/${doc.id}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) { const d = await res.json(); setError(d.message); return; }
       setSuccess(`"${doc.name}" deleted.`);
       fetchDocuments();
@@ -234,10 +234,10 @@ function HRDocuments({ user, canUpload, onBack }) {
   };
 
   const handleView = (doc) =>
-    window.open(`http://localhost:5000/api/hr-documents/${doc.id}/view`, '_blank', 'noopener,noreferrer');
+    window.open(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents/${doc.id}/view`, '_blank', 'noopener,noreferrer');
 
   const handleDownload = (doc) =>
-    window.open(`http://localhost:5000/api/hr-documents/${doc.id}/download`, '_blank', 'noopener,noreferrer');
+    window.open(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents/${doc.id}/download`, '_blank', 'noopener,noreferrer');
 
   const handleMove = async (index, direction) => {
     const swapIndex = direction === 'up' ? index - 1 : index + 1;
@@ -245,7 +245,7 @@ function HRDocuments({ user, canUpload, onBack }) {
     const newOrder = [...documents];
     [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
     setDocuments(newOrder); // optimistic update
-    await fetch('http://localhost:5000/api/hr-documents/reorder', {
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/hr-documents/reorder`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

@@ -17,14 +17,14 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/me', { credentials: 'include' })
+    fetch(`${process.env.REACT_APP_API_URL || ''}/api/me`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
       .then((data) => { if (data) setUser(data); })
       .finally(() => setLoading(false));
   }, []);
 
   const handleLogout = async () => {
-    await fetch('http://localhost:5000/api/logout', { method: 'POST', credentials: 'include' });
+    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
     setPage('dashboard');
     setPageProps({});

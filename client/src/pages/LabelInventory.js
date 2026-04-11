@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API = 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || '';
 
 function calcInv(label) {
   return parseFloat(label.num_rolls || 0) * parseInt(label.labels_per_roll || 2500);
