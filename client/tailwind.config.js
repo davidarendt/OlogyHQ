@@ -20,6 +20,21 @@ module.exports = {
           800: '#8c3214',
           900: '#66240e',
         },
+        // gray overridden with zinc values — less blue, more neutral/warm
+        // Previously: Tailwind default gray (blue-tinted)
+        gray: {
+          50:  '#fafafa',
+          100: '#f4f4f5',
+          200: '#e4e4e7',
+          300: '#d4d4d8',
+          400: '#a1a1aa',
+          500: '#71717a',
+          600: '#52525b',
+          700: '#3f3f46',
+          800: '#27272a',
+          900: '#18181b',
+          950: '#09090b',
+        },
         cream: '#F2EDE4',   // warm off-white from brand card
         midgray: '#636363', // mid grey tone added per rebrand
       },
