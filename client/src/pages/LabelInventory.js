@@ -355,29 +355,20 @@ export default function LabelInventory({ user, onBack, canUpload }) {
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Back to Dashboard</button>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h2 className="text-white text-4xl font-bold">Label Inventory</h2>
-            <p className="text-gray-500 text-sm mt-1">Last updated: {fmtDate(lastUpdated.toISOString())}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {view === 'inventory' && isAdmin && (
-              <>
-                <button onClick={() => setShowOrderModal(true)}
-                  className="px-4 py-2 rounded-xl border border-orange-500/60 text-sm font-semibold transition hover:border-orange-500"
-                  style={{ color: '#FF6B00' }}>
-                  Send Order Email
-                </button>
-              </>
-            )}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-white text-2xl sm:text-4xl font-bold">Label Inventory</h2>
+              <p className="text-gray-500 text-xs sm:text-sm mt-1">Last updated: {fmtDate(lastUpdated.toISOString())}</p>
+            </div>
             {isAdmin && (
-              <div className="flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
+              <div className="flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700 flex-shrink-0">
                 {['inventory', 'manage'].map(v => (
                   <button key={v} onClick={() => setView(v)}
-                    className={`px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
+                    className={`px-3 sm:px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
                       view === v ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
                     }`}>
                     {v === 'inventory' ? 'Inventory' : 'Manage'}
@@ -386,6 +377,13 @@ export default function LabelInventory({ user, onBack, canUpload }) {
               </div>
             )}
           </div>
+          {view === 'inventory' && isAdmin && (
+            <button onClick={() => setShowOrderModal(true)}
+              className="mt-3 px-4 py-2 rounded-xl border border-orange-500/60 text-sm font-semibold transition hover:border-orange-500"
+              style={{ color: '#FF6B00' }}>
+              Send Order Email
+            </button>
+          )}
         </div>
 
         {sendMsg && (
@@ -413,51 +411,86 @@ export default function LabelInventory({ user, onBack, canUpload }) {
 
             {view === 'inventory' ? (
               /* ── Inventory view ── */
-              <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Label</th>
-                      <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Rolls</th>
-                      <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Current Inv.</th>
-                      <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">To Order</th>
-                      <th className="text-center text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {labels.map(label => {
-                      const inv  = calcInv(label);
-                      const order = calcOrder(label);
-                      const s    = status(label);
-                      const cfg  = STATUS_CONFIG[s];
-                      return (
-                        <tr key={label.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/20 transition">
-                          <td className="px-6 py-3.5 text-white font-medium text-sm">{label.name}</td>
-                          <td className="px-4 py-3.5 text-right">
+              <>
+                {/* Mobile cards */}
+                <div className="sm:hidden space-y-2">
+                  {labels.map(label => {
+                    const inv   = calcInv(label);
+                    const order = calcOrder(label);
+                    const s     = status(label);
+                    const cfg   = STATUS_CONFIG[s];
+                    return (
+                      <div key={label.id} className="bg-gray-800 rounded-xl border border-gray-700 px-4 py-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-semibold text-sm">{label.name}</span>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                            {cfg.label}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <div className="text-gray-500 mb-0.5">Rolls</div>
                             <RollCell label={label} onSaved={handleSaved} />
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <span className={`text-sm font-semibold ${s === 'reorder' ? 'text-red-400' : s === 'low' ? 'text-amber-400' : 'text-white'}`}>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 mb-0.5">Inventory</div>
+                            <span className={`font-semibold ${s === 'reorder' ? 'text-red-400' : s === 'low' ? 'text-amber-400' : 'text-white'}`}>
                               {fmtNum(inv)}
                             </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <span className={`text-sm font-semibold ${order > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 mb-0.5">To Order</div>
+                            <span className={`font-semibold ${order > 0 ? 'text-red-400' : 'text-gray-600'}`}>
                               {order > 0 ? fmtNum(order) : '—'}
                             </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-center">
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.text}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                              {cfg.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden sm:block bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Label</th>
+                        <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Rolls</th>
+                        <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Current Inv.</th>
+                        <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">To Order</th>
+                        <th className="text-center text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {labels.map(label => {
+                        const inv   = calcInv(label);
+                        const order = calcOrder(label);
+                        const s     = status(label);
+                        const cfg   = STATUS_CONFIG[s];
+                        return (
+                          <tr key={label.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/20 transition">
+                            <td className="px-6 py-3.5 text-white font-medium text-sm">{label.name}</td>
+                            <td className="px-4 py-3.5 text-right"><RollCell label={label} onSaved={handleSaved} /></td>
+                            <td className="px-4 py-3.5 text-right">
+                              <span className={`text-sm font-semibold ${s === 'reorder' ? 'text-red-400' : s === 'low' ? 'text-amber-400' : 'text-white'}`}>{fmtNum(inv)}</span>
+                            </td>
+                            <td className="px-4 py-3.5 text-right">
+                              <span className={`text-sm font-semibold ${order > 0 ? 'text-red-400' : 'text-gray-600'}`}>{order > 0 ? fmtNum(order) : '—'}</span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               /* ── Manage view ── */
               <div>
@@ -472,7 +505,42 @@ export default function LabelInventory({ user, onBack, canUpload }) {
                     + Add Label
                   </button>
                 </div>
-                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+
+                {/* Mobile cards */}
+                <div className="sm:hidden space-y-2">
+                  {labels.map((label, i) => {
+                    const s   = status(label);
+                    const cfg = STATUS_CONFIG[s];
+                    return (
+                      <div key={label.id} className="bg-gray-800 rounded-xl border border-gray-700 px-4 py-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="flex flex-col gap-0.5">
+                            <button onClick={() => moveLabel(i, -1)} disabled={i === 0}
+                              className="text-gray-600 hover:text-white disabled:opacity-20 text-xs leading-none transition">▲</button>
+                            <button onClick={() => moveLabel(i, 1)} disabled={i === labels.length - 1}
+                              className="text-gray-600 hover:text-white disabled:opacity-20 text-xs leading-none transition">▼</button>
+                          </div>
+                          <span className="text-white font-semibold text-sm flex-1">{label.name}</span>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                          <div><span className="text-gray-500">Rolls </span><span className="text-gray-300">{parseFloat(label.num_rolls)}</span></div>
+                          <div><span className="text-gray-500">Low </span><span className="text-gray-300">{fmtNum(label.low_par)}</span></div>
+                          <div><span className="text-gray-500">High </span><span className="text-gray-300">{fmtNum(label.high_par)}</span></div>
+                        </div>
+                        <div className="flex gap-4 justify-end border-t border-gray-700 pt-2">
+                          <button onClick={() => setEditing(label)} className="text-sm text-gray-400 hover:text-white transition">Edit</button>
+                          <button onClick={() => handleDelete(label.id)} className="text-sm text-red-500 hover:text-red-400 transition">Delete</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden sm:block bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-700">
@@ -509,8 +577,7 @@ export default function LabelInventory({ user, onBack, canUpload }) {
                             </td>
                             <td className="px-4 py-4 text-center">
                               <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.text}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                                {cfg.label}
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
                               </span>
                             </td>
                             <td className="px-4 py-4">
