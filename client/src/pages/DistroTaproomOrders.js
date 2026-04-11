@@ -296,7 +296,6 @@ export default function DistroTaproomOrders({ user, onBack }) {
                       const key       = toDateKey(day);
                       const dayOrders = ordersByDay[key] || [];
                       const isToday   = key === todayKey;
-                      if (dayOrders.length === 0 && !isToday) return null;
                       return (
                         <div
                           key={key}
