@@ -102,6 +102,7 @@ app.post('/api/login', async (req, res) => {
     const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
     const user = result.rows[0];
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user.password) return res.status(401).json({ message: 'Account setup is incomplete. Check your email for a setup link.' });
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(401).json({ message: 'Invalid credentials' });
     const token = jwt.sign(
@@ -195,7 +196,9 @@ app.post('/api/reset-password', async (req, res) => {
 // Get all users
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, email, role, created_at FROM users ORDER BY name');
+    const result = await pool.query(
+      'SELECT id, name, email, role, created_at, (password IS NULL) AS invite_pending FROM users ORDER BY name'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -205,14 +208,70 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 
 // Add a new user
 app.post('/api/users', authenticateToken, async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, role } = req.body;
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Check for duplicate email
+    const existing = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    if (existing.rows.length > 0) return res.status(400).json({ message: 'An account with that email already exists.' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days for invite
+
     const result = await pool.query(
-      'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
-      [name, email, hashedPassword, role]
+      `INSERT INTO users (name, email, password, role, reset_token, reset_token_expires)
+       VALUES ($1, $2, NULL, $3, $4, $5) RETURNING id, name, email, role`,
+      [name, email, role, token, expires]
     );
+
+    const setupUrl = `${process.env.CLIENT_URL || 'https://ologyhq.netlify.app'}/?reset=${token}`;
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: `"OlogyHQ" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'You\'ve been invited to OlogyHQ',
+      html: `<p>Hi ${name},</p>
+             <p>You've been added to OlogyHQ. Click the link below to set up your password and get started.</p>
+             <p><a href="${setupUrl}">Set up your account</a></p>
+             <p>This link expires in 7 days.</p>`,
+    });
+
     res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Resend invite email
+app.post('/api/users/:id/resend-invite', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT name, email, password FROM users WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    const u = result.rows[0];
+    if (u.password) return res.status(400).json({ message: 'User has already set their password.' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await pool.query('UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3', [token, expires, req.params.id]);
+
+    const setupUrl = `${process.env.CLIENT_URL || 'https://ologyhq.netlify.app'}/?reset=${token}`;
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: `"OlogyHQ" <${process.env.EMAIL_USER}>`,
+      to: u.email,
+      subject: 'Your OlogyHQ invite link',
+      html: `<p>Hi ${u.name},</p>
+             <p>Here's your updated link to set up your OlogyHQ account:</p>
+             <p><a href="${setupUrl}">Set up your account</a></p>
+             <p>This link expires in 7 days.</p>`,
+    });
+    res.json({ message: 'Invite resent.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
