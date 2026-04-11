@@ -924,11 +924,6 @@ app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
         if (!r.ok) { console.warn('Could not fetch PDF', fileId, r.status); continue; }
-        const contentType = r.headers.get('content-type') || '';
-        if (!contentType.includes('pdf')) {
-          console.warn('Not a PDF response for', fileId, contentType);
-          continue;
-        }
         const buf = await r.arrayBuffer();
         const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
         const pages = await merged.copyPages(pdf, pdf.getPageIndices());
