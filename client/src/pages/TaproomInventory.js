@@ -575,13 +575,16 @@ function ManageTab() {
       fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-beers`, { credentials: 'include' }),
       fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-settings`, { credentials: 'include' }),
     ]);
-    setBeers(await beersRes.json());
-    const s = await settingsRes.json();
-    setSettings({
-      four_pack_threshold: parseFloat(s.four_pack_threshold),
-      sixth_bbl_threshold: parseFloat(s.sixth_bbl_threshold),
-      half_bbl_threshold:  parseFloat(s.half_bbl_threshold),
-    });
+    const beersData = await beersRes.json();
+    setBeers(Array.isArray(beersData) ? beersData : []);
+    if (settingsRes.ok) {
+      const s = await settingsRes.json();
+      setSettings({
+        four_pack_threshold: parseFloat(s.four_pack_threshold) || 6,
+        sixth_bbl_threshold: parseFloat(s.sixth_bbl_threshold) || 0.5,
+        half_bbl_threshold:  parseFloat(s.half_bbl_threshold)  || 1,
+      });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -832,9 +835,14 @@ function DeliveriesTab({ user }) {
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
-    const url = `${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries${filterLoc ? `?location=${filterLoc}` : ''}`;
-    const res = await fetch(url, { credentials: 'include' });
-    setDeliveries(await res.json());
+    try {
+      const url = `${process.env.REACT_APP_API_URL || ''}/api/taproom-deliveries${filterLoc ? `?location=${filterLoc}` : ''}`;
+      const res = await fetch(url, { credentials: 'include' });
+      const data = await res.json();
+      setDeliveries(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setDeliveries([]);
+    }
     setLoading(false);
   }, [filterLoc]);
 
