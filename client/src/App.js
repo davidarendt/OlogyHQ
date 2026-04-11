@@ -44,11 +44,16 @@ function App() {
 
   useEffect(() => {
     const onPop = (e) => {
-      const state = e.state;
-      if (state && state.pageName) {
-        setPage(state.pageName);
-        setPageProps(state.props || {});
-      } else {
+      try {
+        const state = e.state;
+        if (state && state.pageName) {
+          setPage(state.pageName);
+          setPageProps(state.props || {});
+        } else {
+          setPage('dashboard');
+          setPageProps({});
+        }
+      } catch (err) {
         setPage('dashboard');
         setPageProps({});
       }
