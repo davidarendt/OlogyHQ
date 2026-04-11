@@ -1224,7 +1224,7 @@ function TaproomInventory({ user, canUpload, onBack }) {
         {tab === 'count'      && <CountTab user={user} thresholds={thresholds} canUpload={canUpload} onDirtyChange={dirty => { countDirtyRef.current = dirty; }} />}
         {tab === 'history'    && <HistoryTab user={user} />}
         {tab === 'deliveries' && <DeliveriesTab user={user} />}
-        {tab === 'manage'     && user.role === 'admin' && <ManageTab />}
+        {tab === 'manage'     && canUpload && <ManageTab />}
       </main>
     </div>
   );
