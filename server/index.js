@@ -18,7 +18,7 @@ const hrUploadDir = path.join(__dirname, 'uploads', 'hr-documents');
 try { if (!fs.existsSync(hrUploadDir)) fs.mkdirSync(hrUploadDir, { recursive: true }); } catch (e) {}
 
 const hrStorage = multer.diskStorage({
-  destination: hrUploadDir,
+  destination: (req, file, cb) => cb(null, hrUploadDir),
   filename: (req, file, cb) => {
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
@@ -418,7 +418,7 @@ const productionUploadDir = path.join(__dirname, 'uploads', 'production-photos')
 try { if (!fs.existsSync(productionUploadDir)) fs.mkdirSync(productionUploadDir, { recursive: true }); } catch (e) {}
 
 const productionStorage = multer.diskStorage({
-  destination: productionUploadDir,
+  destination: (req, file, cb) => cb(null, productionUploadDir),
   filename: (req, file, cb) => {
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
