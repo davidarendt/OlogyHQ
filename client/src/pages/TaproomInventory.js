@@ -129,7 +129,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     return 'default';
   };
 
-  const isFlagged  = (beerId, field) => cellState(beerId, field) === 'orange';
+  const isFlagged  = (beerId, field) => cellState(beerId, field) === 'orange'; // eslint-disable-line no-unused-vars
   const isTracked  = (beerId, field) => cellState(beerId, field) !== 'default';
 
   const getDiscrepancies = () => {

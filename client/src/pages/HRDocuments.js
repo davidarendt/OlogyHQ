@@ -55,7 +55,7 @@ const ROW_OFFSET  = (HEX_W + HEX_GAP) / 2;   // alternating row horizontal shift
 
 function HexCard({ doc, onDownload }) {
   const [hovered, setHovered] = useState(false);
-  const type = fileTypeMeta(doc.mimetype);
+  const type = fileTypeMeta(doc.mimetype); // eslint-disable-line no-unused-vars
 
   return (
     <div
