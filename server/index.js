@@ -82,7 +82,7 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
     const user = result.rows[0];
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
     const validPassword = await bcrypt.compare(password, user.password);
