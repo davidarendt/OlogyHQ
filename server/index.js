@@ -917,21 +917,32 @@ app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
     const merged = await PDFDocument.create();
     for (const fileId of fileIds) {
       try {
-        // Use usercontent domain — drive.google.com/uc redirects to this now
-        const url = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0`;
+        // confirm=t bypasses Google's virus-scan confirmation redirect
+        const url = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
         const r = await fetch(url, {
           redirect: 'follow',
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
         if (!r.ok) { console.warn('Could not fetch PDF', fileId, r.status); continue; }
         const buf = await r.arrayBuffer();
+        const header = Buffer.from(buf.slice(0, 5)).toString('ascii');
+        if (header !== '%PDF-') {
+          console.warn('Not a PDF for', fileId, '— header:', header);
+          continue;
+        }
         const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
         const pages = await merged.copyPages(pdf, pdf.getPageIndices());
         pages.forEach(p => merged.addPage(p));
+        console.log('Merged', pdf.getPageCount(), 'pages from', fileId);
       } catch (e) {
         console.error('Failed to process PDF', fileId, e.message);
       }
     }
+    if (merged.getPageCount() === 0) {
+      console.warn('No pages merged — all PDF fetches failed');
+      return res.status(502).json({ message: 'Could not download any invoices from Google Drive' });
+    }
+    console.log('Sending merged PDF with', merged.getPageCount(), 'total pages');
     const bytes = await merged.save();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="invoices.pdf"');
