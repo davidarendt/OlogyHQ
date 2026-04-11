@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react';
 
+const API = process.env.REACT_APP_API_URL || '';
+const ROLES = [
+  { value: 'admin',          label: 'Admin' },
+  { value: 'bar_manager',    label: 'Bar Manager' },
+  { value: 'bartender',      label: 'Bartender' },
+  { value: 'barista',        label: 'Barista' },
+  { value: 'coffee_manager', label: 'Coffee Manager' },
+  { value: 'production',     label: 'Production' },
+  { value: 'sales',          label: 'Sales' },
+  { value: 'hr',             label: 'HR' },
+];
+
 function UserManagement({ user, onBack, onNavigate }) {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers]           = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'staff' });
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [newUser, setNewUser]       = useState({ name: '', email: '', role: 'bartender' });
+  const [error, setError]           = useState('');
+  const [success, setSuccess]       = useState('');
+  const [resending, setResending]   = useState(null);
 
   const fetchUsers = async () => {
-    const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users`, {
-      credentials: 'include',
-    });
+    const res = await fetch(`${API}/api/users`, { credentials: 'include' });
     const data = await res.json();
-    setUsers(data);
+    setUsers(Array.isArray(data) ? data : []);
   };
 
   useEffect(() => { fetchUsers(); }, []);
@@ -20,8 +31,9 @@ function UserManagement({ user, onBack, onNavigate }) {
   const handleAddUser = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     try {
-      const res = await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users`, {
+      const res = await fetch(`${API}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -29,17 +41,17 @@ function UserManagement({ user, onBack, onNavigate }) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
-      setSuccess(`${data.name} has been added!`);
-      setNewUser({ name: '', email: '', password: '', role: 'staff' });
+      setSuccess(`Invite sent to ${data.name}!`);
+      setNewUser({ name: '', email: '', role: 'bartender' });
       setShowAddForm(false);
       fetchUsers();
-    } catch (err) {
+    } catch {
       setError('Could not connect to server');
     }
   };
 
   const handleRoleChange = async (id, role) => {
-    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users/${id}`, {
+    await fetch(`${API}/api/users/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -48,13 +60,29 @@ function UserManagement({ user, onBack, onNavigate }) {
     fetchUsers();
   };
 
+  const handleResendInvite = async (id, name) => {
+    setResending(id);
+    try {
+      const res = await fetch(`${API}/api/users/${id}/resend-invite`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok) setSuccess(`Invite resent to ${name}.`);
+      else setError(data.message);
+    } catch {
+      setError('Could not connect to server');
+    } finally {
+      setResending(null);
+    }
+  };
+
   const handleDelete = async (id, name) => {
     if (id === user.id) { setError("You can't delete your own account!"); return; }
     if (!window.confirm(`Are you sure you want to delete ${name}?`)) return;
-    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/users/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
+    const res = await fetch(`${API}/api/users/${id}`, { method: 'DELETE', credentials: 'include' });
+    const data = await res.json();
+    if (!res.ok) { setError(data.message); return; }
     setSuccess(`${name} has been removed.`);
     fetchUsers();
   };
@@ -76,16 +104,16 @@ function UserManagement({ user, onBack, onNavigate }) {
           <h2 className="text-white text-4xl font-bold">User Management</h2>
         </div>
 
-        {error && <div className="bg-red-500 text-white p-3 rounded mb-4 text-sm">{error}</div>}
-        {success && <div className="bg-green-600 text-white p-3 rounded mb-4 text-sm">{success}</div>}
+        {error && <div className="bg-red-500/20 border border-red-500/40 text-red-300 p-3 rounded mb-4 text-sm">{error}</div>}
+        {success && <div className="bg-green-500/20 border border-green-500/40 text-green-300 p-3 rounded mb-4 text-sm">{success}</div>}
 
         <div className="mb-6 flex gap-3">
           <button
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => { setShowAddForm(!showAddForm); setError(''); setSuccess(''); }}
             className="px-4 py-2 rounded font-semibold text-white transition"
             style={{ backgroundColor: '#FF6B00' }}
           >
-            {showAddForm ? 'Cancel' : '+ Add New User'}
+            {showAddForm ? 'Cancel' : '+ Invite New User'}
           </button>
           <button
             onClick={() => onNavigate('permissions')}
@@ -97,8 +125,9 @@ function UserManagement({ user, onBack, onNavigate }) {
 
         {showAddForm && (
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
-            <h3 className="text-white font-semibold text-lg mb-4">New User</h3>
-            <form onSubmit={handleAddUser} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <h3 className="text-white font-semibold text-lg mb-1">Invite New User</h3>
+            <p className="text-gray-400 text-sm mb-4">They'll receive an email to set their own password.</p>
+            <form onSubmit={handleAddUser} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-gray-400 text-sm mb-1">Name</label>
                 <input
@@ -119,39 +148,22 @@ function UserManagement({ user, onBack, onNavigate }) {
                 />
               </div>
               <div>
-                <label className="block text-gray-400 text-sm mb-1">Password</label>
-                <input
-                  type="password"
-                  className="w-full bg-gray-700 text-white p-3 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
                 <label className="block text-gray-400 text-sm mb-1">Role</label>
                 <select
                   className="w-full bg-gray-700 text-white p-3 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 >
-                    <option value="admin">Admin</option>
-                    <option value="bar_manager">Bar Manager</option>
-                    <option value="bartender">Bartender</option>
-                    <option value="barista">Barista</option>
-                    <option value="coffee_manager">Coffee Manager</option>
-                    <option value="production">Production</option>
-                    <option value="sales">Sales</option>
-                    <option value="hr">HR</option>
+                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-3">
                 <button
                   type="submit"
                   className="px-6 py-2 rounded font-semibold text-white transition"
                   style={{ backgroundColor: '#FF6B00' }}
                 >
-                  Add User
+                  Send Invite
                 </button>
               </div>
             </form>
@@ -171,7 +183,14 @@ function UserManagement({ user, onBack, onNavigate }) {
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className="border-b border-gray-700 last:border-0">
-                  <td className="text-white px-6 py-4">{u.name}</td>
+                  <td className="text-white px-6 py-4">
+                    <div>{u.name}</div>
+                    {u.invite_pending && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                        Invite Pending
+                      </span>
+                    )}
+                  </td>
                   <td className="text-gray-400 px-6 py-4">{u.email}</td>
                   <td className="px-6 py-4">
                     <select
@@ -179,23 +198,27 @@ function UserManagement({ user, onBack, onNavigate }) {
                       value={u.role}
                       onChange={(e) => handleRoleChange(u.id, e.target.value)}
                     >
-                        <option value="admin">Admin</option>
-                        <option value="bar_manager">Bar Manager</option>
-                        <option value="bartender">Bartender</option>
-                        <option value="barista">Barista</option>
-                        <option value="coffee_manager">Coffee Manager</option>
-                        <option value="production">Production</option>
-                        <option value="sales">Sales</option>
-                        <option value="hr">HR</option>
+                      {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select>
                   </td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleDelete(u.id, u.name)}
-                      className="text-red-400 hover:text-red-300 text-sm transition"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {u.invite_pending && (
+                        <button
+                          onClick={() => handleResendInvite(u.id, u.name)}
+                          disabled={resending === u.id}
+                          className="text-yellow-400 hover:text-yellow-300 text-sm transition disabled:opacity-50"
+                        >
+                          {resending === u.id ? 'Sending…' : 'Resend Invite'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(u.id, u.name)}
+                        className="text-red-400 hover:text-red-300 text-sm transition"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
