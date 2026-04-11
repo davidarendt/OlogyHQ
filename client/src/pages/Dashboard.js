@@ -88,19 +88,6 @@ function Dashboard({ user, onLogout, onNavigate }) {
             );
           })}
 
-          {/* User Management card (admin only) */}
-          {user.role === 'admin' && (
-            <div
-              onClick={() => onNavigate('usermanagement')}
-              className="bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-orange-500 cursor-pointer transition group"
-            >
-              <div className="text-4xl mb-4">👥</div>
-              <h3 className="text-white font-semibold text-lg group-hover:text-orange-400 transition">
-                User Management
-              </h3>
-              <p className="text-gray-400 text-sm mt-2">Add, remove, and manage staff accounts and permissions</p>
-            </div>
-          )}
         </div>
       </main>
     </div>
