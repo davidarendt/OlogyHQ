@@ -1712,6 +1712,95 @@ app.delete('/api/taproom-deliveries/:id', authenticateToken, async (req, res) =>
   }
 });
 
+// ── Taproom Inspections ────────────────────────────────────────────────────────
+
+// List all inspections
+app.get('/api/inspections', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM inspections ORDER BY created_at DESC LIMIT 100'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create inspection
+app.post('/api/inspections', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `INSERT INTO inspections (location, date, improvements, score_pct, rated_count)
+       VALUES ($1, $2, '', 0, 0) RETURNING *`,
+      [req.body.location || '', req.body.date || new Date().toISOString().slice(0, 10)]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update inspection (location, date, improvements, score_pct, rated_count)
+app.patch('/api/inspections/:id', authenticateToken, async (req, res) => {
+  const { location, date, improvements, score_pct, rated_count } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE inspections SET
+        location    = COALESCE($1, location),
+        date        = COALESCE($2, date),
+        improvements= COALESCE($3, improvements),
+        score_pct   = COALESCE($4, score_pct),
+        rated_count = COALESCE($5, rated_count)
+       WHERE id = $6 RETURNING *`,
+      [location, date, improvements, score_pct, rated_count, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete inspection
+app.delete('/api/inspections/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM inspections WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get ratings for an inspection
+app.get('/api/inspections/:id/ratings', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM inspection_ratings WHERE inspection_id = $1',
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Upsert a rating
+app.post('/api/inspections/:id/ratings', authenticateToken, async (req, res) => {
+  const { section_id, item_index, rating, note } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO inspection_ratings (inspection_id, section_id, item_index, rating, note, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (inspection_id, section_id, item_index)
+       DO UPDATE SET rating = EXCLUDED.rating, note = EXCLUDED.note, updated_at = now()
+       RETURNING *`,
+      [req.params.id, section_id, item_index, rating ?? null, note ?? '']
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {

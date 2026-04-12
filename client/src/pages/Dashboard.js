@@ -9,7 +9,7 @@ const TOOL_META = {
   'hr-documents':        { icon: '🗂️', description: 'Access forms and employee documents',                 page: 'hr-documents' },
   'sops-checklists':     { icon: '📋', description: 'Standard operating procedures and checklists',        page: 'sops-checklists' },
   'cocktail-keeper':     { icon: '🍹', description: 'Browse and manage cocktail recipes',                  page: null },
-  'taproom-inspections': { icon: '✅', description: 'Conduct and review taproom quality inspections',      page: null },
+  'taproom-inspections': { icon: '✅', description: 'Conduct and review taproom quality inspections',      page: 'taproom-inspections' },
   'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'usermanagement' },
 };
 

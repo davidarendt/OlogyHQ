@@ -9,6 +9,7 @@ import DistroTaproomOrders from './pages/DistroTaproomOrders';
 import SOPsChecklists from './pages/SOPsChecklists';
 import LabelInventory from './pages/LabelInventory';
 import TaproomInventory from './pages/TaproomInventory';
+import TaproomInspections from './pages/TaproomInspections';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -72,6 +73,7 @@ function App() {
   if (page === 'sops-checklists') return <SOPsChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'label-inventory') return <LabelInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'taproom-inventory') return <TaproomInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'taproom-inspections') return <TaproomInspections user={user} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }
