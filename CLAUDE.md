@@ -100,6 +100,7 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `taproom_delivery_items` — id, delivery_id, beer_id, beer_name, cases, sixth_bbl, half_bbl
 - `inspections` — id, location, date, improvements, score_pct, rated_count, created_at
 - `inspection_ratings` — id, inspection_id (→ inspections, cascade), section_id, item_index, rating ('1'–'5'|'NA'|null), note, updated_at; unique on (inspection_id, section_id, item_index)
+- `recipes` — id, name, category ('brunch'|'shareables'|'flatbreads'|'specials'|'prep'), cook_time, description, ingredients, instructions, plating, notes, image_filename, linked_recipe_ids (INTEGER[]), sort_order, created_by_id, created_by_name, created_at, updated_at
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`
@@ -114,7 +115,9 @@ Dark theme throughout. `tailwind.config.js` overrides three color families — d
 Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundColor: '#F05A28' }}` for dynamic brand color. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
 
 ### File Uploads (Supabase Storage)
-All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`.
+All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`.
+
+Recipe photos are served differently — the server downloads the file from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the `RecipeImg` authenticated fetch pattern.
 
 Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`.
 
@@ -123,6 +126,19 @@ httpOnly cookies are not sent for cross-origin `<img>` sub-resource requests. Us
 
 ### Email
 Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/.env` as `EMAIL_USER` / `EMAIL_PASS` (Gmail App Password). The shared `sendLabelOrderEmail(overrides)` helper in `server/labelEmail.js` accepts optional quantity overrides.
+
+### Recipes Tool
+`Recipes.js` is split into two sections controlled by a `section` state (`'menu'|'prep'`):
+- **Menu Items**: categories `brunch`, `shareables`, `flatbreads`, `specials` — defined in `MENU_CATS`
+- **Prep**: category `prep` — displayed alphabetically in library view; manual sort_order in manage view
+
+**Prep ↔ menu item linking** uses the `linked_recipe_ids INTEGER[]` column on both sides (bidirectional). `GET /api/recipes` joins names for all linked IDs and returns them as `linked_recipes: [{id, name}]`. The `PATCH /api/recipes/reorder` route must be registered **before** `PATCH /api/recipes/:id` to avoid Express matching `reorder` as an `:id`.
+
+**Inline prep links**: `BulletedList` accepts `prepLinks` and `onViewRecipe` props. For menu items, ingredient lines that fuzzy-match a linked prep item's name render as clickable orange-tinted boxes that open the prep recipe detail. Fuzzy match: exact substring OR all significant words (4+ chars) from the prep name appear in the line.
+
+**Auto-suggest on edit**: `RecipeModal` computes `autoMatchedIds` at init using the same fuzzy logic — prep items scan menu item ingredient text for their own name; menu items scan their own ingredients for prep item names. Auto-suggested items (not yet saved) show an orange `auto` badge in the checkbox list.
+
+**Photo serving**: `GET /api/recipes/:id/photo` downloads from `recipe-photos` Supabase bucket and streams the buffer directly. The `RecipeImg` component uses `fetch(url, { credentials: 'include' }) → blob() → createObjectURL()` (same pattern as `PhotoImg`). Pass `bust={recipe.image_filename}` as a second `useEffect` dependency to force re-fetch when a photo is replaced on the same recipe.
 
 ### Taproom Inspections — Real-Time Architecture
 `TaproomInspections.js` is a multi-user bar inspection checklist. It uses a **split data pattern**:
