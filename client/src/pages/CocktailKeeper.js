@@ -38,16 +38,17 @@ function TagBadge({ name, color }) {
 function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, canUpload }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
+  const serviceInfo = [cocktail.method, cocktail.glass, cocktail.ice].filter(Boolean).join(' · ');
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 sm:p-8" onClick={onClose}>
       <div
-        className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        className="bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Photo */}
         {hasPhoto && (
-          <div className="w-full h-48 bg-gray-900 rounded-t-2xl overflow-hidden flex items-center justify-center">
+          <div className="w-full h-56 bg-gray-800 rounded-t-2xl overflow-hidden">
             <PhotoImg
               src={`${API}/api/cocktails/${cocktail.id}/photo`}
               alt={cocktail.name}
@@ -56,62 +57,82 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, can
           </div>
         )}
 
-        <div className="p-6">
+        <div className="p-8">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-start justify-between gap-4 mb-6">
             <div className="flex-1 min-w-0">
-              <h2 className="text-cream text-2xl font-bold leading-tight">{cocktail.name}</h2>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {(cocktail.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
-              </div>
+              <h2 className="text-cream text-3xl font-bold leading-tight">{cocktail.name}</h2>
+              {serviceInfo && (
+                <p className="text-gray-400 text-sm mt-2 tracking-wide">{serviceInfo}</p>
+              )}
+              {(cocktail.tags || []).length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {(cocktail.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 pt-1">
               {canUpload && (
-                <button onClick={onEdit} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">
+                <button
+                  onClick={onEdit}
+                  className="text-sm font-medium px-3 py-1.5 rounded-lg transition"
+                  style={{ border: '1px solid #F05A2860', color: '#F05A28', backgroundColor: '#F05A2812' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F05A2825'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#F05A2812'}
+                >
                   Edit
                 </button>
               )}
-              <button onClick={onClose} className="text-gray-400 hover:text-white transition text-xl leading-none">✕</button>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white transition text-sm font-medium"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
-          {/* Meta row */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {cocktail.method && (
-              <span className="text-xs bg-gray-700 text-gray-300 px-2.5 py-1 rounded-md">{cocktail.method}</span>
-            )}
-            {cocktail.glass && (
-              <span className="text-xs bg-gray-700 text-gray-300 px-2.5 py-1 rounded-md">{cocktail.glass}</span>
-            )}
-            {cocktail.ice && (
-              <span className="text-xs bg-gray-700 text-gray-300 px-2.5 py-1 rounded-md">{cocktail.ice}</span>
-            )}
-            {cocktail.price && (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: '#F05A2822', color: '#F05A28', border: '1px solid #F05A2855' }}>
-                ${parseFloat(cocktail.price).toFixed(2)}
-              </span>
-            )}
-            {cocktail.last_special_on && (
-              <span className="text-xs bg-pink-900/40 text-pink-300 border border-pink-700/50 px-2.5 py-1 rounded-md">
-                Special: {new Date(cocktail.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
-            )}
-          </div>
+          {/* Price + Special — visually distinct from flavor tags */}
+          {(cocktail.price || cocktail.last_special_on) && (
+            <div className="flex flex-wrap gap-2 mb-6">
+              {cocktail.price && (
+                <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ backgroundColor: '#F05A2820', color: '#F05A28', border: '1px solid #F05A2845' }}>
+                  ${parseFloat(cocktail.price).toFixed(2)}
+                </span>
+              )}
+              {cocktail.last_special_on && (
+                <span className="text-xs font-medium bg-pink-900/30 text-pink-300 border border-pink-700/40 px-3 py-1 rounded-full">
+                  Last Special · {new Date(cocktail.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Divider */}
+          <div className="border-t border-gray-600/50 mb-6" />
 
           {/* Ingredients */}
           {(cocktail.ingredients || []).length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Ingredients</h3>
-              <ul className="space-y-1">
+            <div className="mb-6">
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Ingredients</h3>
+              <ul className="space-y-2">
                 {cocktail.ingredients.map((ing, i) => {
-                  const isBatched = linkedBatched.some(b => b.name && ing.ingredient_name && ing.ingredient_name.toLowerCase().includes(b.name.toLowerCase().replace(/^"(.+)"$/, '$1').toLowerCase()));
+                  const isBatched = linkedBatched.some(b => b.name && ing.ingredient_name &&
+                    ing.ingredient_name.toLowerCase().includes(b.name.toLowerCase().replace(/^"(.+)"$/, '$1')));
+                  const isGarnish = ing.unit === 'Garnish';
                   return (
-                    <li key={i} className="text-gray-300 text-sm flex items-baseline gap-2">
-                      <span className="text-gray-500 text-xs">•</span>
-                      {formatAmount(ing.amount) && <span className="text-orange-300 font-medium tabular-nums">{formatAmount(ing.amount)}</span>}
-                      {ing.unit && ing.unit !== 'Garnish' && <span className="text-gray-400 text-xs">{ing.unit}</span>}
-                      <span className={isBatched ? 'text-orange-200' : ''}>{ing.ingredient_name}</span>
-                      {ing.unit === 'Garnish' && <span className="text-gray-500 text-xs italic">garnish</span>}
+                    <li key={i} className={`flex items-baseline gap-2.5 ${isGarnish ? 'opacity-60' : ''}`}>
+                      <span className="text-gray-500 text-xs shrink-0">–</span>
+                      {formatAmount(ing.amount) && (
+                        <span className="text-orange-300 font-semibold tabular-nums text-sm shrink-0">{formatAmount(ing.amount)}</span>
+                      )}
+                      {ing.unit && !isGarnish && (
+                        <span className="text-gray-400 text-xs shrink-0">{ing.unit}</span>
+                      )}
+                      <span className={`text-sm ${isBatched ? 'text-orange-200' : 'text-gray-200'}`}>
+                        {ing.ingredient_name}
+                      </span>
+                      {isGarnish && <span className="text-gray-500 text-xs italic shrink-0">garnish</span>}
                     </li>
                   );
                 })}
@@ -121,16 +142,16 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, can
 
           {/* Notes */}
           {cocktail.notes && (
-            <div className="mb-4">
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Notes</h3>
+            <div className="mb-6">
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Notes</h3>
               <p className="text-gray-300 text-sm whitespace-pre-line leading-relaxed">{cocktail.notes}</p>
             </div>
           )}
 
-          {/* Linked house-made items */}
+          {/* House-Made — clearly actionable */}
           {linkedBatched.length > 0 && (
             <div>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">House-Made Used</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">House-Made</h3>
               <div className="flex flex-wrap gap-2">
                 {linkedBatched.map(b => {
                   const fullItem = batched.find(bi => bi.id === b.id);
@@ -138,12 +159,13 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, can
                     <button
                       key={b.id}
                       onClick={() => onViewBatched(fullItem)}
-                      className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500/70 transition"
+                      className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-orange-500/50 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 hover:text-orange-200 transition"
                     >
                       {b.name}
+                      <span className="text-orange-500/70 text-xs">↗</span>
                     </button>
                   ) : (
-                    <span key={b.id} className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300">
+                    <span key={b.id} className="text-sm px-3 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300/70">
                       {b.name}
                     </span>
                   );
@@ -740,7 +762,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allTags = [...new Set(cocktails.flatMap(c => (c.tags || []).map(t => t.name)))].sort();
 
