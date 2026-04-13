@@ -182,6 +182,18 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
   );
 }
 
+// ── Fuzzy ingredient matching ──────────────────────────────────────────────────
+// Returns true if needle (prep name) is found in haystack (ingredient text),
+// either as an exact substring OR via all significant words (4+ chars) appearing.
+function fuzzyMatch(haystack, needle) {
+  const h = haystack.toLowerCase();
+  const n = needle.toLowerCase();
+  if (h.includes(n)) return true;
+  const words = n.split(/\W+/).filter(w => w.length >= 4);
+  if (words.length < 2) return false; // single-word names require exact match
+  return words.every(w => h.includes(w));
+}
+
 // ── Create / Edit modal ────────────────────────────────────────────────────────
 function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const isEdit = !!recipe;
@@ -200,8 +212,8 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const autoMatchedIds = recipe
     ? initialPool
         .filter(r => initialIsPrep
-          ? (r.ingredients || '').toLowerCase().includes(recipe.name.toLowerCase())
-          : (recipe.ingredients || '').toLowerCase().includes(r.name.toLowerCase())
+          ? fuzzyMatch(r.ingredients || '', recipe.name)
+          : fuzzyMatch(recipe.ingredients || '', r.name)
         )
         .map(r => r.id)
     : [];
