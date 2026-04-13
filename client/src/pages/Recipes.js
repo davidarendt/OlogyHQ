@@ -31,7 +31,7 @@ function RecipeImg({ recipeId, className }) {
       .catch(() => {});
     return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [recipeId]);
-  if (!src) return <div className="w-full h-full bg-gray-700" style={{ minHeight: 160 }} />;
+  if (!src) return <div className="w-full bg-gray-700" style={{ minHeight: 200 }} />;
   return <img src={src} alt="" className={className} />;
 }
 
@@ -76,10 +76,10 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
 
         {/* Photo — left column on desktop, bottom on mobile */}
         {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 self-stretch bg-gray-900" style={{ minHeight: 300 }}>
+          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 sm:self-start bg-gray-900">
             <RecipeImg
               recipeId={recipe.id}
-              className="w-full h-full object-contain"
+              className="w-full h-auto block"
             />
           </div>
         )}
