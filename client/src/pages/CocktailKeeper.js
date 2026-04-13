@@ -217,7 +217,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
     method: cocktail?.method || '',
     glass: cocktail?.glass || '',
     ice: cocktail?.ice || '',
-    status: cocktail?.status || 'active',
+    status: cocktail?.status || 'menu',
     price: cocktail?.price || '',
     last_special_on: cocktail?.last_special_on || '',
     notes: cocktail?.notes || '',
@@ -328,9 +328,9 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
               <div>
                 <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Status</label>
                 <select className={selectCls} value={form.status} onChange={e => set('status', e.target.value)}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="menu">Menu Item</option>
                   <option value="special">Special</option>
+                  <option value="wip">Work-In-Progress</option>
                 </select>
               </div>
               <div>
@@ -579,6 +579,115 @@ function BatchedModal({ item, cocktails, catalog, onSave, onClose }) {
   );
 }
 
+// ── Submit Suggestion Modal ───────────────────────────────────────────────────
+
+function SubmitModal({ cocktails, onClose, onSave }) {
+  const [type, setType] = useState('new');
+  const [cocktailId, setCocktailId] = useState('');
+  const [cocktailName, setCocktailName] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/cocktails/submissions`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          cocktail_id: type === 'change' && cocktailId ? parseInt(cocktailId) : null,
+          cocktail_name: type === 'new' ? cocktailName : null,
+          description,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      onSave();
+    } catch {
+      alert('Failed to submit. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-cream text-xl font-bold">Submit a Suggestion</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Type toggle */}
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Type</label>
+              <div className="flex gap-2">
+                {[{ key: 'new', label: 'New Cocktail Idea' }, { key: 'change', label: 'Change to Existing' }].map(t => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setType(t.key)}
+                    className="px-3 py-1.5 text-sm rounded-lg transition"
+                    style={type === t.key ? { backgroundColor: '#F05A28', color: '#fff' } : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {type === 'new' && (
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Cocktail Name (optional)</label>
+                <input className={inputCls} value={cocktailName} onChange={e => setCocktailName(e.target.value)} placeholder="What would you call it?" />
+              </div>
+            )}
+
+            {type === 'change' && (
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Which Cocktail?</label>
+                <select className={inputCls} value={cocktailId} onChange={e => setCocktailId(e.target.value)} required>
+                  <option value="">Select a cocktail…</option>
+                  {cocktails.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">
+                {type === 'new' ? 'Describe the Cocktail *' : 'What Would You Change? *'}
+              </label>
+              <textarea
+                className={inputCls + ' resize-none'}
+                rows={5}
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder={type === 'new'
+                  ? 'Ingredients, flavor profile, inspiration…'
+                  : 'Describe your suggested change…'}
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+                {saving ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 function CocktailKeeper({ user, canUpload, onBack }) {
@@ -587,29 +696,34 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const [catalog, setCatalog] = useState({});
   const [tagDefs, setTagDefs] = useState([]);
   const [tab, setTab] = useState('cocktails');
+  const [cocktailCategory, setCocktailCategory] = useState('menu');
   const [manageTab, setManageTab] = useState('cocktails');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);
   const [search, setSearch] = useState('');
   const [viewCocktail, setViewCocktail] = useState(null);
   const [viewBatched, setViewBatched] = useState(null);
   const [editCocktail, setEditCocktail] = useState(undefined); // undefined=closed, null=new, obj=edit
   const [editBatched, setEditBatched] = useState(undefined);
+  const [showSubmit, setShowSubmit] = useState(false);
+  const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [cRes, bRes, catRes, tdRes] = await Promise.all([
+      const fetches = [
         fetch(`${API}/api/cocktails`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/batched`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/catalog`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/tag-definitions`, { credentials: 'include' }).then(r => r.json()),
-      ]);
+      ];
+      if (canUpload) fetches.push(fetch(`${API}/api/cocktails/submissions`, { credentials: 'include' }).then(r => r.json()));
+      const [cRes, bRes, catRes, tdRes, subRes] = await Promise.all(fetches);
       setCocktails(Array.isArray(cRes) ? cRes : []);
       setBatched(Array.isArray(bRes) ? bRes : []);
       setCatalog(catRes || {});
       setTagDefs(Array.isArray(tdRes) ? tdRes : []);
+      if (subRes) setSubmissions(Array.isArray(subRes) ? subRes : []);
     } catch {}
     setLoading(false);
   };
@@ -619,9 +733,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const allTags = [...new Set(cocktails.flatMap(c => (c.tags || []).map(t => t.name)))].sort();
 
   const filteredCocktails = cocktails.filter(c => {
-    if (statusFilter === 'specials' && !c.last_special_on) return false;
-    if (statusFilter === 'inactive' && c.status !== 'inactive') return false;
-    if (statusFilter === 'active' && c.status !== 'active') return false;
+    if (c.status !== cocktailCategory) return false;
     if (tagFilter && !(c.tags || []).some(t => t.name === tagFilter)) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -631,6 +743,8 @@ function CocktailKeeper({ user, canUpload, onBack }) {
     }
     return true;
   });
+
+  const pendingSubmissions = submissions.filter(s => s.status === 'pending');
 
   const handleDelete = async (type, id) => {
     if (!window.confirm('Delete this item?')) return;
@@ -642,6 +756,22 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const afterSave = () => {
     setEditCocktail(undefined);
     setEditBatched(undefined);
+    setShowSubmit(false);
+    load();
+  };
+
+  const handleReviewSubmission = async (id, status) => {
+    await fetch(`${API}/api/cocktails/submissions/${id}`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    load();
+  };
+
+  const handleDeleteSubmission = async (id) => {
+    if (!window.confirm('Delete this submission?')) return;
+    await fetch(`${API}/api/cocktails/submissions/${id}`, { method: 'DELETE', credentials: 'include' });
     load();
   };
 
@@ -684,46 +814,57 @@ function CocktailKeeper({ user, canUpload, onBack }) {
         {/* ── Cocktails Tab ── */}
         {!loading && tab === 'cocktails' && (
           <>
-            {/* Filters */}
-            <div className="flex flex-wrap gap-2 mb-4">
+            {/* Category sub-tabs + Suggest button */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
               {[
-                { key: 'all', label: 'All' },
-                { key: 'active', label: 'Active' },
-                { key: 'specials', label: 'Was Special' },
-                { key: 'inactive', label: 'Inactive' },
-              ].map(f => (
+                { key: 'menu', label: 'Menu Items' },
+                { key: 'special', label: 'Specials' },
+                { key: 'wip', label: 'Work-In-Progress' },
+              ].map(cat => (
                 <button
-                  key={f.key}
-                  onClick={() => setStatusFilter(f.key)}
-                  className={`px-3 py-1.5 text-sm rounded-lg transition ${statusFilter === f.key ? 'text-white' : 'text-gray-400 hover:text-white bg-gray-800'}`}
-                  style={statusFilter === f.key ? { backgroundColor: '#F05A28' } : {}}
+                  key={cat.key}
+                  onClick={() => { setCocktailCategory(cat.key); setTagFilter(null); setSearch(''); }}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition ${cocktailCategory === cat.key ? 'text-white' : 'text-gray-400 hover:text-white bg-gray-800'}`}
+                  style={cocktailCategory === cat.key ? { backgroundColor: '#F05A28' } : {}}
                 >
-                  {f.label}
+                  {cat.label}
                 </button>
               ))}
-              <div className="h-auto w-px bg-gray-700 mx-1" />
-              {allTags.map(tag => {
-                const color = (cocktails.find(c => (c.tags||[]).some(t => t.name === tag))?.tags || []).find(t => t.name === tag)?.color || '#6b7280';
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-                    className="text-xs font-medium px-2.5 py-1 rounded-full transition"
-                    style={
-                      tagFilter === tag
-                        ? { backgroundColor: color + '33', color, border: `1px solid ${color}` }
-                        : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
-                    }
-                  >
-                    {tag}
-                  </button>
-                );
-              })}
+              <div className="flex-1" />
+              <button
+                onClick={() => setShowSubmit(true)}
+                className="px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 transition"
+              >
+                + Suggest a Cocktail
+              </button>
             </div>
+
+            {/* Tag filters */}
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {allTags.map(tag => {
+                  const color = (cocktails.find(c => (c.tags||[]).some(t => t.name === tag))?.tags || []).find(t => t.name === tag)?.color || '#6b7280';
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+                      className="text-xs font-medium px-2.5 py-1 rounded-full transition"
+                      style={
+                        tagFilter === tag
+                          ? { backgroundColor: color + '33', color, border: `1px solid ${color}` }
+                          : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
+                      }
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <input
               className="w-full max-w-sm bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 mb-6"
-              placeholder="Search cocktails…"
+              placeholder="Search by name or ingredient…"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -803,7 +944,11 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           <>
             {/* Manage sub-tabs */}
             <div className="flex gap-2 mb-6">
-              {[{ key: 'cocktails', label: 'Cocktails' }, { key: 'batched', label: 'Batched Items' }].map(t => (
+              {[
+                { key: 'cocktails', label: 'Cocktails' },
+                { key: 'batched', label: 'Batched Items' },
+                { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
+              ].map(t => (
                 <button
                   key={t.key}
                   onClick={() => setManageTab(t.key)}
@@ -829,7 +974,16 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                   {cocktails.map(c => (
                     <div key={c.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3">
                       <div className="flex-1 min-w-0">
-                        <span className="text-white font-medium text-sm">{c.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-medium text-sm">{c.name}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            c.status === 'menu' ? 'bg-green-900/50 text-green-400' :
+                            c.status === 'special' ? 'bg-pink-900/50 text-pink-400' :
+                            'bg-yellow-900/50 text-yellow-400'
+                          }`}>
+                            {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'WIP'}
+                          </span>
+                        </div>
                         <div className="flex gap-1 mt-0.5 flex-wrap">
                           {c.method && <span className="text-xs text-gray-500">{c.method}</span>}
                           {(c.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
@@ -845,6 +999,56 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                   ))}
                 </div>
               </>
+            )}
+
+            {manageTab === 'submissions' && (
+              <div className="space-y-3">
+                {submissions.length === 0 && (
+                  <p className="text-gray-500 text-center py-12">No submissions yet.</p>
+                )}
+                {submissions.map(s => (
+                  <div key={s.id} className={`bg-gray-800 border rounded-xl p-4 ${s.status === 'pending' ? 'border-orange-500/40' : 'border-gray-700 opacity-60'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.type === 'new' ? 'bg-blue-900/50 text-blue-300' : 'bg-purple-900/50 text-purple-300'}`}>
+                            {s.type === 'new' ? 'New Idea' : 'Change Request'}
+                          </span>
+                          {s.type === 'change' && s.cocktail_name_ref && (
+                            <span className="text-xs text-gray-400">re: {s.cocktail_name_ref}</span>
+                          )}
+                          {s.type === 'new' && s.cocktail_name && (
+                            <span className="text-sm font-medium text-white">"{s.cocktail_name}"</span>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${s.status === 'pending' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>
+                            {s.status}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 text-sm whitespace-pre-line">{s.description}</p>
+                        <p className="text-gray-500 text-xs mt-2">
+                          From {s.submitted_by_name} · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        {s.status === 'pending' && (
+                          <button
+                            onClick={() => handleReviewSubmission(s.id, 'reviewed')}
+                            className="text-xs px-2 py-1 rounded border border-green-600 text-green-400 hover:bg-green-900/30 transition"
+                          >
+                            Mark Reviewed
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteSubmission(s.id)}
+                          className="text-xs text-gray-500 hover:text-red-400 transition text-right"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
             {manageTab === 'batched' && (
@@ -920,6 +1124,13 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           catalog={catalog}
           onSave={afterSave}
           onClose={() => setEditBatched(undefined)}
+        />
+      )}
+      {showSubmit && (
+        <SubmitModal
+          cocktails={cocktails}
+          onClose={() => setShowSubmit(false)}
+          onSave={() => { setShowSubmit(false); }}
         />
       )}
     </div>

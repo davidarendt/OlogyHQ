@@ -1956,6 +1956,16 @@ app.delete('/api/recipes/:id', authenticateToken, checkRecipesManage, async (req
 
 // ── Cocktail Keeper ──────────────────────────────────────────────────────────
 
+function checkCocktailsView(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level IN ('view','upload')`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
 function checkCocktailsManage(req, res, next) {
   if (req.user.role === 'admin') return next();
   pool.query(
@@ -2072,7 +2082,7 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsManage, cocktailPhot
     const result = await pool.query(
       `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [name, method||null, glass||null, ice||null, status||'active', price||null, last_special_on||null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1]
+      [name, method||null, glass||null, ice||null, status||'menu', price||null, last_special_on||null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1]
     );
     const cocktail = result.rows[0];
     const ingList = JSON.parse(ingredients || '[]');
@@ -2132,7 +2142,7 @@ app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsManage, cocktai
     const result = await pool.query(
       `UPDATE cocktails SET name=$1, method=$2, glass=$3, ice=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10
        WHERE id=$11 RETURNING *`,
-      [name, method||null, glass||null, ice||null, status||'active', price||null, last_special_on||null, notes||null, photo_filename, newBatchIds, id]
+      [name, method||null, glass||null, ice||null, status||'menu', price||null, last_special_on||null, notes||null, photo_filename, newBatchIds, id]
     );
 
     // Sync ingredients
@@ -2310,6 +2320,60 @@ app.delete('/api/cocktails/batched/:id', authenticateToken, checkCocktailsManage
       );
     }
     await pool.query('DELETE FROM batched_cocktail_items WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List submissions (manage only)
+app.get('/api/cocktails/submissions', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.*, c.name AS cocktail_name_ref
+       FROM cocktail_submissions s
+       LEFT JOIN cocktails c ON c.id = s.cocktail_id
+       ORDER BY s.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Submit a suggestion (view access)
+app.post('/api/cocktails/submissions', authenticateToken, checkCocktailsView, async (req, res) => {
+  try {
+    const { type, cocktail_id, cocktail_name, description } = req.body;
+    const result = await pool.query(
+      `INSERT INTO cocktail_submissions (type, cocktail_id, submitted_by_id, submitted_by_name, cocktail_name, description)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [type || 'new', cocktail_id || null, req.user.id, req.user.name, cocktail_name || null, description || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Mark submission as reviewed / update status (manage only)
+app.patch('/api/cocktails/submissions/:id', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await pool.query(
+      `UPDATE cocktail_submissions SET status=$1 WHERE id=$2 RETURNING *`,
+      [status, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete submission (manage only)
+app.delete('/api/cocktails/submissions/:id', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM cocktail_submissions WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
