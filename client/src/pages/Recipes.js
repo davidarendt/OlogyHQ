@@ -31,157 +31,8 @@ function RecipeImg({ recipeId, className }) {
       .catch(() => {});
     return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [recipeId]);
-  if (!src) return <div className="w-full h-full bg-gray-700" />;
+  if (!src) return <div className="w-full bg-gray-700" style={{ minHeight: 160 }} />;
   return <img src={src} alt="" className={className} />;
-}
-
-// ── Photo crop editor ──────────────────────────────────────────────────────────
-const CROP_W = 480;
-const CROP_H = 320;
-
-function PhotoEditor({ file, onApply, onCancel }) {
-  const [imageSrc, setImageSrc] = useState(null);
-  const [nat, setNat]           = useState({ w: 1, h: 1 });
-  const [scale, setScale]       = useState(1);
-  const [offset, setOffset]     = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const drag                    = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
-
-  useEffect(() => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const src = e.target.result;
-      setImageSrc(src);
-      const img = new Image();
-      img.onload = () => {
-        const n = { w: img.naturalWidth, h: img.naturalHeight };
-        setNat(n);
-        setScale(Math.max(CROP_W / n.w, CROP_H / n.h));
-        setOffset({ x: 0, y: 0 });
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
-  }, [file]);
-
-  const minScale = Math.max(CROP_W / nat.w, CROP_H / nat.h);
-
-  const clamp = (ox, oy, sc) => ({
-    x: Math.max(-(Math.max(0, (nat.w * sc - CROP_W) / 2)), Math.min(Math.max(0, (nat.w * sc - CROP_W) / 2), ox)),
-    y: Math.max(-(Math.max(0, (nat.h * sc - CROP_H) / 2)), Math.min(Math.max(0, (nat.h * sc - CROP_H) / 2), oy)),
-  });
-
-  const onDown = (e) => {
-    e.preventDefault(); setDragging(true);
-    drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
-  };
-  const onMove = (e) => {
-    if (!dragging) return;
-    setOffset(clamp(drag.current.ox + e.clientX - drag.current.x, drag.current.oy + e.clientY - drag.current.y, scale));
-  };
-  const onUp = () => setDragging(false);
-
-  const onTouchDown = (e) => {
-    const t = e.touches[0]; setDragging(true);
-    drag.current = { x: t.clientX, y: t.clientY, ox: offset.x, oy: offset.y };
-  };
-  const onTouchMove = (e) => {
-    e.preventDefault(); if (!dragging) return;
-    const t = e.touches[0];
-    setOffset(clamp(drag.current.ox + t.clientX - drag.current.x, drag.current.oy + t.clientY - drag.current.y, scale));
-  };
-
-  const onWheel = (e) => {
-    e.preventDefault();
-    const ns = Math.max(minScale, Math.min(minScale * 4, scale - e.deltaY * 0.002));
-    setScale(ns); setOffset(prev => clamp(prev.x, prev.y, ns));
-  };
-
-  const onSlider = (e) => {
-    const ns = parseFloat(e.target.value);
-    setScale(ns); setOffset(prev => clamp(prev.x, prev.y, ns));
-  };
-
-  const handleApply = () => {
-    // Export at 3× display resolution so the image stays sharp when viewed full-size
-    const EXPORT_RATIO = 3;
-    const EW = CROP_W * EXPORT_RATIO;
-    const EH = CROP_H * EXPORT_RATIO;
-    const canvas = document.createElement('canvas');
-    canvas.width = EW; canvas.height = EH;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      const dw = nat.w * scale * EXPORT_RATIO;
-      const dh = nat.h * scale * EXPORT_RATIO;
-      ctx.drawImage(img, EW / 2 - dw / 2 + offset.x * EXPORT_RATIO, EH / 2 - dh / 2 + offset.y * EXPORT_RATIO, dw, dh);
-      canvas.toBlob(blob => onApply(new File([blob], 'photo.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.93);
-    };
-    img.src = imageSrc;
-  };
-
-  const imgX = CROP_W / 2 - (nat.w * scale) / 2 + offset.x;
-  const imgY = CROP_H / 2 - (nat.h * scale) / 2 + offset.y;
-
-  return (
-    <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center px-4">
-      <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 w-full max-w-xl space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-white font-semibold">Adjust Photo</h4>
-          <button onClick={onCancel} className="text-gray-500 hover:text-white text-2xl leading-none transition">×</button>
-        </div>
-
-        {/* Crop viewport */}
-        <div
-          className="relative overflow-hidden rounded-xl bg-gray-900 mx-auto select-none"
-          style={{ width: CROP_W, height: CROP_H, maxWidth: '100%', cursor: dragging ? 'grabbing' : 'grab' }}
-          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}
-          onTouchStart={onTouchDown} onTouchMove={onTouchMove} onTouchEnd={onUp}
-        >
-          {imageSrc && (
-            <img
-              src={imageSrc} alt="" draggable={false}
-              style={{
-                position: 'absolute', left: 0, top: 0,
-                width: nat.w * scale, height: nat.h * scale,
-                transform: `translate(${imgX}px, ${imgY}px)`,
-                transformOrigin: '0 0', pointerEvents: 'none',
-              }}
-            />
-          )}
-          {/* Rule-of-thirds overlay */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.25 }}
-            viewBox={`0 0 ${CROP_W} ${CROP_H}`} preserveAspectRatio="none">
-            <line x1={CROP_W/3}   y1="0" x2={CROP_W/3}   y2={CROP_H} stroke="white" strokeWidth="1"/>
-            <line x1={CROP_W*2/3} y1="0" x2={CROP_W*2/3} y2={CROP_H} stroke="white" strokeWidth="1"/>
-            <line x1="0" y1={CROP_H/3}   x2={CROP_W} y2={CROP_H/3}   stroke="white" strokeWidth="1"/>
-            <line x1="0" y1={CROP_H*2/3} x2={CROP_W} y2={CROP_H*2/3} stroke="white" strokeWidth="1"/>
-          </svg>
-        </div>
-
-        {/* Zoom */}
-        <div className="flex items-center gap-3">
-          <span className="text-gray-500 text-sm">−</span>
-          <input type="range" min={minScale} max={minScale * 4} step={0.005} value={scale}
-            onChange={onSlider} className="flex-1 accent-orange-500" />
-          <span className="text-gray-500 text-sm">+</span>
-        </div>
-        <p className="text-gray-600 text-xs text-center -mt-2">Drag to reframe · scroll or slider to zoom</p>
-
-        <div className="flex gap-3">
-          <button onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-gray-600 text-gray-300 text-sm hover:bg-gray-700 transition">
-            Cancel
-          </button>
-          <button onClick={handleApply}
-            className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition"
-            style={{ backgroundColor: '#F05A28' }}>
-            Use This Crop
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── Helpers for display ────────────────────────────────────────────────────────
@@ -225,10 +76,10 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
 
         {/* Photo — left column on desktop, bottom on mobile */}
         {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-80 flex-shrink-0">
+          <div className="order-last sm:order-first sm:w-80 flex-shrink-0 bg-gray-900">
             <RecipeImg
               recipeId={recipe.id}
-              className="w-full h-full object-cover"
+              className="w-full h-auto block"
             />
           </div>
         )}
@@ -325,8 +176,7 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const [linkedIds, setLinkedIds]     = useState(recipe?.linked_recipe_ids || []);
 
   // Photo state
-  const [rawPhoto, setRawPhoto]       = useState(null);   // file waiting for crop editor
-  const [photo, setPhoto]             = useState(null);   // cropped file to upload
+  const [photo, setPhoto]             = useState(null);   // file to upload
   const [previewUrl, setPreviewUrl]   = useState(null);   // object URL for thumbnail
   const [clearPhoto, setClearPhoto]   = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
@@ -340,15 +190,12 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, []);
 
   const handleFileSelected = (file) => {
-    if (file && file.type.startsWith('image/')) setRawPhoto(file);
-  };
-
-  const handleEditorApply = (croppedFile) => {
-    setPhoto(croppedFile);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(croppedFile));
-    setClearPhoto(false);
-    setRawPhoto(null);
+    if (file && file.type.startsWith('image/')) {
+      setPhoto(file);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(file));
+      setClearPhoto(false);
+    }
   };
 
   const handleDrop = (e) => {
@@ -521,14 +368,6 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
         </div>
       </div>
 
-      {/* Photo crop editor — rendered above the recipe modal */}
-      {rawPhoto && (
-        <PhotoEditor
-          file={rawPhoto}
-          onApply={handleEditorApply}
-          onCancel={() => setRawPhoto(null)}
-        />
-      )}
     </>
   );
 }
