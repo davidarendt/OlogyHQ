@@ -6,6 +6,7 @@ const CATEGORIES = [
   { value: 'brunch',      label: 'Brunch' },
   { value: 'shareables',  label: 'Shareables' },
   { value: 'flatbreads',  label: 'Flatbreads' },
+  { value: 'specials',    label: 'Specials' },
   { value: 'prep',        label: 'Prep' },
 ];
 
@@ -13,6 +14,7 @@ const CAT_COLORS = {
   brunch:     '#f59e0b',
   shareables: '#3b82f6',
   flatbreads: '#10b981',
+  specials:   '#ec4899',
   prep:       '#8b5cf6',
 };
 
@@ -39,17 +41,33 @@ function RecipeImg({ recipeId, bust, className }) {
 // ── Helpers for display ────────────────────────────────────────────────────────
 const titleCase = str => str.replace(/\b\w/g, c => c.toUpperCase());
 
-function BulletedList({ text }) {
+function BulletedList({ text, prepLinks = [], onViewRecipe }) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
   return (
     <ul className="space-y-2.5">
-      {lines.map((line, i) => (
-        <li key={i} className="flex gap-3 text-gray-200 text-lg leading-snug">
-          <span className="text-xl leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
-          <span>{titleCase(line)}</span>
-        </li>
-      ))}
+      {lines.map((line, i) => {
+        const h = line.toLowerCase();
+        const linked = prepLinks.find(lr => {
+          const n = lr.name.toLowerCase();
+          if (h.includes(n)) return true;
+          const words = n.split(/\W+/).filter(w => w.length >= 4);
+          return words.length >= 2 && words.every(w => h.includes(w));
+        });
+        return (
+          <li key={i} className="flex gap-3 text-gray-200 text-lg leading-snug">
+            <span className="text-xl leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
+            {linked && onViewRecipe ? (
+              <button onClick={() => onViewRecipe(linked.id)}
+                className="text-left hover:text-orange-400 transition underline decoration-dotted underline-offset-2 decoration-orange-500/50">
+                {titleCase(line)}
+              </button>
+            ) : (
+              <span>{titleCase(line)}</span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -71,6 +89,9 @@ function NumberedList({ text }) {
 
 // ── Recipe detail modal ────────────────────────────────────────────────────────
 function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
+  const isPrep = recipe.category === 'prep';
+  // For menu items: pass linked prep items into the ingredient list for inline linking
+  const prepLinks = !isPrep ? (recipe.linked_recipes || []).filter(lr => lr.name) : [];
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
       <div className="bg-gray-700 rounded-2xl border border-gray-600 shadow-2xl shadow-black/70 w-full max-w-5xl flex flex-col sm:flex-row overflow-hidden">
@@ -119,7 +140,7 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
                 {recipe.ingredients && (
                   <div>
                     <h4 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Ingredients</h4>
-                    <BulletedList text={recipe.ingredients} />
+                    <BulletedList text={recipe.ingredients} prepLinks={prepLinks} onViewRecipe={onViewRecipe} />
                   </div>
                 )}
                 {recipe.instructions && (
@@ -153,14 +174,12 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
               </>
             )}
 
-            {/* Linked recipes — "Used In" for prep, "Related Prep" for menu items */}
-            {recipe.linked_recipes && recipe.linked_recipes.length > 0 && (
+            {/* "Used In" — only shown for prep items */}
+            {isPrep && recipe.linked_recipes && recipe.linked_recipes.filter(lr => lr.name).length > 0 && (
               <>
                 <div className="border-t border-gray-600" />
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>
-                    {recipe.category === 'prep' ? 'Used In' : 'Related Prep Items'}
-                  </h4>
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Used In</h4>
                   <div className="flex flex-wrap gap-2">
                     {recipe.linked_recipes.filter(lr => lr.name).map(lr => (
                       <button key={lr.id} onClick={() => onViewRecipe(lr.id)}
@@ -169,9 +188,7 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
                       </button>
                     ))}
                   </div>
-                  {recipe.category === 'prep' && (
-                    <p className="text-gray-600 text-xs mt-3">Click any item to open its recipe</p>
-                  )}
+                  <p className="text-gray-600 text-xs mt-3">Click any item to open its recipe</p>
                 </div>
               </>
             )}
@@ -385,9 +402,10 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
           {/* Related recipes — filtered by section */}
           {(() => {
             const isPrep = category === 'prep';
-            const linkedPool = isPrep
+            const linkedPool = (isPrep
               ? allRecipes.filter(r => r.id !== recipe?.id && MENU_CATS.includes(r.category))
-              : allRecipes.filter(r => r.id !== recipe?.id && r.category === 'prep');
+              : allRecipes.filter(r => r.id !== recipe?.id && r.category === 'prep')
+            ).sort((a, b) => a.name.localeCompare(b.name));
             const linkedLabel = isPrep ? 'Menu Items That Use This' : 'Related Prep Items';
             if (!linkedPool.length) return null;
             return (
@@ -467,7 +485,7 @@ function RecipeCard({ recipe, onClick }) {
   );
 }
 
-const MENU_CATS = ['brunch', 'shareables', 'flatbreads'];
+const MENU_CATS = ['brunch', 'shareables', 'flatbreads', 'specials'];
 const MENU_CATEGORIES = CATEGORIES.filter(c => MENU_CATS.includes(c.value));
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -490,6 +508,22 @@ export default function Recipes({ user, canUpload, onBack }) {
   useEffect(() => { fetchRecipes(); }, []);
 
   const handleSectionChange = (s) => { setSection(s); setActiveCat('all'); setSearch(''); };
+
+  const handleAlphabetize = async () => {
+    const sorted = [...sectionRecipes].sort((a, b) => a.name.localeCompare(b.name));
+    const sortedIds = sorted.map(r => r.id);
+    const otherIds = recipes.filter(r => !sortedIds.includes(r.id)).map(r => r.id);
+    const orderedIds = [...otherIds, ...sortedIds];
+    setRecipes(recipes.map(r => r).sort((a, b) => {
+      const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
+      return ai - bi;
+    }));
+    await fetch(`${API}/api/recipes/reorder`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds }),
+    });
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this recipe?')) return;
@@ -517,8 +551,12 @@ export default function Recipes({ user, canUpload, onBack }) {
   const sectionRecipes = recipes.filter(r =>
     section === 'menu' ? MENU_CATS.includes(r.category) : r.category === 'prep'
   );
+  // Library view shows prep alphabetically; manage view respects manual sort_order
+  const librarySectionRecipes = section === 'prep'
+    ? [...sectionRecipes].sort((a, b) => a.name.localeCompare(b.name))
+    : sectionRecipes;
 
-  const filtered = sectionRecipes.filter(r => {
+  const filtered = librarySectionRecipes.filter(r => {
     const q = search.toLowerCase();
     const matchSearch = !q || r.name.toLowerCase().includes(q);
     const matchCat = activeCat === 'all' || r.category === activeCat;
@@ -596,7 +634,7 @@ export default function Recipes({ user, canUpload, onBack }) {
 
             {filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-600 text-sm">
-                {sectionRecipes.length === 0 ? 'No recipes yet.' : 'No recipes match your search.'}
+                {librarySectionRecipes.length === 0 ? 'No recipes yet.' : 'No recipes match your search.'}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -608,11 +646,19 @@ export default function Recipes({ user, canUpload, onBack }) {
           <div>
             <div className="flex items-center justify-between mb-5">
               <SectionTabs />
-              <button onClick={() => setEditing('new')}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition"
-                style={{ backgroundColor: '#F05A28' }}>
-                + Add Recipe
-              </button>
+              <div className="flex items-center gap-2">
+                {section === 'prep' && (
+                  <button onClick={handleAlphabetize}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white transition">
+                    A→Z
+                  </button>
+                )}
+                <button onClick={() => setEditing('new')}
+                  className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition"
+                  style={{ backgroundColor: '#F05A28' }}>
+                  + Add Recipe
+                </button>
+              </div>
             </div>
             <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
               {sectionRecipes.length === 0 ? (
