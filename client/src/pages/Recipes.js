@@ -21,16 +21,17 @@ function getCatLabel(v) {
 }
 
 // ── Authenticated image loader ─────────────────────────────────────────────────
-function RecipeImg({ recipeId, className }) {
+function RecipeImg({ recipeId, bust, className }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let objUrl;
+    setSrc(null);
     fetch(`${API}/api/recipes/${recipeId}/photo`, { credentials: 'include' })
       .then(r => r.ok ? r.blob() : null)
       .then(blob => { if (blob) { objUrl = URL.createObjectURL(blob); setSrc(objUrl); } })
       .catch(() => {});
     return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
-  }, [recipeId]);
+  }, [recipeId, bust]); // bust = image_filename, changes when photo is replaced
   if (!src) return <div className="w-full bg-gray-700" style={{ minHeight: 200 }} />;
   return <img src={src} alt="" className={className} />;
 }
@@ -79,6 +80,7 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
           <div className="order-last sm:order-first sm:w-64 flex-shrink-0 sm:self-start bg-gray-900">
             <RecipeImg
               recipeId={recipe.id}
+              bust={recipe.image_filename}
               className="w-full h-auto block"
             />
           </div>
@@ -297,7 +299,7 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
                   <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-700">
                     {photo
                       ? <img src={previewUrl} alt="" className="w-full h-full object-cover" />
-                      : <RecipeImg recipeId={recipe.id} className="w-full h-full object-cover" />
+                      : <RecipeImg recipeId={recipe.id} bust={recipe.image_filename} className="w-full h-full object-cover" />
                     }
                   </div>
                   <p className="text-gray-400 text-sm">{photoLabel}</p>
@@ -390,7 +392,7 @@ function RecipeCard({ recipe, onClick }) {
       className="group bg-gray-800 rounded-2xl border border-gray-700 hover:border-orange-500 transition-all duration-200 text-left overflow-hidden flex flex-col hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5">
       <div className="w-full h-56 overflow-hidden flex-shrink-0">
         {recipe.image_filename
-          ? <RecipeImg recipeId={recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          ? <RecipeImg recipeId={recipe.id} bust={recipe.image_filename} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           : <div className="w-full h-full bg-gray-700 flex items-center justify-center text-4xl">
               {recipe.category === 'prep' ? '🔪' : '🍽️'}
             </div>
