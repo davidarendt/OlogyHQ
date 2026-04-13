@@ -185,6 +185,8 @@ function PhotoEditor({ file, onApply, onCancel }) {
 }
 
 // ── Helpers for display ────────────────────────────────────────────────────────
+const titleCase = str => str.replace(/\b\w/g, c => c.toUpperCase());
+
 function BulletedList({ text }) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
@@ -193,7 +195,7 @@ function BulletedList({ text }) {
       {lines.map((line, i) => (
         <li key={i} className="flex gap-2.5 text-gray-300 text-sm leading-relaxed">
           <span className="mt-0.5 flex-shrink-0" style={{ color: '#F05A28' }}>•</span>
-          <span>{line}</span>
+          <span>{titleCase(line)}</span>
         </li>
       ))}
     </ul>
@@ -270,7 +272,6 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
           {/* Cook Time */}
           {recipe.cook_time && (
             <div className="flex items-center gap-2 text-gray-300 text-sm">
-              <span style={{ color: '#F05A28' }}>⏱</span>
               <span className="font-semibold text-xs uppercase tracking-wider" style={{ color: '#F05A28' }}>Cook Time</span>
               <span className="text-gray-300">{recipe.cook_time}</span>
             </div>
@@ -542,7 +543,7 @@ function RecipeCard({ recipe, onClick }) {
             {getCatLabel(recipe.category)}
           </span>
           {recipe.cook_time && (
-            <span className="text-gray-500 text-xs truncate">⏱ {recipe.cook_time}</span>
+            <span className="text-gray-500 text-xs truncate">{recipe.cook_time}</span>
           )}
         </div>
         <p className="text-white font-semibold text-sm leading-snug group-hover:text-orange-400 transition-colors">
