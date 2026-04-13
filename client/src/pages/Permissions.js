@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const ROLES = ['admin', 'bar_manager', 'bartender', 'barista', 'coffee_manager', 'production', 'sales', 'hr'];
+const ROLES = ['admin', 'bar_manager', 'bartender', 'barista', 'coffee_manager', 'production', 'sales', 'hr', 'kitchen_manager', 'cook'];
 
 function Toggle({ active, onClick }) {
   return (

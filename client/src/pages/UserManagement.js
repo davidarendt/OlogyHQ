@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 const ROLES = [
-  { value: 'admin',          label: 'Admin' },
-  { value: 'bar_manager',    label: 'Bar Manager' },
-  { value: 'bartender',      label: 'Bartender' },
-  { value: 'barista',        label: 'Barista' },
-  { value: 'coffee_manager', label: 'Coffee Manager' },
-  { value: 'production',     label: 'Production' },
-  { value: 'sales',          label: 'Sales' },
-  { value: 'hr',             label: 'HR' },
+  { value: 'admin',           label: 'Admin' },
+  { value: 'bar_manager',     label: 'Bar Manager' },
+  { value: 'bartender',       label: 'Bartender' },
+  { value: 'barista',         label: 'Barista' },
+  { value: 'coffee_manager',  label: 'Coffee Manager' },
+  { value: 'production',      label: 'Production' },
+  { value: 'sales',           label: 'Sales' },
+  { value: 'hr',              label: 'HR' },
+  { value: 'kitchen_manager', label: 'Kitchen Manager' },
+  { value: 'cook',            label: 'Cook' },
 ];
 
 function UserManagement({ user, onBack, onNavigate }) {
