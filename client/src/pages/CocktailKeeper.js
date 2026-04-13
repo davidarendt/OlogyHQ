@@ -35,7 +35,7 @@ function TagBadge({ name, color }) {
 
 // ── Detail Views ─────────────────────────────────────────────────────────────
 
-function CocktailDetail({ cocktail, batched, onClose, onEdit, canUpload }) {
+function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, canUpload }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
 
@@ -127,16 +127,27 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, canUpload }) {
             </div>
           )}
 
-          {/* Linked batched items */}
+          {/* Linked house-made items */}
           {linkedBatched.length > 0 && (
             <div>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Batched Items Used</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">House-Made Used</h3>
               <div className="flex flex-wrap gap-2">
-                {linkedBatched.map(b => (
-                  <span key={b.id} className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300">
-                    {b.name}
-                  </span>
-                ))}
+                {linkedBatched.map(b => {
+                  const fullItem = batched.find(bi => bi.id === b.id);
+                  return fullItem ? (
+                    <button
+                      key={b.id}
+                      onClick={() => onViewBatched(fullItem)}
+                      className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500/70 transition"
+                    >
+                      {b.name}
+                    </button>
+                  ) : (
+                    <span key={b.id} className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300">
+                      {b.name}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -411,7 +422,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
             {/* Linked batched items */}
             {batchedItems.length > 0 && (
               <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Batched Items Used</label>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">House-Made Items Used</label>
                 <div className="flex flex-wrap gap-2">
                   {batchedItems.map(b => (
                     <button
@@ -546,6 +557,7 @@ function BatchedModal({ item, cocktails, catalog, onSave, onClose }) {
             {cocktails.length > 0 && (
               <div>
                 <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Used In Cocktails</label>
+
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
                   {cocktails.map(c => (
                     <button
@@ -777,7 +789,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
 
   const TABS = [
     { key: 'cocktails', label: 'Cocktails' },
-    { key: 'batched', label: 'Batched Items' },
+    { key: 'batched', label: 'House-Made' },
     ...(canUpload ? [{ key: 'manage', label: 'Manage' }] : []),
   ];
 
@@ -912,7 +924,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
         {/* ── Batched Items Tab ── */}
         {!loading && tab === 'batched' && (
           <div className="space-y-3">
-            {batched.length === 0 && <p className="text-gray-500 text-center py-12">No batched items.</p>}
+            {batched.length === 0 && <p className="text-gray-500 text-center py-12">No house-made items.</p>}
             {batched.map(b => (
               <div
                 key={b.id}
@@ -946,7 +958,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
             <div className="flex gap-2 mb-6">
               {[
                 { key: 'cocktails', label: 'Cocktails' },
-                { key: 'batched', label: 'Batched Items' },
+                { key: 'batched', label: 'House-Made' },
                 { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
               ].map(t => (
                 <button
@@ -1059,7 +1071,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                     className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition"
                     style={{ backgroundColor: '#F05A28' }}
                   >
-                    + New Batched Item
+                    + New House-Made Item
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1094,6 +1106,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           canUpload={canUpload}
           onClose={() => setViewCocktail(null)}
           onEdit={() => { setEditCocktail(viewCocktail); setViewCocktail(null); }}
+          onViewBatched={(item) => { setViewCocktail(null); setViewBatched(item); }}
         />
       )}
       {viewBatched && (
