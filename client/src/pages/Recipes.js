@@ -44,8 +44,8 @@ function BulletedList({ text }) {
   return (
     <ul className="space-y-2.5">
       {lines.map((line, i) => (
-        <li key={i} className="flex gap-3 text-gray-200 text-base leading-snug">
-          <span className="text-lg leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
+        <li key={i} className="flex gap-3 text-gray-200 text-lg leading-snug">
+          <span className="text-xl leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
           <span>{titleCase(line)}</span>
         </li>
       ))}
@@ -59,8 +59,8 @@ function NumberedList({ text }) {
   return (
     <ol className="space-y-3">
       {lines.map((line, i) => (
-        <li key={i} className="flex gap-3 text-gray-200 text-base leading-snug">
-          <span className="font-bold flex-shrink-0 w-5 text-right" style={{ color: '#F05A28' }}>{i + 1}.</span>
+        <li key={i} className="flex gap-3 text-gray-200 text-lg leading-snug">
+          <span className="font-bold flex-shrink-0 w-6 text-right" style={{ color: '#F05A28' }}>{i + 1}.</span>
           <span>{line}</span>
         </li>
       ))}
@@ -95,9 +95,6 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
                 {getCatLabel(recipe.category)}
               </span>
               <h3 className="text-white text-3xl font-bold leading-tight">{recipe.name}</h3>
-              {recipe.cook_time && (
-                <p className="text-gray-400 text-sm mt-2">{recipe.cook_time}</p>
-              )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 pt-1">
               {canUpload && (
@@ -119,17 +116,28 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                 {recipe.ingredients && (
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Ingredients</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Ingredients</h4>
                     <BulletedList text={recipe.ingredients} />
                   </div>
                 )}
                 {recipe.instructions && (
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Instructions</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Instructions</h4>
                     <NumberedList text={recipe.instructions} />
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Cook Time */}
+            {recipe.cook_time && (
+              <>
+                <div className="border-t border-gray-600" />
+                <div>
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Cook Time</h4>
+                  <p className="text-gray-200 text-lg">{recipe.cook_time}</p>
+                </div>
+              </>
             )}
 
             {/* Plating */}
@@ -137,8 +145,8 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
               <>
                 <div className="border-t border-gray-600" />
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Plating</h4>
-                  <p className="text-gray-200 text-base leading-loose">{recipe.plating}</p>
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Plating</h4>
+                  <p className="text-gray-200 text-lg leading-loose">{recipe.plating}</p>
                 </div>
               </>
             )}
@@ -148,7 +156,7 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
               <>
                 <div className="border-t border-gray-600" />
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Related Recipes</h4>
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Related Recipes</h4>
                   <div className="flex flex-wrap gap-2">
                     {recipe.linked_recipes.map(lr => (
                       <span key={lr.id}
