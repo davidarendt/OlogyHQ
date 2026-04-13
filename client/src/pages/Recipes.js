@@ -70,7 +70,7 @@ function NumberedList({ text }) {
 }
 
 // ── Recipe detail modal ────────────────────────────────────────────────────────
-function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
+function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
       <div className="bg-gray-700 rounded-2xl border border-gray-600 shadow-2xl shadow-black/70 w-full max-w-5xl flex flex-col sm:flex-row overflow-hidden">
@@ -153,20 +153,25 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
               </>
             )}
 
-            {/* Related recipes */}
+            {/* Linked recipes — "Used In" for prep, "Related Prep" for menu items */}
             {recipe.linked_recipes && recipe.linked_recipes.length > 0 && (
               <>
                 <div className="border-t border-gray-600" />
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Related Recipes</h4>
+                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>
+                    {recipe.category === 'prep' ? 'Used In' : 'Related Prep Items'}
+                  </h4>
                   <div className="flex flex-wrap gap-2">
-                    {recipe.linked_recipes.map(lr => (
-                      <span key={lr.id}
-                        className="px-3 py-1.5 rounded-full bg-gray-600 text-gray-200 text-sm border border-gray-500">
+                    {recipe.linked_recipes.filter(lr => lr.name).map(lr => (
+                      <button key={lr.id} onClick={() => onViewRecipe(lr.id)}
+                        className="px-3 py-1.5 rounded-full bg-gray-600 text-gray-200 text-sm border border-gray-500 hover:border-orange-500 hover:text-orange-400 transition text-left">
                         {lr.name}
-                      </span>
+                      </button>
                     ))}
                   </div>
+                  {recipe.category === 'prep' && (
+                    <p className="text-gray-600 text-xs mt-3">Click any item to open its recipe</p>
+                  )}
                 </div>
               </>
             )}
@@ -351,21 +356,29 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
               className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
-          {/* Related recipes */}
-          {otherRecipes.length > 0 && (
-            <div>
-              <label className="block text-gray-400 text-sm mb-2">Related Recipes</label>
-              <div className="max-h-40 overflow-y-auto bg-gray-700 rounded-lg p-3 grid grid-cols-2 gap-2 border border-gray-600">
-                {otherRecipes.map(r => (
-                  <label key={r.id} className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={linkedIds.includes(r.id)} onChange={() => toggleLinked(r.id)}
-                      className="accent-orange-500 flex-shrink-0" />
-                    <span className="text-gray-300 text-sm truncate">{r.name}</span>
-                  </label>
-                ))}
+          {/* Related recipes — filtered by section */}
+          {(() => {
+            const isPrep = category === 'prep';
+            const linkedPool = isPrep
+              ? allRecipes.filter(r => r.id !== recipe?.id && MENU_CATS.includes(r.category))
+              : allRecipes.filter(r => r.id !== recipe?.id && r.category === 'prep');
+            const linkedLabel = isPrep ? 'Menu Items That Use This' : 'Related Prep Items';
+            if (!linkedPool.length) return null;
+            return (
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">{linkedLabel}</label>
+                <div className="max-h-40 overflow-y-auto bg-gray-700 rounded-lg p-3 grid grid-cols-2 gap-2 border border-gray-600">
+                  {linkedPool.map(r => (
+                    <label key={r.id} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={linkedIds.includes(r.id)} onChange={() => toggleLinked(r.id)}
+                        className="accent-orange-500 flex-shrink-0" />
+                      <span className="text-gray-300 text-sm truncate">{r.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="flex gap-3 pt-1">
             <button onClick={onClose}
@@ -631,6 +644,7 @@ export default function Recipes({ user, canUpload, onBack }) {
           canUpload={canUpload}
           onClose={() => setViewing(null)}
           onEdit={() => { setEditing(viewing); setViewing(null); }}
+          onViewRecipe={(id) => setViewing(recipes.find(r => r.id === id) || null)}
         />
       )}
       {editing && (
