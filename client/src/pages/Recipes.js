@@ -391,7 +391,9 @@ function RecipeCard({ recipe, onClick }) {
       <div className="w-full h-56 overflow-hidden flex-shrink-0">
         {recipe.image_filename
           ? <RecipeImg recipeId={recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-          : <div className="w-full h-full bg-gray-700 flex items-center justify-center text-4xl">🍽️</div>
+          : <div className="w-full h-full bg-gray-700 flex items-center justify-center text-4xl">
+              {recipe.category === 'prep' ? '🔪' : '🍽️'}
+            </div>
         }
       </div>
       <div className="p-4 flex flex-col gap-1.5 flex-1">
@@ -418,15 +420,19 @@ function RecipeCard({ recipe, onClick }) {
   );
 }
 
+const MENU_CATS = ['brunch', 'shareables', 'flatbreads'];
+const MENU_CATEGORIES = CATEGORIES.filter(c => MENU_CATS.includes(c.value));
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function Recipes({ user, canUpload, onBack }) {
-  const [recipes, setRecipes]   = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [view, setView]         = useState('library');
-  const [search, setSearch]     = useState('');
+  const [recipes, setRecipes]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [view, setView]           = useState('library');
+  const [section, setSection]     = useState('menu'); // 'menu' | 'prep'
+  const [search, setSearch]       = useState('');
   const [activeCat, setActiveCat] = useState('all');
-  const [viewing, setViewing]   = useState(null);
-  const [editing, setEditing]   = useState(null);
+  const [viewing, setViewing]     = useState(null);
+  const [editing, setEditing]     = useState(null);
 
   const fetchRecipes = () => {
     fetch(`${API}/api/recipes`, { credentials: 'include' })
@@ -436,31 +442,56 @@ export default function Recipes({ user, canUpload, onBack }) {
 
   useEffect(() => { fetchRecipes(); }, []);
 
+  const handleSectionChange = (s) => { setSection(s); setActiveCat('all'); setSearch(''); };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this recipe?')) return;
     await fetch(`${API}/api/recipes/${id}`, { method: 'DELETE', credentials: 'include' });
     setRecipes(prev => prev.filter(r => r.id !== id));
   };
 
-  const moveRecipe = async (index, direction) => {
-    const next = [...recipes];
+  const moveRecipe = async (index, direction, sectionRecipes) => {
+    const ids = sectionRecipes.map(r => r.id);
     const swap = index + direction;
-    if (swap < 0 || swap >= next.length) return;
-    [next[index], next[swap]] = [next[swap], next[index]];
+    if (swap < 0 || swap >= ids.length) return;
+    [ids[index], ids[swap]] = [ids[swap], ids[index]];
+    // Rebuild full ordered list: other section keeps its positions, this section gets new order
+    const otherIds = recipes.filter(r => !ids.includes(r.id)).map(r => r.id);
+    const orderedIds = section === 'menu' ? [...ids, ...otherIds] : [...otherIds, ...ids];
+    const next = orderedIds.map(id => recipes.find(r => r.id === id));
     setRecipes(next);
     await fetch(`${API}/api/recipes/reorder`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderedIds: next.map(r => r.id) }),
+      body: JSON.stringify({ orderedIds }),
     });
   };
 
-  const filtered = recipes.filter(r => {
+  const sectionRecipes = recipes.filter(r =>
+    section === 'menu' ? MENU_CATS.includes(r.category) : r.category === 'prep'
+  );
+
+  const filtered = sectionRecipes.filter(r => {
     const q = search.toLowerCase();
-    const matchSearch = !q || r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q);
+    const matchSearch = !q || r.name.toLowerCase().includes(q);
     const matchCat = activeCat === 'all' || r.category === activeCat;
     return matchSearch && matchCat;
   });
+
+  // Section toggle bar — shared between library and manage
+  const SectionTabs = () => (
+    <div className="flex gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700 self-start">
+      {[['menu', 'Menu Items'], ['prep', 'Prep']].map(([s, label]) => (
+        <button key={s} onClick={() => handleSectionChange(s)}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition ${
+            section === s ? 'text-white' : 'text-gray-400 hover:text-white'
+          }`}
+          style={section === s ? { backgroundColor: '#F05A28' } : {}}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -473,7 +504,7 @@ export default function Recipes({ user, canUpload, onBack }) {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex items-start justify-between mb-6">
           <div>
             <h2 className="text-cream text-4xl font-bold">Recipes</h2>
             <p className="text-gray-400 mt-2">Kitchen recipe library</p>
@@ -496,25 +527,29 @@ export default function Recipes({ user, canUpload, onBack }) {
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : view === 'library' ? (
           <>
-            <div className="mb-6 space-y-3">
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search recipes…"
+            <div className="mb-6 space-y-4">
+              <SectionTabs />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={section === 'menu' ? 'Search menu items…' : 'Search prep recipes…'}
                 className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent" />
-              <div className="flex flex-wrap gap-2">
-                {[{ value: 'all', label: 'All' }, ...CATEGORIES].map(c => (
-                  <button key={c.value} onClick={() => setActiveCat(c.value)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
-                      activeCat === c.value ? 'text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'
-                    }`}
-                    style={activeCat === c.value ? { backgroundColor: CAT_COLORS[c.value] || '#F05A28' } : {}}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
+              {section === 'menu' && (
+                <div className="flex flex-wrap gap-2">
+                  {[{ value: 'all', label: 'All' }, ...MENU_CATEGORIES].map(c => (
+                    <button key={c.value} onClick={() => setActiveCat(c.value)}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                        activeCat === c.value ? 'text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'
+                      }`}
+                      style={activeCat === c.value ? { backgroundColor: CAT_COLORS[c.value] || '#F05A28' } : {}}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-600 text-sm">
-                {recipes.length === 0 ? 'No recipes yet.' : 'No recipes match your search.'}
+                {sectionRecipes.length === 0 ? 'No recipes yet.' : 'No recipes match your search.'}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -524,7 +559,8 @@ export default function Recipes({ user, canUpload, onBack }) {
           </>
         ) : (
           <div>
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-between mb-5">
+              <SectionTabs />
               <button onClick={() => setEditing('new')}
                 className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition"
                 style={{ backgroundColor: '#F05A28' }}>
@@ -532,7 +568,7 @@ export default function Recipes({ user, canUpload, onBack }) {
               </button>
             </div>
             <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-              {recipes.length === 0 ? (
+              {sectionRecipes.length === 0 ? (
                 <div className="py-16 text-center text-gray-500 text-sm">No recipes yet. Click Add Recipe to get started.</div>
               ) : (
                 <table className="w-full">
@@ -543,18 +579,17 @@ export default function Recipes({ user, canUpload, onBack }) {
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden sm:table-cell">Category</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden md:table-cell">Cook Time</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden md:table-cell">Photo</th>
-                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden lg:table-cell">Added By</th>
                       <th className="px-6 py-4" />
                     </tr>
                   </thead>
                   <tbody>
-                    {recipes.map((recipe, i) => (
+                    {sectionRecipes.map((recipe, i) => (
                       <tr key={recipe.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/30 transition">
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1">
-                            <button onClick={() => moveRecipe(i, -1)} disabled={i === 0}
+                            <button onClick={() => moveRecipe(i, -1, sectionRecipes)} disabled={i === 0}
                               className="text-gray-500 hover:text-white disabled:opacity-20 transition text-xs leading-none">▲</button>
-                            <button onClick={() => moveRecipe(i, 1)} disabled={i === recipes.length - 1}
+                            <button onClick={() => moveRecipe(i, 1, sectionRecipes)} disabled={i === sectionRecipes.length - 1}
                               className="text-gray-500 hover:text-white disabled:opacity-20 transition text-xs leading-none">▼</button>
                           </div>
                         </td>
@@ -571,7 +606,6 @@ export default function Recipes({ user, canUpload, onBack }) {
                             {recipe.image_filename ? '✓' : '—'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 hidden lg:table-cell text-gray-400 text-sm">{recipe.created_by_name || '—'}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3 justify-end">
                             <button onClick={() => setViewing(recipe)} className="text-sm text-gray-400 hover:text-white transition">View</button>
