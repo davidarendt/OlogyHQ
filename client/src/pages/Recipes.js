@@ -224,8 +224,6 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const toggleLinked = (id) =>
     setLinkedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const otherRecipes = allRecipes.filter(r => r.id !== recipe?.id);
-
   const handleSave = async () => {
     if (!name.trim()) { setError('Name is required.'); return; }
     setSaving(true); setError('');
