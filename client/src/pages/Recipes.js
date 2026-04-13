@@ -338,6 +338,7 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const [error, setError]   = useState('');
 
   // Clean up preview URL on unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, []);
 
   const handleFileSelected = (file) => {
