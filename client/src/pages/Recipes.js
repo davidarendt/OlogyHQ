@@ -42,10 +42,10 @@ function BulletedList({ text }) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
   return (
-    <ul className="space-y-1.5">
+    <ul className="space-y-2.5">
       {lines.map((line, i) => (
-        <li key={i} className="flex gap-2.5 text-gray-300 text-sm leading-relaxed">
-          <span className="text-lg leading-none flex-shrink-0" style={{ color: '#F05A28' }}>•</span>
+        <li key={i} className="flex gap-3 text-gray-200 text-base leading-snug">
+          <span className="text-lg leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
           <span>{titleCase(line)}</span>
         </li>
       ))}
@@ -57,9 +57,9 @@ function NumberedList({ text }) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
   return (
-    <ol className="space-y-2">
+    <ol className="space-y-3">
       {lines.map((line, i) => (
-        <li key={i} className="flex gap-2.5 text-gray-300 text-sm leading-relaxed">
+        <li key={i} className="flex gap-3 text-gray-200 text-base leading-snug">
           <span className="font-bold flex-shrink-0 w-5 text-right" style={{ color: '#F05A28' }}>{i + 1}.</span>
           <span>{line}</span>
         </li>
@@ -71,91 +71,94 @@ function NumberedList({ text }) {
 // ── Recipe detail modal ────────────────────────────────────────────────────────
 function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
-      <div className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-4xl flex flex-col sm:flex-row overflow-hidden">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="bg-gray-700 rounded-2xl border border-gray-600 shadow-2xl shadow-black/70 w-full max-w-5xl flex flex-col sm:flex-row overflow-hidden">
 
         {/* Photo — left column on desktop, bottom on mobile */}
         {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-72 flex-shrink-0 self-stretch bg-gray-900" style={{ minHeight: 300 }}>
+          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 self-stretch bg-gray-900" style={{ minHeight: 300 }}>
             <RecipeImg
               recipeId={recipe.id}
-              className="w-full h-full object-cover object-top"
+              className="w-full h-full object-contain"
             />
           </div>
         )}
 
         {/* Content — right column on desktop */}
         <div className="flex-1 min-w-0 flex flex-col">
+
           {/* Header */}
-          <div className="p-6 pb-2 flex items-start justify-between gap-4">
+          <div className="px-8 pt-7 pb-6 flex items-start justify-between gap-4 border-b border-gray-600">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="text-xs font-bold px-2 py-0.5 rounded text-white flex-shrink-0"
-                  style={{ backgroundColor: CAT_COLORS[recipe.category] || '#6b7280' }}>
-                  {getCatLabel(recipe.category)}
-                </span>
-              </div>
-              <h3 className="text-white text-2xl font-bold leading-tight">{recipe.name}</h3>
+              <span className="inline-block text-xs font-bold px-2.5 py-1 rounded mb-3 text-white"
+                style={{ backgroundColor: CAT_COLORS[recipe.category] || '#6b7280' }}>
+                {getCatLabel(recipe.category)}
+              </span>
+              <h3 className="text-white text-3xl font-bold leading-tight">{recipe.name}</h3>
+              {recipe.cook_time && (
+                <p className="text-gray-400 text-sm mt-2">{recipe.cook_time}</p>
+              )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 pt-1">
               {canUpload && (
                 <button onClick={onEdit}
-                  className="px-3 py-1.5 rounded-lg text-sm text-gray-300 border border-gray-600 hover:text-white hover:border-gray-500 transition">
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-200 border border-gray-500 hover:border-orange-500 hover:text-orange-400 transition">
                   Edit
                 </button>
               )}
-              <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none transition">×</button>
+              <button onClick={onClose}
+                className="w-9 h-9 rounded-lg bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white text-xl flex items-center justify-center transition leading-none flex-shrink-0">
+                ×
+              </button>
             </div>
           </div>
 
-          <div className="p-6 pt-3 space-y-6 overflow-y-auto">
+          <div className="px-8 py-7 space-y-8 overflow-y-auto">
             {/* Ingredients + Instructions */}
             {(recipe.ingredients || recipe.instructions) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                 {recipe.ingredients && (
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#F05A28' }}>Ingredients</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Ingredients</h4>
                     <BulletedList text={recipe.ingredients} />
                   </div>
                 )}
                 {recipe.instructions && (
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#F05A28' }}>Instructions</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#F05A28' }}>Instructions</h4>
                     <NumberedList text={recipe.instructions} />
                   </div>
                 )}
               </div>
             )}
 
-            {/* Cook Time */}
-            {recipe.cook_time && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-semibold text-xs uppercase tracking-wider" style={{ color: '#F05A28' }}>Cook Time</span>
-                <span className="text-gray-300">{recipe.cook_time}</span>
-              </div>
-            )}
-
             {/* Plating */}
             {recipe.plating && (
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#F05A28' }}>Plating</h4>
-                <p className="text-gray-300 text-sm leading-relaxed">{recipe.plating}</p>
-              </div>
+              <>
+                <div className="border-t border-gray-600" />
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Plating</h4>
+                  <p className="text-gray-200 text-base leading-loose">{recipe.plating}</p>
+                </div>
+              </>
             )}
 
             {/* Related recipes */}
             {recipe.linked_recipes && recipe.linked_recipes.length > 0 && (
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#F05A28' }}>Related Recipes</h4>
-                <div className="flex flex-wrap gap-2">
-                  {recipe.linked_recipes.map(lr => (
-                    <span key={lr.id}
-                      className="px-3 py-1 rounded-full bg-gray-700 text-gray-300 text-xs border border-gray-600">
-                      {lr.name}
-                    </span>
-                  ))}
+              <>
+                <div className="border-t border-gray-600" />
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#F05A28' }}>Related Recipes</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {recipe.linked_recipes.map(lr => (
+                      <span key={lr.id}
+                        className="px-3 py-1.5 rounded-full bg-gray-600 text-gray-200 text-sm border border-gray-500">
+                        {lr.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
