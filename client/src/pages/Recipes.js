@@ -31,7 +31,7 @@ function RecipeImg({ recipeId, className }) {
       .catch(() => {});
     return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
   }, [recipeId]);
-  if (!src) return <div className="w-full bg-gray-700" style={{ minHeight: 160 }} />;
+  if (!src) return <div className="w-full h-full bg-gray-700" style={{ minHeight: 160 }} />;
   return <img src={src} alt="" className={className} />;
 }
 
@@ -76,10 +76,10 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
 
         {/* Photo — left column on desktop, bottom on mobile */}
         {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-80 flex-shrink-0 bg-gray-900">
+          <div className="order-last sm:order-first sm:w-72 flex-shrink-0 self-stretch bg-gray-900" style={{ minHeight: 300 }}>
             <RecipeImg
               recipeId={recipe.id}
-              className="w-full h-auto block"
+              className="w-full h-full object-cover object-top"
             />
           </div>
         )}
@@ -377,7 +377,7 @@ function RecipeCard({ recipe, onClick }) {
   return (
     <button onClick={onClick}
       className="group bg-gray-800 rounded-2xl border border-gray-700 hover:border-orange-500 transition-all duration-200 text-left overflow-hidden flex flex-col hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5">
-      <div className="w-full h-36 overflow-hidden flex-shrink-0">
+      <div className="w-full h-56 overflow-hidden flex-shrink-0">
         {recipe.image_filename
           ? <RecipeImg recipeId={recipe.id} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           : <div className="w-full h-full bg-gray-700 flex items-center justify-center text-4xl">🍽️</div>
