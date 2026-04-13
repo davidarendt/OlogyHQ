@@ -1856,7 +1856,9 @@ app.get('/api/recipes/:id/photo', authenticateToken, async (req, res) => {
     const { data, error } = await supabase.storage.from('recipe-photos').download(r.rows[0].image_filename);
     if (error || !data) return res.status(404).json({ message: 'Photo not found' });
     const buffer = Buffer.from(await data.arrayBuffer());
-    res.setHeader('Content-Type', 'image/jpeg');
+    const ext = path.extname(r.rows[0].image_filename).toLowerCase();
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.heic': 'image/heic', '.heif': 'image/heif' };
+    res.setHeader('Content-Type', mimeMap[ext] || data.type || 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(buffer);
   } catch (err) {
