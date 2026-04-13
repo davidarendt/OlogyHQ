@@ -623,7 +623,12 @@ function CocktailKeeper({ user, canUpload, onBack }) {
     if (statusFilter === 'inactive' && c.status !== 'inactive') return false;
     if (statusFilter === 'active' && c.status !== 'active') return false;
     if (tagFilter && !(c.tags || []).some(t => t.name === tagFilter)) return false;
-    if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const inName = c.name.toLowerCase().includes(q);
+      const inIngredients = (c.ingredients || []).some(i => i.ingredient_name.toLowerCase().includes(q));
+      if (!inName && !inIngredients) return false;
+    }
     return true;
   });
 
