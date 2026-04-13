@@ -280,11 +280,25 @@ app.post('/api/users/:id/resend-invite', authenticateToken, async (req, res) => 
 
 // Update a user's role
 app.put('/api/users/:id', authenticateToken, async (req, res) => {
-  const { role } = req.body;
+  const { role, name, email } = req.body;
   try {
+    // Build dynamic update — only set fields that were provided
+    const fields = [];
+    const values = [];
+    if (role  !== undefined) { fields.push(`role = $${fields.length + 1}`);  values.push(role); }
+    if (name  !== undefined) { fields.push(`name = $${fields.length + 1}`);  values.push(name.trim()); }
+    if (email !== undefined) {
+      // Check for duplicate email (exclude current user)
+      const dup = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2', [email.trim(), req.params.id]);
+      if (dup.rows.length > 0) return res.status(400).json({ message: 'Email already in use.' });
+      fields.push(`email = $${fields.length + 1}`);
+      values.push(email.trim().toLowerCase());
+    }
+    if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update.' });
+    values.push(req.params.id);
     const result = await pool.query(
-      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, email, role',
-      [role, req.params.id]
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${values.length} RETURNING id, name, email, role`,
+      values
     );
     res.json(result.rows[0]);
   } catch (err) {

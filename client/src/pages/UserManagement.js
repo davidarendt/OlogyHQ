@@ -19,6 +19,8 @@ function UserManagement({ user, onBack, onNavigate }) {
   const [error, setError]           = useState('');
   const [success, setSuccess]       = useState('');
   const [resending, setResending]   = useState(null);
+  const [editingId, setEditingId]   = useState(null);
+  const [editForm, setEditForm]     = useState({ name: '', email: '' });
 
   const fetchUsers = async () => {
     const res = await fetch(`${API}/api/users`, { credentials: 'include' });
@@ -58,6 +60,38 @@ function UserManagement({ user, onBack, onNavigate }) {
       body: JSON.stringify({ role }),
     });
     fetchUsers();
+  };
+
+  const startEdit = (u) => {
+    setEditingId(u.id);
+    setEditForm({ name: u.name, email: u.email });
+    setError('');
+    setSuccess('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({ name: '', email: '' });
+  };
+
+  const handleEditSave = async (id) => {
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API}/api/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: editForm.name, email: editForm.email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message); return; }
+      setSuccess(`${data.name} updated.`);
+      setEditingId(null);
+      fetchUsers();
+    } catch {
+      setError('Could not connect to server');
+    }
   };
 
   const handleResendInvite = async (id, name) => {
@@ -181,47 +215,94 @@ function UserManagement({ user, onBack, onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id} className="border-b border-gray-700 last:border-0">
-                  <td className="text-white px-6 py-4">
-                    <div>{u.name}</div>
-                    {u.invite_pending && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                        Invite Pending
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-gray-400 px-6 py-4">{u.email}</td>
-                  <td className="px-6 py-4">
-                    <select
-                      className="bg-gray-700 text-white text-sm p-1 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      value={u.role}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                    >
-                      {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {u.invite_pending && (
-                        <button
-                          onClick={() => handleResendInvite(u.id, u.name)}
-                          disabled={resending === u.id}
-                          className="text-yellow-400 hover:text-yellow-300 text-sm transition disabled:opacity-50"
-                        >
-                          {resending === u.id ? 'Sending…' : 'Resend Invite'}
-                        </button>
+              {users.map((u) => {
+                const isEditing = editingId === u.id;
+                return (
+                  <tr key={u.id} className="border-b border-gray-700 last:border-0">
+                    <td className="text-white px-6 py-4">
+                      {isEditing ? (
+                        <input
+                          className="w-full bg-gray-700 text-white p-1.5 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        />
+                      ) : (
+                        <>
+                          <div>{u.name}</div>
+                          {u.invite_pending && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                              Invite Pending
+                            </span>
+                          )}
+                        </>
                       )}
-                      <button
-                        onClick={() => handleDelete(u.id, u.name)}
-                        className="text-red-400 hover:text-red-300 text-sm transition"
+                    </td>
+                    <td className="text-gray-400 px-6 py-4">
+                      {isEditing ? (
+                        <input
+                          type="email"
+                          className="w-full bg-gray-700 text-white p-1.5 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                        />
+                      ) : u.email}
+                    </td>
+                    <td className="px-6 py-4">
+                      <select
+                        className="bg-gray-700 text-white text-sm p-1 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.id, e.target.value)}
                       >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={() => handleEditSave(u.id)}
+                              className="text-green-400 hover:text-green-300 text-sm transition"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="text-gray-400 hover:text-white text-sm transition"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEdit(u)}
+                              className="text-blue-400 hover:text-blue-300 text-sm transition"
+                            >
+                              Edit
+                            </button>
+                            {u.invite_pending && (
+                              <button
+                                onClick={() => handleResendInvite(u.id, u.name)}
+                                disabled={resending === u.id}
+                                className="text-yellow-400 hover:text-yellow-300 text-sm transition disabled:opacity-50"
+                              >
+                                {resending === u.id ? 'Sending…' : 'Resend Invite'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(u.id, u.name)}
+                              className="text-red-400 hover:text-red-300 text-sm transition"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
