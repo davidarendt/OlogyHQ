@@ -3,23 +3,17 @@ import { useState, useEffect, useRef } from 'react';
 const API = process.env.REACT_APP_API_URL || '';
 
 const CATEGORIES = [
-  { value: 'breakfast',  label: 'Breakfast' },
-  { value: 'appetizer',  label: 'Appetizer' },
-  { value: 'entree',     label: 'Entree' },
-  { value: 'dessert',    label: 'Dessert' },
-  { value: 'sauce',      label: 'Sauce' },
-  { value: 'prep',       label: 'Prep / Component' },
-  { value: 'other',      label: 'Other' },
+  { value: 'brunch',      label: 'Brunch' },
+  { value: 'shareables',  label: 'Shareables' },
+  { value: 'flatbreads',  label: 'Flatbreads' },
+  { value: 'prep',        label: 'Prep' },
 ];
 
 const CAT_COLORS = {
-  breakfast: '#f59e0b',
-  appetizer: '#3b82f6',
-  entree:    '#10b981',
-  dessert:   '#ec4899',
-  sauce:     '#F05A28',
-  prep:      '#8b5cf6',
-  other:     '#6b7280',
+  brunch:     '#f59e0b',
+  shareables: '#3b82f6',
+  flatbreads: '#10b981',
+  prep:       '#8b5cf6',
 };
 
 function getCatLabel(v) {
@@ -235,11 +229,6 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
                 style={{ backgroundColor: CAT_COLORS[recipe.category] || '#6b7280' }}>
                 {getCatLabel(recipe.category)}
               </span>
-              {recipe.cook_time && (
-                <span className="text-xs text-gray-400 flex items-center gap-1">
-                  <span>⏱</span> {recipe.cook_time}
-                </span>
-              )}
             </div>
             <h3 className="text-white text-2xl font-bold leading-tight">{recipe.name}</h3>
           </div>
@@ -255,10 +244,6 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
         </div>
 
         <div className="p-6 pt-3 space-y-6">
-          {recipe.description && (
-            <p className="text-gray-300 text-sm leading-relaxed">{recipe.description}</p>
-          )}
-
           {/* Ingredients + Instructions */}
           {(recipe.ingredients || recipe.instructions) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -277,19 +262,20 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
             </div>
           )}
 
+          {/* Cook Time */}
+          {recipe.cook_time && (
+            <div className="flex items-center gap-2 text-gray-300 text-sm">
+              <span style={{ color: '#F05A28' }}>⏱</span>
+              <span className="font-semibold text-xs uppercase tracking-wider" style={{ color: '#F05A28' }}>Cook Time</span>
+              <span className="text-gray-300">{recipe.cook_time}</span>
+            </div>
+          )}
+
           {/* Plating */}
           {recipe.plating && (
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#F05A28' }}>Plating</h4>
               <p className="text-gray-300 text-sm leading-relaxed">{recipe.plating}</p>
-            </div>
-          )}
-
-          {/* Notes */}
-          {recipe.notes && (
-            <div className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-              <h4 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#F05A28' }}>Notes</h4>
-              <p className="text-gray-300 text-sm leading-relaxed">{recipe.notes}</p>
             </div>
           )}
 
@@ -317,13 +303,11 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
 function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const isEdit = !!recipe;
   const [name, setName]               = useState(recipe?.name || '');
-  const [category, setCategory]       = useState(recipe?.category || 'entree');
+  const [category, setCategory]       = useState(recipe?.category || 'brunch');
   const [cookTime, setCookTime]       = useState(recipe?.cook_time || '');
-  const [description, setDescription] = useState(recipe?.description || '');
   const [ingredients, setIngredients] = useState(recipe?.ingredients || '');
   const [instructions, setInstructions] = useState(recipe?.instructions || '');
   const [plating, setPlating]         = useState(recipe?.plating || '');
-  const [notes, setNotes]             = useState(recipe?.notes || '');
   const [linkedIds, setLinkedIds]     = useState(recipe?.linked_recipe_ids || []);
 
   // Photo state
@@ -370,11 +354,9 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
     fd.append('name', name.trim());
     fd.append('category', category);
     fd.append('cook_time', cookTime);
-    fd.append('description', description);
     fd.append('ingredients', ingredients);
     fd.append('instructions', instructions);
     fd.append('plating', plating);
-    fd.append('notes', notes);
     fd.append('linked_recipe_ids', JSON.stringify(linkedIds));
     if (photo) fd.append('photo', photo);
     if (isEdit && clearPhoto) fd.append('clear_photo', '1');
@@ -469,14 +451,6 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
             )}
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-gray-400 text-sm mb-1.5">Description</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              placeholder="Brief description of this recipe…"
-              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500" />
-          </div>
-
           {/* Ingredients + Instructions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -495,19 +469,19 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
             </div>
           </div>
 
+          {/* Cook Time */}
+          <div>
+            <label className="block text-gray-400 text-sm mb-1.5">Cook Time</label>
+            <input value={cookTime} onChange={e => setCookTime(e.target.value)}
+              placeholder="e.g. 30 min prep / 20 min cook"
+              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+          </div>
+
           {/* Plating */}
           <div>
             <label className="block text-gray-400 text-sm mb-1.5">Plating</label>
             <textarea value={plating} onChange={e => setPlating(e.target.value)} rows={3}
               placeholder="How to plate and present this dish…"
-              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500" />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-gray-400 text-sm mb-1.5">Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              placeholder="Prep tips, storage instructions, allergen info…"
               className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 

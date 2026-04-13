@@ -1848,14 +1848,19 @@ app.get('/api/recipes', authenticateToken, async (req, res) => {
   }
 });
 
-// Get recipe photo — registered before /:id routes
+// Get recipe photo — download from Supabase and stream back (avoids signed URL redirect issues)
 app.get('/api/recipes/:id/photo', authenticateToken, async (req, res) => {
   try {
     const r = await pool.query('SELECT image_filename FROM recipes WHERE id=$1', [req.params.id]);
     if (!r.rows.length || !r.rows[0].image_filename) return res.status(404).json({ message: 'No photo' });
-    const url = await getSignedUrl('recipe-photos', r.rows[0].image_filename);
-    res.redirect(url);
+    const { data, error } = await supabase.storage.from('recipe-photos').download(r.rows[0].image_filename);
+    if (error || !data) return res.status(404).json({ message: 'Photo not found' });
+    const buffer = Buffer.from(await data.arrayBuffer());
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
