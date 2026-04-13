@@ -59,7 +59,7 @@ function BulletedList({ text, prepLinks = [], onViewRecipe }) {
             <span className="text-xl leading-none flex-shrink-0 mt-0.5" style={{ color: '#F05A28' }}>•</span>
             {linked && onViewRecipe ? (
               <button onClick={() => onViewRecipe(linked.id)}
-                className="text-left hover:text-orange-400 transition underline decoration-dotted underline-offset-2 decoration-orange-500/50">
+                className="text-left px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500/70 hover:text-orange-200 transition text-lg leading-snug">
                 {titleCase(line)}
               </button>
             ) : (
