@@ -660,10 +660,13 @@ function CocktailKeeper({ user, canUpload, onBack }) {
     <div className="min-h-screen bg-gray-900">
       {/* Top Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="text-gray-400 hover:text-white transition text-sm">← Back</button>
-          <h1 className="text-cream text-xl font-bold">Cocktail Keeper</h1>
-        </div>
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
+        </button>
+        <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
+          ← Back to Dashboard
+        </button>
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 py-8">
