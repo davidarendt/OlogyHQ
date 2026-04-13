@@ -1954,6 +1954,368 @@ app.delete('/api/recipes/:id', authenticateToken, checkRecipesManage, async (req
   }
 });
 
+// ── Cocktail Keeper ──────────────────────────────────────────────────────────
+
+function checkCocktailsManage(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+const cocktailPhotoUpload = multer({ storage: memoryStorage, limits: { fileSize: 25 * 1024 * 1024 } });
+
+// List catalog values
+app.get('/api/cocktails/catalog', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cocktail_catalog ORDER BY category, sort_order');
+    const catalog = {};
+    for (const row of result.rows) {
+      if (!catalog[row.category]) catalog[row.category] = [];
+      catalog[row.category].push(row.value);
+    }
+    res.json(catalog);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List tag definitions
+app.get('/api/cocktails/tag-definitions', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cocktail_tag_definitions ORDER BY sort_order');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List all cocktails
+app.get('/api/cocktails', authenticateToken, async (req, res) => {
+  try {
+    const cocktails = await pool.query('SELECT * FROM cocktails ORDER BY sort_order ASC, created_at ASC');
+    const ingredients = await pool.query('SELECT * FROM cocktail_ingredients ORDER BY cocktail_id, sort_order');
+    const tags = await pool.query('SELECT * FROM cocktail_tags ORDER BY cocktail_id');
+
+    const ingMap = {};
+    for (const i of ingredients.rows) {
+      if (!ingMap[i.cocktail_id]) ingMap[i.cocktail_id] = [];
+      ingMap[i.cocktail_id].push(i);
+    }
+    const tagMap = {};
+    for (const t of tags.rows) {
+      if (!tagMap[t.cocktail_id]) tagMap[t.cocktail_id] = [];
+      tagMap[t.cocktail_id].push({ name: t.tag_name, color: t.tag_color });
+    }
+
+    const batched = await pool.query('SELECT id, name FROM batched_cocktail_items ORDER BY sort_order');
+    const batchedMap = {};
+    for (const b of batched.rows) batchedMap[b.id] = b.name;
+
+    res.json(cocktails.rows.map(c => ({
+      ...c,
+      ingredients: ingMap[c.id] || [],
+      tags: tagMap[c.id] || [],
+      linked_batched_items: (c.linked_batched_item_ids || []).map(id => ({ id, name: batchedMap[id] || '' })),
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get cocktail photo
+app.get('/api/cocktails/:id/photo', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT photo_filename FROM cocktails WHERE id=$1', [req.params.id]);
+    if (!r.rows.length || !r.rows[0].photo_filename) return res.status(404).json({ message: 'No photo' });
+    const { data, error } = await supabase.storage.from('cocktail-photos').download(r.rows[0].photo_filename);
+    if (error || !data) return res.status(404).json({ message: 'Photo not found' });
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const ext = path.extname(r.rows[0].photo_filename).toLowerCase();
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.heic': 'image/heic', '.heif': 'image/heif' };
+    res.setHeader('Content-Type', mimeMap[ext] || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Reorder cocktails — must be before /:id routes
+app.patch('/api/cocktails/reorder', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query('UPDATE cocktails SET sort_order=$1 WHERE id=$2', [i + 1, ids[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create cocktail
+app.post('/api/cocktails', authenticateToken, checkCocktailsManage, cocktailPhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags } = req.body;
+    const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM cocktails');
+    let photo_filename = null;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      photo_filename = `cocktail_${Date.now()}${ext}`;
+      await uploadToSupabase('cocktail-photos', photo_filename, req.file.buffer, req.file.mimetype);
+    }
+    const batchIds = JSON.parse(linked_batched_item_ids || '[]');
+    const result = await pool.query(
+      `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name, method||null, glass||null, ice||null, status||'active', price||null, last_special_on||null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1]
+    );
+    const cocktail = result.rows[0];
+    const ingList = JSON.parse(ingredients || '[]');
+    for (let i = 0; i < ingList.length; i++) {
+      const ing = ingList[i];
+      await pool.query(
+        'INSERT INTO cocktail_ingredients (cocktail_id, ingredient_name, amount, unit, sort_order) VALUES ($1,$2,$3,$4,$5)',
+        [cocktail.id, ing.ingredient_name, ing.amount||null, ing.unit||null, i+1]
+      );
+    }
+    const tagList = JSON.parse(tags || '[]');
+    for (const tag of tagList) {
+      const td = await pool.query('SELECT color FROM cocktail_tag_definitions WHERE name=$1', [tag]);
+      await pool.query(
+        'INSERT INTO cocktail_tags (cocktail_id, tag_name, tag_color) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [cocktail.id, tag, td.rows[0]?.color || '#6b7280']
+      );
+    }
+    // Update reverse links on batched items
+    for (const bid of batchIds) {
+      await pool.query(
+        `UPDATE batched_cocktail_items SET linked_cocktail_ids = array_append(linked_cocktail_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_cocktail_ids))`,
+        [cocktail.id, bid]
+      );
+    }
+    res.json(cocktail);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update cocktail
+app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsManage, cocktailPhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags, remove_photo } = req.body;
+    const existing = await pool.query('SELECT * FROM cocktails WHERE id=$1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    let photo_filename = existing.rows[0].photo_filename;
+    if (remove_photo === 'true' && photo_filename) {
+      await supabase.storage.from('cocktail-photos').remove([photo_filename]);
+      photo_filename = null;
+    }
+    if (req.file) {
+      if (photo_filename) await supabase.storage.from('cocktail-photos').remove([photo_filename]);
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      photo_filename = `cocktail_${Date.now()}${ext}`;
+      await uploadToSupabase('cocktail-photos', photo_filename, req.file.buffer, req.file.mimetype);
+    }
+
+    const oldBatchIds = existing.rows[0].linked_batched_item_ids || [];
+    const newBatchIds = JSON.parse(linked_batched_item_ids || '[]');
+
+    const result = await pool.query(
+      `UPDATE cocktails SET name=$1, method=$2, glass=$3, ice=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10
+       WHERE id=$11 RETURNING *`,
+      [name, method||null, glass||null, ice||null, status||'active', price||null, last_special_on||null, notes||null, photo_filename, newBatchIds, id]
+    );
+
+    // Sync ingredients
+    await pool.query('DELETE FROM cocktail_ingredients WHERE cocktail_id=$1', [id]);
+    const ingList = JSON.parse(ingredients || '[]');
+    for (let i = 0; i < ingList.length; i++) {
+      const ing = ingList[i];
+      await pool.query(
+        'INSERT INTO cocktail_ingredients (cocktail_id, ingredient_name, amount, unit, sort_order) VALUES ($1,$2,$3,$4,$5)',
+        [id, ing.ingredient_name, ing.amount||null, ing.unit||null, i+1]
+      );
+    }
+
+    // Sync tags
+    await pool.query('DELETE FROM cocktail_tags WHERE cocktail_id=$1', [id]);
+    const tagList = JSON.parse(tags || '[]');
+    for (const tag of tagList) {
+      const td = await pool.query('SELECT color FROM cocktail_tag_definitions WHERE name=$1', [tag]);
+      await pool.query(
+        'INSERT INTO cocktail_tags (cocktail_id, tag_name, tag_color) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [id, tag, td.rows[0]?.color || '#6b7280']
+      );
+    }
+
+    // Sync reverse batched item links
+    const removedBatch = oldBatchIds.filter(b => !newBatchIds.includes(b));
+    const addedBatch = newBatchIds.filter(b => !oldBatchIds.includes(b));
+    for (const bid of removedBatch) {
+      await pool.query(
+        `UPDATE batched_cocktail_items SET linked_cocktail_ids = array_remove(linked_cocktail_ids, $1) WHERE id=$2`,
+        [parseInt(id), bid]
+      );
+    }
+    for (const bid of addedBatch) {
+      await pool.query(
+        `UPDATE batched_cocktail_items SET linked_cocktail_ids = array_append(linked_cocktail_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_cocktail_ids))`,
+        [parseInt(id), bid]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete cocktail
+app.delete('/api/cocktails/:id', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM cocktails WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    if (r.rows[0].photo_filename) {
+      await supabase.storage.from('cocktail-photos').remove([r.rows[0].photo_filename]);
+    }
+    // Remove from batched item reverse links
+    for (const bid of (r.rows[0].linked_batched_item_ids || [])) {
+      await pool.query(
+        `UPDATE batched_cocktail_items SET linked_cocktail_ids = array_remove(linked_cocktail_ids, $1) WHERE id=$2`,
+        [parseInt(req.params.id), bid]
+      );
+    }
+    await pool.query('DELETE FROM cocktails WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List all batched items
+app.get('/api/cocktails/batched', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM batched_cocktail_items ORDER BY sort_order ASC, created_at ASC');
+    const allIds = [...new Set(result.rows.flatMap(r => r.linked_cocktail_ids || []))];
+    let cocktailMap = {};
+    if (allIds.length > 0) {
+      const linked = await pool.query('SELECT id, name FROM cocktails WHERE id = ANY($1)', [allIds]);
+      linked.rows.forEach(r => { cocktailMap[r.id] = r.name; });
+    }
+    res.json(result.rows.map(b => ({
+      ...b,
+      linked_cocktails: (b.linked_cocktail_ids || []).map(id => ({ id, name: cocktailMap[id] || '' })),
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Reorder batched items — must be before /batched/:id routes
+app.patch('/api/cocktails/batched/reorder', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query('UPDATE batched_cocktail_items SET sort_order=$1 WHERE id=$2', [i + 1, ids[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create batched item
+app.post('/api/cocktails/batched', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { name, recipe_notes, yield_amount, yield_unit, linked_cocktail_ids } = req.body;
+    const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM batched_cocktail_items');
+    const ids = JSON.parse(linked_cocktail_ids || '[]');
+    const result = await pool.query(
+      `INSERT INTO batched_cocktail_items (name, recipe_notes, yield_amount, yield_unit, linked_cocktail_ids, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name, recipe_notes||null, yield_amount||null, yield_unit||null, ids, maxOrder.rows[0].m + 1]
+    );
+    const item = result.rows[0];
+    for (const cid of ids) {
+      await pool.query(
+        `UPDATE cocktails SET linked_batched_item_ids = array_append(linked_batched_item_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_batched_item_ids))`,
+        [item.id, cid]
+      );
+    }
+    res.json(item);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update batched item
+app.patch('/api/cocktails/batched/:id', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, recipe_notes, yield_amount, yield_unit, linked_cocktail_ids } = req.body;
+    const existing = await pool.query('SELECT * FROM batched_cocktail_items WHERE id=$1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    const oldIds = existing.rows[0].linked_cocktail_ids || [];
+    const newIds = JSON.parse(linked_cocktail_ids || '[]');
+
+    const result = await pool.query(
+      `UPDATE batched_cocktail_items SET name=$1, recipe_notes=$2, yield_amount=$3, yield_unit=$4, linked_cocktail_ids=$5
+       WHERE id=$6 RETURNING *`,
+      [name, recipe_notes||null, yield_amount||null, yield_unit||null, newIds, id]
+    );
+
+    const removed = oldIds.filter(c => !newIds.includes(c));
+    const added = newIds.filter(c => !oldIds.includes(c));
+    for (const cid of removed) {
+      await pool.query(
+        `UPDATE cocktails SET linked_batched_item_ids = array_remove(linked_batched_item_ids, $1) WHERE id=$2`,
+        [parseInt(id), cid]
+      );
+    }
+    for (const cid of added) {
+      await pool.query(
+        `UPDATE cocktails SET linked_batched_item_ids = array_append(linked_batched_item_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_batched_item_ids))`,
+        [parseInt(id), cid]
+      );
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete batched item
+app.delete('/api/cocktails/batched/:id', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM batched_cocktail_items WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    for (const cid of (r.rows[0].linked_cocktail_ids || [])) {
+      await pool.query(
+        `UPDATE cocktails SET linked_batched_item_ids = array_remove(linked_batched_item_ids, $1) WHERE id=$2`,
+        [parseInt(req.params.id), cid]
+      );
+    }
+    await pool.query('DELETE FROM batched_cocktail_items WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
