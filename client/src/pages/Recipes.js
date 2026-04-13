@@ -77,11 +77,11 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit }) {
 
         {/* Photo — left column on desktop, bottom on mobile */}
         {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 sm:self-start bg-gray-900">
+          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 bg-gray-900">
             <RecipeImg
               recipeId={recipe.id}
               bust={recipe.image_filename}
-              className="w-full h-auto block"
+              className="w-full h-auto sm:h-full object-cover"
             />
           </div>
         )}
