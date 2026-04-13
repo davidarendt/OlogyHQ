@@ -1863,7 +1863,7 @@ app.get('/api/recipes/:id/photo', authenticateToken, async (req, res) => {
 // Create recipe
 app.post('/api/recipes', authenticateToken, checkRecipesManage, recipePhotoUpload.single('photo'), async (req, res) => {
   try {
-    const { name, category, description, ingredients, instructions, notes, linked_recipe_ids } = req.body;
+    const { name, category, cook_time, description, ingredients, instructions, plating, notes, linked_recipe_ids } = req.body;
     const linkedIds = JSON.parse(linked_recipe_ids || '[]');
     let imageFilename = null;
     if (req.file) {
@@ -1874,12 +1874,12 @@ app.post('/api/recipes', authenticateToken, checkRecipesManage, recipePhotoUploa
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM recipes');
     const recipe = await pool.query(
       `INSERT INTO recipes
-         (name, category, description, ingredients, instructions, notes, image_filename,
-          linked_recipe_ids, created_by_id, created_by_name, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [name, category || 'other', description || '', ingredients || '', instructions || '',
-       notes || '', imageFilename, linkedIds, req.user.id, req.user.name,
-       maxSort.rows[0].m + 1]
+         (name, category, cook_time, description, ingredients, instructions, plating, notes,
+          image_filename, linked_recipe_ids, created_by_id, created_by_name, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [name, category || 'other', cook_time || '', description || '', ingredients || '',
+       instructions || '', plating || '', notes || '', imageFilename, linkedIds,
+       req.user.id, req.user.name, maxSort.rows[0].m + 1]
     );
     res.json(recipe.rows[0]);
   } catch (err) {
@@ -1904,7 +1904,7 @@ app.patch('/api/recipes/reorder', authenticateToken, checkRecipesManage, async (
 // Update recipe
 app.patch('/api/recipes/:id', authenticateToken, checkRecipesManage, recipePhotoUpload.single('photo'), async (req, res) => {
   try {
-    const { name, category, description, ingredients, instructions, notes, linked_recipe_ids, clear_photo } = req.body;
+    const { name, category, cook_time, description, ingredients, instructions, plating, notes, linked_recipe_ids, clear_photo } = req.body;
     const linkedIds = JSON.parse(linked_recipe_ids || '[]');
     const existing = await pool.query('SELECT * FROM recipes WHERE id=$1', [req.params.id]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
@@ -1919,10 +1919,11 @@ app.patch('/api/recipes/:id', authenticateToken, checkRecipesManage, recipePhoto
       imageFilename = null;
     }
     const recipe = await pool.query(
-      `UPDATE recipes SET name=$1, category=$2, description=$3, ingredients=$4, instructions=$5,
-       notes=$6, image_filename=$7, linked_recipe_ids=$8, updated_at=NOW() WHERE id=$9 RETURNING *`,
-      [name, category || 'other', description || '', ingredients || '', instructions || '',
-       notes || '', imageFilename, linkedIds, req.params.id]
+      `UPDATE recipes SET name=$1, category=$2, cook_time=$3, description=$4, ingredients=$5,
+       instructions=$6, plating=$7, notes=$8, image_filename=$9, linked_recipe_ids=$10,
+       updated_at=NOW() WHERE id=$11 RETURNING *`,
+      [name, category || 'other', cook_time || '', description || '', ingredients || '',
+       instructions || '', plating || '', notes || '', imageFilename, linkedIds, req.params.id]
     );
     res.json(recipe.rows[0]);
   } catch (err) {
