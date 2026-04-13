@@ -98,12 +98,20 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `taproom_inventory_settings` — singleton row (id=1), four_pack_threshold, sixth_bbl_threshold, half_bbl_threshold
 - `taproom_deliveries` — id, location, invoice_number, delivery_date, submitted_by_id, submitted_by_name, notes, submitted_at
 - `taproom_delivery_items` — id, delivery_id, beer_id, beer_name, cases, sixth_bbl, half_bbl
+- `inspections` — id, location, date, improvements, score_pct, rated_count, created_at
+- `inspection_ratings` — id, inspection_id (→ inspections, cascade), section_id, item_index, rating ('1'–'5'|'NA'|null), note, updated_at; unique on (inspection_id, section_id, item_index)
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`
 
 ### Styling
-Dark theme throughout. Brand color `#FF6B00` (Ology orange). Tailwind utility classes for layout/spacing; inline styles for dynamic hex values. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
+Dark theme throughout. `tailwind.config.js` overrides three color families — do not use the Tailwind defaults for these:
+- **`orange`**: overridden to `#F05A28` at `orange-500` (was `#FF6B00` / Tailwind default). All `orange-*` classes and inline `#F05A28` use this brand color.
+- **`gray`**: overridden with zinc values (neutral/warm, no blue cast). All structural surfaces use `gray-*` classes.
+- **`cream`** (`#F2EDE4`): custom color for page titles and "HQ" nav text (`text-cream`).
+- **`midgray`** (`#636363`): custom color available for use.
+
+Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundColor: '#F05A28' }}` for dynamic brand color. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
 
 ### File Uploads (Supabase Storage)
 All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`.
@@ -115,6 +123,13 @@ httpOnly cookies are not sent for cross-origin `<img>` sub-resource requests. Us
 
 ### Email
 Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/.env` as `EMAIL_USER` / `EMAIL_PASS` (Gmail App Password). The shared `sendLabelOrderEmail(overrides)` helper in `server/labelEmail.js` accepts optional quantity overrides.
+
+### Taproom Inspections — Real-Time Architecture
+`TaproomInspections.js` is a multi-user bar inspection checklist. It uses a **split data pattern**:
+- **All reads and writes** go through the OlogyHQ Express API (`/api/inspections`, `/api/inspections/:id/ratings`) — auth-gated like every other tool.
+- **Live sync** uses `client/src/supabaseClient.js` — a Supabase JS client initialized with the OlogyHQ project's anon key, used only to subscribe to `postgres_changes` on `inspections` and `inspection_ratings`. The anon key is hardcoded (it's intentionally public; writes are still server-gated).
+
+Both tables have RLS enabled with open policies and are published to `supabase_realtime`. Any write through the service-role Express API triggers WebSocket broadcasts to all subscribed clients.
 
 ### External Data
 **Distro / Taproom Orders**: reads live from a Google Sheet via public CSV export URL. The server fetches and parses CSV on each request. PDF invoice links are Google Drive "anyone with link" URLs.
