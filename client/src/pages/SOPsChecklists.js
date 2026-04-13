@@ -5,12 +5,14 @@ const API = process.env.REACT_APP_API_URL || '';
 const ROLES = [
   'admin', 'bar_manager', 'bartender', 'barista',
   'coffee_manager', 'production', 'sales', 'hr',
+  'kitchen_manager', 'cook',
 ];
 
 const ROLE_LABELS = {
   admin: 'Admin', bar_manager: 'Bar Manager', bartender: 'Bartender',
   barista: 'Barista', coffee_manager: 'Coffee Manager',
   production: 'Production', sales: 'Sales', hr: 'HR',
+  kitchen_manager: 'Kitchen Manager', cook: 'Cook',
 };
 
 function fileTypeInfo(mimetype) {

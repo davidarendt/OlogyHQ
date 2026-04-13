@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const ALL_ROLES = ['admin', 'bar_manager', 'bartender', 'barista', 'coffee_manager', 'production', 'sales', 'hr'];
+const ALL_ROLES = ['admin', 'bar_manager', 'bartender', 'barista', 'coffee_manager', 'production', 'sales', 'hr', 'kitchen_manager', 'cook'];
 
 const FILE_TYPES = {
   'application/pdf':                                                              { label: 'PDF', color: 'bg-red-600',    hex: '#dc2626' },

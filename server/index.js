@@ -1815,6 +1815,137 @@ app.post('/api/inspections/:id/ratings', authenticateToken, async (req, res) => 
   }
 });
 
+// ── Recipes ───────────────────────────────────────────────────────────────────
+const recipePhotoUpload = multer({ storage: memoryStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+function checkRecipesManage(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = 'recipes' AND p.permission_level = 'upload'`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+// List all recipes
+app.get('/api/recipes', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM recipes ORDER BY sort_order ASC, created_at ASC');
+    const allIds = [...new Set(result.rows.flatMap(r => r.linked_recipe_ids || []))];
+    let linkedMap = {};
+    if (allIds.length > 0) {
+      const linked = await pool.query('SELECT id, name FROM recipes WHERE id = ANY($1)', [allIds]);
+      linked.rows.forEach(r => { linkedMap[r.id] = r.name; });
+    }
+    const recipes = result.rows.map(r => ({
+      ...r,
+      linked_recipes: (r.linked_recipe_ids || []).map(id => ({ id, name: linkedMap[id] || '' })),
+    }));
+    res.json(recipes);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get recipe photo — registered before /:id routes
+app.get('/api/recipes/:id/photo', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT image_filename FROM recipes WHERE id=$1', [req.params.id]);
+    if (!r.rows.length || !r.rows[0].image_filename) return res.status(404).json({ message: 'No photo' });
+    const url = await getSignedUrl('recipe-photos', r.rows[0].image_filename);
+    res.redirect(url);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create recipe
+app.post('/api/recipes', authenticateToken, checkRecipesManage, recipePhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { name, category, description, ingredients, instructions, notes, linked_recipe_ids } = req.body;
+    const linkedIds = JSON.parse(linked_recipe_ids || '[]');
+    let imageFilename = null;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      imageFilename = Date.now() + '-' + Math.round(Math.random() * 1e9) + ext;
+      await uploadToSupabase('recipe-photos', imageFilename, req.file.buffer, req.file.mimetype);
+    }
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM recipes');
+    const recipe = await pool.query(
+      `INSERT INTO recipes
+         (name, category, description, ingredients, instructions, notes, image_filename,
+          linked_recipe_ids, created_by_id, created_by_name, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name, category || 'other', description || '', ingredients || '', instructions || '',
+       notes || '', imageFilename, linkedIds, req.user.id, req.user.name,
+       maxSort.rows[0].m + 1]
+    );
+    res.json(recipe.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Reorder recipes — MUST be before /:id
+app.patch('/api/recipes/reorder', authenticateToken, checkRecipesManage, async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE recipes SET sort_order=$1 WHERE id=$2', [i, orderedIds[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update recipe
+app.patch('/api/recipes/:id', authenticateToken, checkRecipesManage, recipePhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { name, category, description, ingredients, instructions, notes, linked_recipe_ids, clear_photo } = req.body;
+    const linkedIds = JSON.parse(linked_recipe_ids || '[]');
+    const existing = await pool.query('SELECT * FROM recipes WHERE id=$1', [req.params.id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+    let imageFilename = existing.rows[0].image_filename;
+    if (req.file) {
+      if (imageFilename) await supabase.storage.from('recipe-photos').remove([imageFilename]);
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      imageFilename = Date.now() + '-' + Math.round(Math.random() * 1e9) + ext;
+      await uploadToSupabase('recipe-photos', imageFilename, req.file.buffer, req.file.mimetype);
+    } else if (clear_photo === '1' && imageFilename) {
+      await supabase.storage.from('recipe-photos').remove([imageFilename]);
+      imageFilename = null;
+    }
+    const recipe = await pool.query(
+      `UPDATE recipes SET name=$1, category=$2, description=$3, ingredients=$4, instructions=$5,
+       notes=$6, image_filename=$7, linked_recipe_ids=$8, updated_at=NOW() WHERE id=$9 RETURNING *`,
+      [name, category || 'other', description || '', ingredients || '', instructions || '',
+       notes || '', imageFilename, linkedIds, req.params.id]
+    );
+    res.json(recipe.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete recipe
+app.delete('/api/recipes/:id', authenticateToken, checkRecipesManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM recipes WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    if (r.rows[0].image_filename) {
+      await supabase.storage.from('recipe-photos').remove([r.rows[0].image_filename]);
+    }
+    await pool.query('DELETE FROM recipes WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
