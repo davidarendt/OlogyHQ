@@ -103,13 +103,18 @@ function PhotoEditor({ file, onApply, onCancel }) {
   };
 
   const handleApply = () => {
+    // Export at 3× display resolution so the image stays sharp when viewed full-size
+    const EXPORT_RATIO = 3;
+    const EW = CROP_W * EXPORT_RATIO;
+    const EH = CROP_H * EXPORT_RATIO;
     const canvas = document.createElement('canvas');
-    canvas.width = CROP_W; canvas.height = CROP_H;
+    canvas.width = EW; canvas.height = EH;
     const ctx = canvas.getContext('2d');
     const img = new Image();
     img.onload = () => {
-      const dw = nat.w * scale, dh = nat.h * scale;
-      ctx.drawImage(img, CROP_W / 2 - dw / 2 + offset.x, CROP_H / 2 - dh / 2 + offset.y, dw, dh);
+      const dw = nat.w * scale * EXPORT_RATIO;
+      const dh = nat.h * scale * EXPORT_RATIO;
+      ctx.drawImage(img, EW / 2 - dw / 2 + offset.x * EXPORT_RATIO, EH / 2 - dh / 2 + offset.y * EXPORT_RATIO, dw, dh);
       canvas.toBlob(blob => onApply(new File([blob], 'photo.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.93);
     };
     img.src = imageSrc;
@@ -467,14 +472,6 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
                 placeholder={"Whisk egg yolks with lemon juice in a bowl\nPlace bowl over simmering water\nGradually add melted butter while whisking\nSeason and serve immediately"}
                 className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm resize-y focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono" />
             </div>
-          </div>
-
-          {/* Cook Time */}
-          <div>
-            <label className="block text-gray-400 text-sm mb-1.5">Cook Time</label>
-            <input value={cookTime} onChange={e => setCookTime(e.target.value)}
-              placeholder="e.g. 30 min prep / 20 min cook"
-              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
           {/* Plating */}
