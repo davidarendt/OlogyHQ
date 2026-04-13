@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <g fill="#F2EDE4">
+    <!-- FORK (rotated 35° clockwise) -->
+    <g transform="translate(128,128) rotate(35)">
+      <!-- Handle -->
+      <rect x="-6" y="15" width="12" height="105" rx="6"/>
+      <!-- Shank -->
+      <rect x="-5" y="-62" width="10" height="80" rx="4"/>
+      <!-- Tine base bar -->
+      <rect x="-13.5" y="-72" width="27" height="10" rx="3"/>
+      <!-- Tines -->
+      <rect x="-13.5" y="-130" width="7" height="60" rx="3.5"/>
+      <rect x="-3.5"  y="-130" width="7" height="60" rx="3.5"/>
+      <rect x="6.5"   y="-130" width="7" height="60" rx="3.5"/>
+    </g>
+
+    <!-- KNIFE (rotated 35° counter-clockwise) -->
+    <g transform="translate(128,128) rotate(-35)">
+      <!-- Handle -->
+      <rect x="-6" y="15" width="12" height="105" rx="6"/>
+      <!-- Bolster -->
+      <rect x="-7" y="-20" width="14" height="38" rx="3"/>
+      <!-- Blade: straight spine (left), curved belly edge (right), pointed tip -->
+      <path d="M -5,-20 L -5,-115 L 0,-120 Q 7,-80 6,-20 Z"/>
+    </g>
+  </g>
+</svg>
