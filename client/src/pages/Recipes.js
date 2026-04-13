@@ -191,7 +191,23 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
   const [ingredients, setIngredients] = useState(recipe?.ingredients || '');
   const [instructions, setInstructions] = useState(recipe?.instructions || '');
   const [plating, setPlating]         = useState(recipe?.plating || '');
-  const [linkedIds, setLinkedIds]     = useState(recipe?.linked_recipe_ids || []);
+
+  // Auto-match: find linked recipes by scanning ingredient text
+  const initialIsPrep = (recipe?.category || 'brunch') === 'prep';
+  const initialPool = initialIsPrep
+    ? allRecipes.filter(r => r.id !== recipe?.id && MENU_CATS.includes(r.category))
+    : allRecipes.filter(r => r.id !== recipe?.id && r.category === 'prep');
+  const autoMatchedIds = recipe
+    ? initialPool
+        .filter(r => initialIsPrep
+          ? (r.ingredients || '').toLowerCase().includes(recipe.name.toLowerCase())
+          : (recipe.ingredients || '').toLowerCase().includes(r.name.toLowerCase())
+        )
+        .map(r => r.id)
+    : [];
+  const [linkedIds, setLinkedIds] = useState(() =>
+    [...new Set([...(recipe?.linked_recipe_ids || []), ...autoMatchedIds])]
+  );
 
   // Photo state
   const [photo, setPhoto]             = useState(null);   // file to upload
@@ -366,13 +382,19 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
               <div>
                 <label className="block text-gray-400 text-sm mb-2">{linkedLabel}</label>
                 <div className="max-h-40 overflow-y-auto bg-gray-700 rounded-lg p-3 grid grid-cols-2 gap-2 border border-gray-600">
-                  {linkedPool.map(r => (
-                    <label key={r.id} className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={linkedIds.includes(r.id)} onChange={() => toggleLinked(r.id)}
-                        className="accent-orange-500 flex-shrink-0" />
-                      <span className="text-gray-300 text-sm truncate">{r.name}</span>
-                    </label>
-                  ))}
+                  {linkedPool.map(r => {
+                    const isAuto = autoMatchedIds.includes(r.id) && !(recipe?.linked_recipe_ids || []).includes(r.id);
+                    return (
+                      <label key={r.id} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={linkedIds.includes(r.id)} onChange={() => toggleLinked(r.id)}
+                          className="accent-orange-500 flex-shrink-0" />
+                        <span className="text-gray-300 text-sm truncate">{r.name}</span>
+                        {isAuto && (
+                          <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#F05A28' }}>auto</span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );
