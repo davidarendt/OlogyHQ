@@ -2068,8 +2068,16 @@ app.patch('/api/cocktails/reorder', authenticateToken, checkCocktailsManage, asy
 });
 
 // Create cocktail
-app.post('/api/cocktails', authenticateToken, checkCocktailsManage, cocktailPhotoUpload.single('photo'), async (req, res) => {
+app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoUpload.single('photo'), async (req, res) => {
   try {
+    // Determine if user has manage permission; view-only users get WIP + attribution
+    const manageCheck = req.user.role === 'admin' ? { rows: [1] } : await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+      [req.user.role]
+    );
+    const canManage = manageCheck.rows.length > 0;
+
     const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags } = req.body;
     const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM cocktails');
     let photo_filename = null;
@@ -2079,10 +2087,12 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsManage, cocktailPhot
       await uploadToSupabase('cocktail-photos', photo_filename, req.file.buffer, req.file.mimetype);
     }
     const batchIds = JSON.parse(linked_batched_item_ids || '[]');
+    const effectiveStatus = canManage ? (status || 'menu') : 'wip';
+    const suggestedByName = canManage ? null : req.user.name;
     const result = await pool.query(
-      `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [name, method||null, glass||null, ice||null, status||'menu', price||null, last_special_on||null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1]
+      `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order, suggested_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [name, method||null, glass||null, ice||null, effectiveStatus, canManage ? (price||null) : null, canManage ? (last_special_on||null) : null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1, suggestedByName]
     );
     const cocktail = result.rows[0];
     const ingList = JSON.parse(ingredients || '[]');

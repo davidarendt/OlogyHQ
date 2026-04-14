@@ -35,7 +35,7 @@ function TagBadge({ name, color }) {
 
 // ── Detail Views ─────────────────────────────────────────────────────────────
 
-function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, canUpload }) {
+function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
   const serviceInfo = [cocktail.method, cocktail.glass, cocktail.ice].filter(Boolean).join(' · ');
@@ -72,7 +72,7 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, can
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 pt-1">
-              {canUpload && (
+              {canUpload ? (
                 <button
                   onClick={onEdit}
                   className="text-sm font-medium px-3 py-1.5 rounded-lg transition"
@@ -81,6 +81,13 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, can
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = '#F05A2812'}
                 >
                   Edit
+                </button>
+              ) : (
+                <button
+                  onClick={onRecommendEdit}
+                  className="text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-500/60 text-gray-300 hover:text-white hover:border-gray-400 transition"
+                >
+                  Recommend an Edit
                 </button>
               )}
               <button
@@ -243,7 +250,7 @@ function BatchedDetail({ item, cocktails, onClose, onEdit, canUpload }) {
 
 // ── Edit Modals ───────────────────────────────────────────────────────────────
 
-function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClose }) {
+function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClose, isSuggestion }) {
   const isNew = !cocktail;
   const [form, setForm] = useState({
     name: cocktail?.name || '',
@@ -324,7 +331,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
       <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-6">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-cream text-xl font-bold">{isNew ? 'New Cocktail' : 'Edit Cocktail'}</h2>
+            <h2 className="text-cream text-xl font-bold">{isSuggestion ? 'Suggest a Cocktail' : isNew ? 'New Cocktail' : 'Edit Cocktail'}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -357,25 +364,32 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Status</label>
-                <select className={selectCls} value={form.status} onChange={e => set('status', e.target.value)}>
-                  <option value="menu">Menu Item</option>
-                  <option value="special">Special</option>
-                  <option value="wip">Work-In-Progress</option>
-                </select>
+            {isSuggestion ? (
+              <div className="bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-gray-400 text-sm">
+                Category: <span className="text-yellow-400 font-medium">Work-In-Progress</span>
               </div>
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Price</label>
-                <input type="number" step="0.01" className={inputCls} value={form.price} onChange={e => set('price', e.target.value)} placeholder="0.00" />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Last Featured as Special</label>
-              <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
-            </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Status</label>
+                    <select className={selectCls} value={form.status} onChange={e => set('status', e.target.value)}>
+                      <option value="menu">Menu Item</option>
+                      <option value="special">Special</option>
+                      <option value="wip">Work-In-Progress</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Price</label>
+                    <input type="number" step="0.01" className={inputCls} value={form.price} onChange={e => set('price', e.target.value)} placeholder="0.00" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Last Featured as Special</label>
+                  <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
+                </div>
+              </>
+            )}
 
             {/* Ingredients */}
             <div>
@@ -603,7 +617,7 @@ function BatchedModal({ item, cocktails, catalog, onSave, onClose }) {
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
-                {saving ? 'Saving…' : 'Save'}
+                {saving ? 'Saving…' : isSuggestion ? 'Submit Suggestion' : 'Save'}
               </button>
             </div>
           </form>
@@ -613,12 +627,9 @@ function BatchedModal({ item, cocktails, catalog, onSave, onClose }) {
   );
 }
 
-// ── Submit Suggestion Modal ───────────────────────────────────────────────────
+// ── Recommend Edit Modal ──────────────────────────────────────────────────────
 
-function SubmitModal({ cocktails, onClose, onSave }) {
-  const [type, setType] = useState('new');
-  const [cocktailId, setCocktailId] = useState('');
-  const [cocktailName, setCocktailName] = useState('');
+function RecommendEditModal({ cocktail, onClose, onSave }) {
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -631,17 +642,12 @@ function SubmitModal({ cocktails, onClose, onSave }) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          cocktail_id: type === 'change' && cocktailId ? parseInt(cocktailId) : null,
-          cocktail_name: type === 'new' ? cocktailName : null,
-          description,
-        }),
+        body: JSON.stringify({ type: 'change', cocktail_id: cocktail.id, description }),
       });
       if (!res.ok) throw new Error();
       onSave();
     } catch {
-      alert('Failed to submit. Please try again.');
+      alert('Failed to submit.');
     } finally {
       setSaving(false);
     }
@@ -650,66 +656,28 @@ function SubmitModal({ cocktails, onClose, onSave }) {
   const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-cream text-xl font-bold">Submit a Suggestion</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-cream text-xl font-bold">Recommend an Edit</h2>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white transition text-sm">✕</button>
           </div>
+          <p className="text-gray-400 text-sm mb-5">{cocktail.name}</p>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Type toggle */}
             <div>
-              <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Type</label>
-              <div className="flex gap-2">
-                {[{ key: 'new', label: 'New Cocktail Idea' }, { key: 'change', label: 'Change to Existing' }].map(t => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setType(t.key)}
-                    className="px-3 py-1.5 text-sm rounded-lg transition"
-                    style={type === t.key ? { backgroundColor: '#F05A28', color: '#fff' } : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {type === 'new' && (
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Cocktail Name (optional)</label>
-                <input className={inputCls} value={cocktailName} onChange={e => setCocktailName(e.target.value)} placeholder="What would you call it?" />
-              </div>
-            )}
-
-            {type === 'change' && (
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Which Cocktail?</label>
-                <select className={inputCls} value={cocktailId} onChange={e => setCocktailId(e.target.value)} required>
-                  <option value="">Select a cocktail…</option>
-                  {cocktails.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">
-                {type === 'new' ? 'Describe the Cocktail *' : 'What Would You Change? *'}
-              </label>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">What would you change? *</label>
               <textarea
                 className={inputCls + ' resize-none'}
                 rows={5}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder={type === 'new'
-                  ? 'Ingredients, flavor profile, inspiration…'
-                  : 'Describe your suggested change…'}
+                placeholder="Describe your suggested change — ingredients, ratios, garnish…"
                 required
+                autoFocus
               />
             </div>
-
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-3">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
                 {saving ? 'Submitting…' : 'Submit'}
@@ -738,7 +706,8 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const [viewBatched, setViewBatched] = useState(null);
   const [editCocktail, setEditCocktail] = useState(undefined); // undefined=closed, null=new, obj=edit
   const [editBatched, setEditBatched] = useState(undefined);
-  const [showSubmit, setShowSubmit] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [recommendCocktail, setRecommendCocktail] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -790,7 +759,8 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const afterSave = () => {
     setEditCocktail(undefined);
     setEditBatched(undefined);
-    setShowSubmit(false);
+    setSuggestOpen(false);
+    setRecommendCocktail(null);
     load();
   };
 
@@ -866,7 +836,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
               ))}
               <div className="flex-1" />
               <button
-                onClick={() => setShowSubmit(true)}
+                onClick={() => setSuggestOpen(true)}
                 className="px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 transition"
               >
                 + Suggest a Cocktail
@@ -1008,7 +978,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                   {cocktails.map(c => (
                     <div key={c.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-white font-medium text-sm">{c.name}</span>
                           <span className={`text-xs px-1.5 py-0.5 rounded ${
                             c.status === 'menu' ? 'bg-green-900/50 text-green-400' :
@@ -1017,6 +987,9 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                           }`}>
                             {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'WIP'}
                           </span>
+                          {c.suggested_by_name && (
+                            <span className="text-xs text-gray-500">suggested by {c.suggested_by_name}</span>
+                          )}
                         </div>
                         <div className="flex gap-1 mt-0.5 flex-wrap">
                           {c.method && <span className="text-xs text-gray-500">{c.method}</span>}
@@ -1129,6 +1102,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           onClose={() => setViewCocktail(null)}
           onEdit={() => { setEditCocktail(viewCocktail); setViewCocktail(null); }}
           onViewBatched={(item) => { setViewCocktail(null); setViewBatched(item); }}
+          onRecommendEdit={() => { setRecommendCocktail(viewCocktail); setViewCocktail(null); }}
         />
       )}
       {viewBatched && (
@@ -1161,11 +1135,22 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           onClose={() => setEditBatched(undefined)}
         />
       )}
-      {showSubmit && (
-        <SubmitModal
-          cocktails={cocktails}
-          onClose={() => setShowSubmit(false)}
-          onSave={() => { setShowSubmit(false); }}
+      {suggestOpen && (
+        <CocktailModal
+          cocktail={null}
+          catalog={catalog}
+          tagDefs={tagDefs}
+          batchedItems={batched}
+          isSuggestion={true}
+          onSave={afterSave}
+          onClose={() => setSuggestOpen(false)}
+        />
+      )}
+      {recommendCocktail && (
+        <RecommendEditModal
+          cocktail={recommendCocktail}
+          onClose={() => setRecommendCocktail(null)}
+          onSave={afterSave}
         />
       )}
     </div>
