@@ -72,7 +72,7 @@ For all other behavior, admin goes through the normal permission system — no b
 **Protected user**: `david@ologybrewing.com` cannot be deleted — the delete endpoint checks the target email before proceeding.
 
 ### Two-Level Permission Tools
-HR Documents, SOPs & Checklists, Label Inventory, and Taproom Inventory use two permission levels:
+HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, and Cocktail Keeper use two permission levels:
 - `view` — can see the tool card and access the tool
 - `upload` — can access manage/upload areas within the tool (Manage tab, Edit/Delete, Send Order Email, etc.)
 
@@ -101,9 +101,24 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `inspections` — id, location, date, improvements, score_pct, rated_count, created_at
 - `inspection_ratings` — id, inspection_id (→ inspections, cascade), section_id, item_index, rating ('1'–'5'|'NA'|null), note, updated_at; unique on (inspection_id, section_id, item_index)
 - `recipes` — id, name, category ('brunch'|'shareables'|'flatbreads'|'specials'|'prep'), cook_time, description, ingredients, instructions, plating, notes, image_filename, linked_recipe_ids (INTEGER[]), sort_order, created_by_id, created_by_name, created_at, updated_at
+- `cocktails` — id, name, status ('menu'|'special'|'wip'), description, price, glass, method, ice, garnish, last_special_on, image_filename, linked_batched_item_ids (INTEGER[]), sort_order, suggested_by_name, created_at, updated_at
+- `cocktail_ingredients` — id, cocktail_id (→ cocktails, cascade), name, amount, unit, sort_order, is_garnish
+- `cocktail_tag_definitions` — id, name, color, sort_order
+- `cocktail_tags` — cocktail_id, tag_definition_id (PK: both)
+- `cocktail_catalog` — id, name, description, sort_order (reference list of spirit/ingredient categories)
+- `batched_cocktail_items` — id, name, description, instructions, yield_amount, yield_unit, image_filename, linked_cocktail_ids (INTEGER[]), sort_order, created_at, updated_at
+- `cocktail_submissions` — id, type ('new'|'change'), cocktail_id (nullable, for change requests), submitted_by_id, submitted_by_name, cocktail_name, description, status ('pending'|'reviewed'), created_at
+- `crm_product_lines` — id, name, type ('beer'|'spirit'|'other'), sort_order
+- `crm_activity_types` — id, name, sort_order
+- `crm_distributors` — id, name, territory, notes, sort_order, created_at, updated_at
+- `crm_distributor_contacts` — id, distributor_id (→ crm_distributors, cascade), name, title, phone, email, is_primary, sort_order
+- `crm_distributor_products` — distributor_id, product_line_id (PK: both)
+- `crm_accounts` — id, name, type ('bar'|'restaurant'|'retail'|'hotel'|'other'), address, city, state, phone, email, contact_name, contact_title, distributor_id (→ crm_distributors, SET NULL), notes, sort_order, created_at, updated_at
+- `crm_account_products` — account_id, product_line_id (PK: both)
+- `crm_activities` — id, account_id (→ crm_accounts, cascade), activity_type_id (→ crm_activity_types, SET NULL), activity_date, notes, created_by_id, created_by_name, created_at, updated_at
 
 ### Roles
-`admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`
+`admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
 
 ### Styling
 Dark theme throughout. `tailwind.config.js` overrides three color families — do not use the Tailwind defaults for these:
@@ -115,7 +130,7 @@ Dark theme throughout. `tailwind.config.js` overrides three color families — d
 Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundColor: '#F05A28' }}` for dynamic brand color. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
 
 ### File Uploads (Supabase Storage)
-All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`.
+All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`.
 
 Recipe photos are served differently — the server downloads the file from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the `RecipeImg` authenticated fetch pattern.
 
@@ -139,6 +154,50 @@ Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/
 **Auto-suggest on edit**: `RecipeModal` computes `autoMatchedIds` at init using the same fuzzy logic — prep items scan menu item ingredient text for their own name; menu items scan their own ingredients for prep item names. Auto-suggested items (not yet saved) show an orange `auto` badge in the checkbox list.
 
 **Photo serving**: `GET /api/recipes/:id/photo` downloads from `recipe-photos` Supabase bucket and streams the buffer directly. The `RecipeImg` component uses `fetch(url, { credentials: 'include' }) → blob() → createObjectURL()` (same pattern as `PhotoImg`). Pass `bust={recipe.image_filename}` as a second `useEffect` dependency to force re-fetch when a photo is replaced on the same recipe.
+
+### Cocktail Keeper Tool
+`CocktailKeeper.js` manages cocktail recipes with two parallel hierarchies: **cocktails** and **house-made items** (batched syrups, infusions, juices, etc.).
+
+**Tabs**: Cocktails | House-Made | Manage (canUpload only)
+
+**Cocktail categories** (controlled by `status` column):
+- `menu` — currently on the menu
+- `special` — rotating/seasonal specials
+- `wip` — Work-In-Progress (suggestions and drafts)
+
+**House-made ↔ cocktail linking** uses bidirectional arrays: `linked_batched_item_ids INTEGER[]` on cocktails, `linked_cocktail_ids INTEGER[]` on batched items. Same pattern as prep↔menu in Recipes. House-made chips in the cocktail detail view are clickable and navigate to that item.
+
+**Suggestion flow**: View-only users (no `upload` permission) can click "Suggest a Cocktail" which opens the same `CocktailModal` with `isSuggestion=true`. The modal hides status/price/last_special_on and shows a "Work-In-Progress" badge. On submit, `POST /api/cocktails` checks manage permission internally — view-only users get `status='wip'` and `suggested_by_name=req.user.name` forced server-side. Managers can then edit/promote from the Manage → WIP tab.
+
+**Recommend an Edit**: From the cocktail detail modal, view-only users see a "Recommend an Edit" button which opens `RecommendEditModal` — a focused text form that POSTs to `POST /api/cocktails/submissions` with `type='change'`.
+
+**Submissions management**: Manage tab includes a Submissions sub-tab (with pending count badge) where managers can review/dismiss/delete suggestion submissions.
+
+**Route ordering** in `server/index.js`:
+- `PATCH /api/cocktails/reorder` must be before `PATCH /api/cocktails/:id`
+- `PATCH /api/cocktails/batched/reorder` must be before `PATCH /api/cocktails/batched/:id`
+- All `/api/cocktails/batched/*` and `/api/cocktails/submissions/*` routes must be before `/api/cocktails/:id`
+
+**Photo serving**: `GET /api/cocktails/:id/photo` streams buffer directly from `cocktail-photos` bucket (same pattern as recipe photos, no redirect). Uses `PhotoImg` component with auth fetch pattern.
+
+**Permission middleware**: `checkCocktailsView` gates browse access; `checkCocktailsManage` gates edit/delete/reorder. The `POST /api/cocktails` endpoint uses `checkCocktailsView` and branches internally based on manage permission.
+
+### Sales CRM Tool
+`SalesCRM.js` manages distributor and account-level relationships for the sales team.
+
+**Tabs**: Accounts | Distributors | Manage (`upload` only)
+
+**Accounts** (full CRUD for `view` users): name, type (bar/restaurant/retail/hotel/other), contact info, linked distributor, products carried, notes. Activity log is per-account (log visits, calls, tastings, etc.) — opens in a separate modal with full history.
+
+**Distributors** (browse for all; add/edit/delete for `upload` users): name, territory, notes, key contacts (multiple, with is_primary flag), brands carried.
+
+**Manage tab** (`upload` only): Product Lines (name + type beer/spirit/other) and Activity Types — both are fully editable reference lists.
+
+**Permission levels**:
+- `view` — full CRUD on accounts and activities
+- `upload` — additionally: add/edit/delete distributors and access the Manage tab (product lines, activity types)
+
+**Route ordering** in `server/index.js`: all CRM routes follow the same middleware pattern — `checkCRMView` for account/activity endpoints, `checkCRMManage` for distributor/product-line/activity-type management.
 
 ### Taproom Inspections — Real-Time Architecture
 `TaproomInspections.js` is a multi-user bar inspection checklist. It uses a **split data pattern**:

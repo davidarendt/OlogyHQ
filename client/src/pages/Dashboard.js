@@ -11,6 +11,7 @@ const TOOL_META = {
   'cocktail-keeper':     { icon: '🍹', description: 'Browse and manage cocktail recipes',                  page: 'cocktail-keeper' },
   'recipes':             { image: '/icons/recipes.svg', description: 'Browse and search kitchen recipes',   page: 'recipes' },
   'taproom-inspections': { icon: '✅', description: 'Conduct and review taproom quality inspections',      page: 'taproom-inspections' },
+  'sales-crm':           { icon: '📊', description: 'Manage distributor and account relationships',         page: 'sales-crm' },
   'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'usermanagement' },
 };
 

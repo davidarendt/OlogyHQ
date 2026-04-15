@@ -2390,6 +2390,359 @@ app.delete('/api/cocktails/submissions/:id', authenticateToken, checkCocktailsMa
   }
 });
 
+// ── Sales CRM ──────────────────────────────────────────────────────────────
+
+const checkCRMView = async (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'sales-crm' AND p.permission_level = 'view'`,
+      [req.user.role]
+    );
+    if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
+    next();
+  } catch { res.status(500).json({ message: 'Server error' }); }
+};
+
+const checkCRMManage = async (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'sales-crm' AND p.permission_level = 'upload'`,
+      [req.user.role]
+    );
+    if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
+    next();
+  } catch { res.status(500).json({ message: 'Server error' }); }
+};
+
+// Product lines
+app.get('/api/crm/product-lines', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM crm_product_lines ORDER BY sort_order, name');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/product-lines', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_product_lines (name, type, sort_order)
+       VALUES ($1, $2, (SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_product_lines))
+       RETURNING *`,
+      [name, type || 'beer']
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/product-lines/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_product_lines SET name=COALESCE($1,name), type=COALESCE($2,type) WHERE id=$3 RETURNING *`,
+      [name, type, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/product-lines/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_product_lines WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/product-lines/reorder', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    await Promise.all(ids.map((id, i) =>
+      pool.query('UPDATE crm_product_lines SET sort_order=$1 WHERE id=$2', [i, id])
+    ));
+    res.json({ message: 'Reordered' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Activity types
+app.get('/api/crm/activity-types', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM crm_activity_types ORDER BY sort_order, name');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/activity-types', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_activity_types (name, sort_order)
+       VALUES ($1, (SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_activity_types))
+       RETURNING *`,
+      [name]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/activity-types/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_activity_types SET name=$1 WHERE id=$2 RETURNING *`,
+      [name, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/activity-types/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_activity_types WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Distributors
+app.get('/api/crm/distributors', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const dist = await pool.query('SELECT * FROM crm_distributors ORDER BY sort_order, name');
+    const contacts = await pool.query('SELECT * FROM crm_distributor_contacts ORDER BY distributor_id, is_primary DESC, sort_order');
+    const prods = await pool.query(
+      `SELECT dp.distributor_id, pl.id, pl.name, pl.type
+       FROM crm_distributor_products dp JOIN crm_product_lines pl ON pl.id = dp.product_line_id`
+    );
+    const contactMap = {};
+    contacts.rows.forEach(c => { (contactMap[c.distributor_id] ||= []).push(c); });
+    const prodMap = {};
+    prods.rows.forEach(p => { (prodMap[p.distributor_id] ||= []).push({ id: p.id, name: p.name, type: p.type }); });
+    res.json(dist.rows.map(d => ({
+      ...d,
+      contacts: contactMap[d.id] || [],
+      product_lines: prodMap[d.id] || [],
+    })));
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/distributors', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, territory, notes } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_distributors (name, territory, notes, sort_order)
+       VALUES ($1, $2, $3, (SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_distributors))
+       RETURNING *`,
+      [name, territory || null, notes || null]
+    );
+    res.json({ ...r.rows[0], contacts: [], product_lines: [] });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/distributors/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, territory, notes } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_distributors SET name=COALESCE($1,name), territory=$2, notes=$3, updated_at=NOW()
+       WHERE id=$4 RETURNING *`,
+      [name, territory ?? null, notes ?? null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/distributors/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_distributors WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Distributor contacts
+app.post('/api/crm/distributors/:id/contacts', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, title, phone, email, is_primary } = req.body;
+    const distId = req.params.id;
+    if (is_primary) {
+      await pool.query('UPDATE crm_distributor_contacts SET is_primary=FALSE WHERE distributor_id=$1', [distId]);
+    }
+    const r = await pool.query(
+      `INSERT INTO crm_distributor_contacts (distributor_id, name, title, phone, email, is_primary, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_distributor_contacts WHERE distributor_id=$1))
+       RETURNING *`,
+      [distId, name, title || null, phone || null, email || null, !!is_primary]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { name, title, phone, email, is_primary } = req.body;
+    const distId = req.params.id;
+    if (is_primary) {
+      await pool.query('UPDATE crm_distributor_contacts SET is_primary=FALSE WHERE distributor_id=$1', [distId]);
+    }
+    const r = await pool.query(
+      `UPDATE crm_distributor_contacts SET
+         name=COALESCE($1,name), title=$2, phone=$3, email=$4,
+         is_primary=COALESCE($5,is_primary)
+       WHERE id=$6 RETURNING *`,
+      [name, title ?? null, phone ?? null, email ?? null, is_primary ?? null, req.params.contactId]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_distributor_contacts WHERE id=$1', [req.params.contactId]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Distributor product lines (replace-all)
+app.put('/api/crm/distributors/:id/products', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { product_line_ids } = req.body;
+    await pool.query('DELETE FROM crm_distributor_products WHERE distributor_id=$1', [req.params.id]);
+    if (product_line_ids && product_line_ids.length > 0) {
+      await Promise.all(product_line_ids.map(plId =>
+        pool.query('INSERT INTO crm_distributor_products (distributor_id, product_line_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, plId])
+      ));
+    }
+    res.json({ message: 'Updated' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Accounts
+app.get('/api/crm/accounts', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const accts = await pool.query(
+      `SELECT a.*, d.name AS distributor_name
+       FROM crm_accounts a
+       LEFT JOIN crm_distributors d ON d.id = a.distributor_id
+       ORDER BY a.sort_order, a.name`
+    );
+    const prods = await pool.query(
+      `SELECT ap.account_id, pl.id, pl.name, pl.type
+       FROM crm_account_products ap JOIN crm_product_lines pl ON pl.id = ap.product_line_id`
+    );
+    const prodMap = {};
+    prods.rows.forEach(p => { (prodMap[p.account_id] ||= []).push({ id: p.id, name: p.name, type: p.type }); });
+    res.json(accts.rows.map(a => ({ ...a, product_lines: prodMap[a.id] || [] })));
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/accounts', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { name, type, address, city, state, phone, email, contact_name, contact_title, distributor_id, notes } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_accounts (name, type, address, city, state, phone, email, contact_name, contact_title, distributor_id, notes, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_accounts))
+       RETURNING *`,
+      [name, type || 'bar', address || null, city || null, state || 'FL', phone || null, email || null,
+       contact_name || null, contact_title || null, distributor_id || null, notes || null]
+    );
+    res.json({ ...r.rows[0], product_lines: [] });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/accounts/:id', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { name, type, address, city, state, phone, email, contact_name, contact_title, distributor_id, notes } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_accounts SET
+         name=COALESCE($1,name), type=COALESCE($2,type),
+         address=$3, city=$4, state=COALESCE($5,state),
+         phone=$6, email=$7, contact_name=$8, contact_title=$9,
+         distributor_id=$10, notes=$11, updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
+      [name, type, address ?? null, city ?? null, state, phone ?? null, email ?? null,
+       contact_name ?? null, contact_title ?? null, distributor_id ?? null, notes ?? null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/accounts/:id', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_accounts WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Account product lines (replace-all)
+app.put('/api/crm/accounts/:id/products', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { product_line_ids } = req.body;
+    await pool.query('DELETE FROM crm_account_products WHERE account_id=$1', [req.params.id]);
+    if (product_line_ids && product_line_ids.length > 0) {
+      await Promise.all(product_line_ids.map(plId =>
+        pool.query('INSERT INTO crm_account_products (account_id, product_line_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, plId])
+      ));
+    }
+    res.json({ message: 'Updated' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Account activities
+app.get('/api/crm/accounts/:id/activities', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT a.*, at.name AS activity_type_name
+       FROM crm_activities a
+       LEFT JOIN crm_activity_types at ON at.id = a.activity_type_id
+       WHERE a.account_id=$1
+       ORDER BY a.activity_date DESC, a.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/accounts/:id/activities', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { activity_type_id, activity_date, notes } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_activities (account_id, activity_type_id, activity_date, notes, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.params.id, activity_type_id || null, activity_date, notes || null, req.user.id, req.user.name]
+    );
+    const withType = await pool.query(
+      `SELECT a.*, at.name AS activity_type_name FROM crm_activities a
+       LEFT JOIN crm_activity_types at ON at.id = a.activity_type_id WHERE a.id=$1`,
+      [r.rows[0].id]
+    );
+    res.json(withType.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/accounts/:id/activities/:actId', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { activity_type_id, activity_date, notes } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_activities SET activity_type_id=$1, activity_date=$2, notes=$3, updated_at=NOW()
+       WHERE id=$4 RETURNING *`,
+      [activity_type_id || null, activity_date, notes || null, req.params.actId]
+    );
+    const withType = await pool.query(
+      `SELECT a.*, at.name AS activity_type_name FROM crm_activities a
+       LEFT JOIN crm_activity_types at ON at.id = a.activity_type_id WHERE a.id=$1`,
+      [r.rows[0].id]
+    );
+    res.json(withType.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/accounts/:id/activities/:actId', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_activities WHERE id=$1', [req.params.actId]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
