@@ -617,7 +617,7 @@ function BatchedModal({ item, cocktails, catalog, onSave, onClose }) {
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
-                {saving ? 'Saving…' : isSuggestion ? 'Submit Suggestion' : 'Save'}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </form>
