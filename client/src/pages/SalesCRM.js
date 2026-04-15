@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 const API = process.env.REACT_APP_API_URL || '';
 
 const ACCOUNT_TYPES = ['bar', 'restaurant', 'retail', 'hotel', 'other'];
-const PRODUCT_TYPE_LABELS = { beer: 'Beer', spirit: 'Spirit', other: 'Other' };
+
 const PRODUCT_TYPE_COLORS = {
   beer:   'bg-amber-900/40 text-amber-300 border-amber-700/40',
   spirit: 'bg-purple-900/40 text-purple-300 border-purple-700/40',
