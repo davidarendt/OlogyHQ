@@ -2726,7 +2726,7 @@ app.get('/api/crm/dashboard', authenticateToken, checkCRMView, async (req, res) 
         [days]
       ),
       pool.query(
-        `SELECT COUNT(*)::int AS count FROM crm_accounts WHERE created_at >= NOW() - ($1 || ' days')::interval`,
+        `SELECT COUNT(*)::int AS count FROM crm_accounts WHERE created_at >= NOW() - ($1 * INTERVAL '1 day')`,
         [days]
       ),
       pool.query(

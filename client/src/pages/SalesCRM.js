@@ -389,7 +389,12 @@ function DashboardTab() {
 
   if (!data) return <div className="text-gray-500 text-sm py-16 text-center">Loading…</div>;
 
-  const { stats, activity_by_day, events_by_day, scheduled_visits, upcoming_events, rep_summary } = data;
+  const stats          = data.stats           || {};
+  const activity_by_day= data.activity_by_day || [];
+  const events_by_day  = data.events_by_day   || [];
+  const scheduled_visits= data.scheduled_visits|| [];
+  const upcoming_events= data.upcoming_events  || [];
+  const rep_summary    = data.rep_summary      || [];
   const repNames = [...new Set(activity_by_day.map(r => r.created_by_name))];
   const chartData = buildChartData(activity_by_day, events_by_day, days);
   const upcoming = [
