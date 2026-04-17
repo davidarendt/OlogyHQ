@@ -490,7 +490,60 @@ function DashboardTab() {
   );
 }
 
-// ── Account Modal / Detail (unchanged structure) ───────────────────────────
+// ── Haversine distance (miles) ─────────────────────────────────────────────
+
+function distanceMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const AMENITY_TO_TYPE = {
+  bar: 'bar', pub: 'bar', nightclub: 'bar', brewery: 'bar',
+  restaurant: 'restaurant', cafe: 'restaurant', fast_food: 'restaurant',
+  hotel: 'hotel', hostel: 'hotel',
+};
+
+async function fetchNearbyVenues(lat, lng) {
+  const r = 800; // metres
+  const query = `
+    [out:json][timeout:10];
+    (
+      node["amenity"~"bar|pub|restaurant|nightclub|cafe|brewery|hotel"](around:${r},${lat},${lng});
+      way["amenity"~"bar|pub|restaurant|nightclub|cafe|brewery|hotel"](around:${r},${lat},${lng});
+    );
+    out center 30;
+  `;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: query,
+  });
+  const json = await res.json();
+  return (json.elements || [])
+    .filter(el => el.tags?.name)
+    .map(el => {
+      const elLat = el.lat ?? el.center?.lat;
+      const elLon = el.lon ?? el.center?.lon;
+      const tags = el.tags;
+      const num  = tags['addr:housenumber'] || '';
+      const street = tags['addr:street'] || '';
+      return {
+        name:    tags.name,
+        address: [num, street].filter(Boolean).join(' '),
+        city:    tags['addr:city'] || '',
+        state:   tags['addr:state'] || '',
+        phone:   tags.phone || tags['contact:phone'] || '',
+        type:    AMENITY_TO_TYPE[tags.amenity] || 'other',
+        dist:    elLat != null ? distanceMiles(lat, lng, elLat, elLon) : 99,
+      };
+    })
+    .sort((a, b) => a.dist - b.dist);
+}
+
+// ── Account Modal ──────────────────────────────────────────────────────────
 
 function AccountModal({ account, distributors, productLines, onClose, onSaved }) {
   const isNew = !account;
@@ -503,9 +556,52 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   });
   const [selectedProducts, setSelectedProducts] = useState((account?.product_lines || []).map(p => p.id));
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [nearbyPlaces, setNearbyPlaces] = useState(null); // null = not searched, [] = no results
+  const [locError, setLocError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const toggleProduct = (id) => setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const findNearby = () => {
+    if (!navigator.geolocation) {
+      setLocError('Geolocation is not supported by this browser.');
+      return;
+    }
+    setLocating(true);
+    setLocError('');
+    setNearbyPlaces(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const places = await fetchNearbyVenues(pos.coords.latitude, pos.coords.longitude);
+          setNearbyPlaces(places);
+        } catch {
+          setLocError('Could not fetch nearby venues. Try again or enter manually.');
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocError('Location access denied. Enter details manually.');
+        setLocating(false);
+      },
+      { timeout: 10000 }
+    );
+  };
+
+  const selectPlace = (place) => {
+    setForm(f => ({
+      ...f,
+      name:    place.name    || f.name,
+      address: place.address || f.address,
+      city:    place.city    || f.city,
+      state:   place.state   || f.state,
+      phone:   place.phone   || f.phone,
+      type:    place.type    || f.type,
+    }));
+    setNearbyPlaces(null);
+  };
 
   const save = async () => {
     if (!form.name.trim()) return;
@@ -521,6 +617,50 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   return (
     <Modal title={isNew ? 'Add Account' : 'Edit Account'} onClose={onClose} wide>
       <div className="space-y-4">
+
+        {/* GPS lookup — new accounts only */}
+        {isNew && (
+          <div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={findNearby} disabled={locating}
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-900/20 disabled:opacity-50 transition">
+                <span>{locating ? '📡' : '📍'}</span>
+                {locating ? 'Locating…' : 'Use My Location'}
+              </button>
+              <span className="text-gray-600 text-xs">or fill in manually below</span>
+            </div>
+            {locError && <p className="text-red-400 text-xs mt-2">{locError}</p>}
+            {nearbyPlaces !== null && (
+              <div className="mt-2 bg-gray-700/60 border border-gray-600 rounded-lg overflow-hidden">
+                {nearbyPlaces.length === 0
+                  ? <p className="text-gray-400 text-sm px-4 py-3">No venues found nearby. Enter details manually.</p>
+                  : (
+                    <div className="max-h-52 overflow-y-auto divide-y divide-gray-600/50">
+                      {nearbyPlaces.map((place, i) => (
+                        <button key={i} type="button" onClick={() => selectPlace(place)}
+                          className="w-full text-left px-4 py-3 hover:bg-gray-600/50 transition">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-white text-sm font-medium">{place.name}</span>
+                            <span className="text-gray-500 text-xs shrink-0">{place.dist.toFixed(2)} mi</span>
+                          </div>
+                          <div className="text-gray-400 text-xs mt-0.5">
+                            {[place.address, place.city].filter(Boolean).join(', ')}
+                            {place.type && <span className="ml-2 capitalize text-gray-600">· {place.type}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                }
+                <button type="button" onClick={() => setNearbyPlaces(null)}
+                  className="w-full text-center text-xs text-gray-500 hover:text-gray-300 py-2 border-t border-gray-600/50">
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Account Name *"><input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} /></Field>
           <Field label="Type">
