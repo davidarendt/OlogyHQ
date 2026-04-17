@@ -856,6 +856,19 @@ const mailer = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
+const checkLabelManage = async (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'label-inventory' AND p.permission_level = 'upload'`,
+      [req.user.role]
+    );
+    if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
+    next();
+  } catch { res.status(500).json({ message: 'Server error' }); }
+};
+
 app.get('/api/label-inventory', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM label_inventory ORDER BY sort_order ASC, id ASC');
@@ -863,8 +876,7 @@ app.get('/api/label-inventory', authenticateToken, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.post('/api/label-inventory', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/label-inventory', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     const { name, num_rolls, labels_per_roll, labels_on_order, low_par, high_par } = req.body;
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM label_inventory');
@@ -877,8 +889,7 @@ app.post('/api/label-inventory', authenticateToken, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.patch('/api/label-inventory/reorder', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.patch('/api/label-inventory/reorder', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     const { orderedIds } = req.body;
     for (let i = 0; i < orderedIds.length; i++) {
@@ -888,7 +899,7 @@ app.patch('/api/label-inventory/reorder', authenticateToken, async (req, res) =>
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.patch('/api/label-inventory/:id', authenticateToken, async (req, res) => {
+app.patch('/api/label-inventory/:id', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     const { name, num_rolls, labels_per_roll, labels_on_order, low_par, high_par } = req.body;
     const result = await pool.query(
@@ -900,8 +911,7 @@ app.patch('/api/label-inventory/:id', authenticateToken, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.delete('/api/label-inventory/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.delete('/api/label-inventory/:id', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     await pool.query('DELETE FROM label_inventory WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
@@ -916,8 +926,7 @@ app.get('/api/label-email-list', authenticateToken, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.post('/api/label-email-list', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/label-email-list', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     const result = await pool.query(
       'INSERT INTO label_email_list (email) VALUES ($1) ON CONFLICT DO NOTHING RETURNING *', [req.body.email]
@@ -926,8 +935,7 @@ app.post('/api/label-email-list', authenticateToken, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.delete('/api/label-email-list/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.delete('/api/label-email-list/:id', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     await pool.query('DELETE FROM label_email_list WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
@@ -938,8 +946,7 @@ app.delete('/api/label-email-list/:id', authenticateToken, async (req, res) => {
 const { sendLabelOrderEmail } = require('./labelEmail');
 
 // Send order email (manual — accepts optional quantity overrides)
-app.post('/api/label-inventory/send-order-email', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/label-inventory/send-order-email', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     await sendLabelOrderEmail(req.body.overrides || {});
     res.json({ message: 'Email sent.' });
