@@ -379,7 +379,7 @@ function StatCard({ label, value, sub }) {
   );
 }
 
-function DashboardTab({ activityTypes, eventTypes }) {
+function DashboardTab() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
 
@@ -1064,7 +1064,7 @@ function SalesCRM({ user, canUpload, onBack }) {
           ))}
         </div>
 
-        {tab === 'dashboard' && <DashboardTab activityTypes={activityTypes} eventTypes={eventTypes} />}
+        {tab === 'dashboard' && <DashboardTab />}
 
         {tab === 'accounts' && (
           <div>
