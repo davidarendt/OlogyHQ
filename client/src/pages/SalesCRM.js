@@ -75,15 +75,12 @@ const selectCls = `${inputCls} cursor-pointer`;
 // ── Follow-up prompt ───────────────────────────────────────────────────────
 
 function FollowUpPrompt({ accountId, accountName, activityTypes, onDone }) {
-  const [show, setShow] = useState(true);
   const [form, setForm] = useState({
     activity_type_id: activityTypes[0]?.id || '',
     activity_date: '',
     notes: '',
   });
   const [saving, setSaving] = useState(false);
-
-  if (!show) return null;
 
   const schedule = async () => {
     if (!form.activity_date) return;
