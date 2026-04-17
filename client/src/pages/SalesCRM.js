@@ -519,7 +519,8 @@ async function fetchNearbyVenues(lat, lng) {
   `;
   const res = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
-    body: query,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(query),
   });
   const json = await res.json();
   return (json.elements || [])
