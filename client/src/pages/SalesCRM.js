@@ -801,7 +801,7 @@ function ManageTab({ productLines, activityTypes, eventTypes, onRefreshProductLi
             <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
               placeholder="Product line name…" value={plForm.name} onChange={e => setPlForm(f => ({ ...f, name: e.target.value }))}
               onKeyDown={e => e.key === 'Enter' && addProductLine()} />
-            <select className={`${selectCls} w-28`} value={plForm.type} onChange={e => setPlForm(f => ({ ...f, type: e.target.value }))}>
+            <select className="shrink-0 w-28 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer" value={plForm.type} onChange={e => setPlForm(f => ({ ...f, type: e.target.value }))}>
               <option value="beer">Beer</option><option value="spirit">Spirit</option><option value="other">Other</option>
             </select>
             <button onClick={addProductLine} disabled={!plForm.name.trim()} className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 shrink-0" style={{ backgroundColor: '#F05A28' }}>Add</button>
