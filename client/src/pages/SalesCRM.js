@@ -190,10 +190,10 @@ function ActivityLogModal({ account, activityTypes, onClose }) {
   return (
     <Modal title={`Activity — ${account.name}`} onClose={onClose} wide>
       <div className="flex gap-2 mb-4">
-        <button onClick={() => openNew(false)} className="text-sm px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: '#F05A28' }}>
+        <button onClick={() => openNew(false)} className="flex-1 sm:flex-none text-sm px-4 py-2.5 rounded-lg font-medium text-white" style={{ backgroundColor: '#F05A28' }}>
           + Log Activity
         </button>
-        <button onClick={() => openNew(true)} className="text-sm px-3 py-1.5 rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-900/20">
+        <button onClick={() => openNew(true)} className="flex-1 sm:flex-none text-sm px-4 py-2.5 rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-900/20">
           + Schedule Visit
         </button>
       </div>
@@ -276,8 +276,8 @@ function ActivityRow({ act, onEdit, onDelete, scheduled }) {
         {act.notes && <p className="text-gray-300 text-sm">{act.notes}</p>}
       </div>
       <div className="flex gap-1 shrink-0">
-        <button onClick={() => onEdit(act)} className="text-gray-500 hover:text-gray-300 text-xs px-1">Edit</button>
-        <button onClick={() => onDelete(act.id)} className="text-gray-500 hover:text-red-400 text-xs px-1">×</button>
+        <button onClick={() => onEdit(act)} className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1">Edit</button>
+        <button onClick={() => onDelete(act.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1">×</button>
       </div>
     </div>
   );
@@ -624,11 +624,10 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
           <div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={findNearby} disabled={locating}
-                className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-900/20 disabled:opacity-50 transition">
+                className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-900/20 disabled:opacity-50 transition">
                 <span>{locating ? '📡' : '📍'}</span>
-                {locating ? 'Locating…' : 'Use My Location'}
+                {locating ? 'Locating…' : 'Find Locations Near Me'}
               </button>
-              <span className="text-gray-600 text-xs">or fill in manually below</span>
             </div>
             {locError && <p className="text-red-400 text-xs mt-2">{locError}</p>}
             {nearbyPlaces !== null && (
@@ -670,7 +669,7 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={e => set('address', e.target.value)} /></Field></div>
           <Field label="City"><input className={inputCls} value={form.city} onChange={e => set('city', e.target.value)} /></Field>
         </div>
@@ -1115,8 +1114,8 @@ function EventRow({ event, onEdit, onDelete }) {
         <p className="text-gray-600 text-xs mt-0.5">by {event.created_by_name}</p>
       </div>
       <div className="flex gap-1 shrink-0">
-        <button onClick={onEdit} className="text-gray-500 hover:text-gray-300 text-xs px-1">Edit</button>
-        <button onClick={onDelete} className="text-gray-500 hover:text-red-400 text-xs px-1">×</button>
+        <button onClick={onEdit} className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1">Edit</button>
+        <button onClick={onDelete} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1">×</button>
       </div>
     </div>
   );
@@ -1192,16 +1191,16 @@ function SalesCRM({ user, canUpload, onBack }) {
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">← Dashboard</button>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="mb-8 text-center">
-          <h2 className="text-cream text-4xl font-bold">Sales CRM</h2>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="mb-6 sm:mb-8 text-center">
+          <h2 className="text-cream text-3xl sm:text-4xl font-bold">Sales CRM</h2>
           <p className="text-gray-400 mt-2">Distributor &amp; account relationships</p>
         </div>
 
-        <div className="flex gap-1 border-b border-gray-700 mb-6">
+        <div className="flex gap-1 border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === t.id ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap shrink-0 ${tab === t.id ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>
               {t.label}
             </button>
           ))}
@@ -1211,18 +1210,23 @@ function SalesCRM({ user, canUpload, onBack }) {
 
         {tab === 'accounts' && (
           <div>
-            <div className="flex flex-wrap gap-3 mb-5">
-              <input className="flex-1 min-w-48 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
-                placeholder="Search accounts…" value={search} onChange={e => setSearch(e.target.value)} />
-              <select className={`${selectCls} w-36`} value={filterType} onChange={e => setFilterType(e.target.value)}>
-                <option value="">All types</option>
-                {ACCOUNT_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-              </select>
-              <select className={`${selectCls} w-44`} value={filterDist} onChange={e => setFilterDist(e.target.value)}>
-                <option value="">All distributors</option>
-                {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <button onClick={() => setAccountEdit(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-white shrink-0" style={{ backgroundColor: '#F05A28' }}>+ Add Account</button>
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mb-5">
+              <div className="flex gap-2 sm:contents">
+                <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500"
+                  placeholder="Search accounts…" value={search} onChange={e => setSearch(e.target.value)} />
+                <button onClick={() => setAccountEdit(false)} className="px-4 py-2.5 rounded-lg text-sm font-medium text-white shrink-0 sm:hidden" style={{ backgroundColor: '#F05A28' }}>+ Add</button>
+              </div>
+              <div className="flex gap-2 sm:contents">
+                <select className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                  <option value="">All types</option>
+                  {ACCOUNT_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                </select>
+                <select className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer" value={filterDist} onChange={e => setFilterDist(e.target.value)}>
+                  <option value="">All distributors</option>
+                  {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <button onClick={() => setAccountEdit(false)} className="hidden sm:block px-4 py-2 rounded-lg text-sm font-medium text-white shrink-0" style={{ backgroundColor: '#F05A28' }}>+ Add Account</button>
             </div>
 
             {filteredAccounts.length === 0
