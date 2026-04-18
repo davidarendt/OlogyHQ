@@ -744,14 +744,113 @@ function AccountDetail({ account, onClose, onEdit, onDelete, onActivity }) {
   );
 }
 
+// ── Distributor Contacts Section ───────────────────────────────────────────
+
+function DistributorContactsSection({ distributorId, contacts, contactRoles, onRefresh }) {
+  const emptyForm = { name: '', title: '', phone: '', email: '', is_primary: false, role_id: '' };
+  const [contactForm, setContactForm] = useState(null); // null=closed, obj=open
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const openNew = () => { setContactForm({ ...emptyForm }); setEditingId(null); };
+  const openEdit = (c) => {
+    setContactForm({ name: c.name, title: c.title || '', phone: c.phone || '', email: c.email || '', is_primary: c.is_primary, role_id: c.role_id || '' });
+    setEditingId(c.id);
+  };
+
+  const save = async () => {
+    if (!contactForm.name.trim()) return;
+    setSaving(true);
+    const method = editingId ? 'PATCH' : 'POST';
+    const url = editingId
+      ? `/api/crm/distributors/${distributorId}/contacts/${editingId}`
+      : `/api/crm/distributors/${distributorId}/contacts`;
+    await jsonFetch(url, method, { ...contactForm, role_id: contactForm.role_id || null });
+    setContactForm(null);
+    setEditingId(null);
+    setSaving(false);
+    onRefresh();
+  };
+
+  const remove = async (cId) => {
+    if (!window.confirm('Remove this contact?')) return;
+    await jsonFetch(`/api/crm/distributors/${distributorId}/contacts/${cId}`, 'DELETE');
+    onRefresh();
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-gray-500 text-xs uppercase tracking-wider">Contacts</p>
+        {!contactForm && (
+          <button onClick={openNew} className="text-xs text-orange-400 hover:text-orange-300">+ Add Contact</button>
+        )}
+      </div>
+
+      {contactForm && (
+        <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-3 mb-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Name *"><input className={inputCls} value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} autoFocus /></Field>
+            <Field label="Role">
+              <select className={selectCls} value={contactForm.role_id} onChange={e => setContactForm(f => ({ ...f, role_id: e.target.value }))}>
+                <option value="">— select —</option>
+                {contactRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Phone"><input className={inputCls} type="tel" value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></Field>
+            <Field label="Email"><input className={inputCls} type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></Field>
+            <div className="col-span-2"><Field label="Title"><input className={inputCls} value={contactForm.title} onChange={e => setContactForm(f => ({ ...f, title: e.target.value }))} /></Field></div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+            <input type="checkbox" checked={contactForm.is_primary} onChange={e => setContactForm(f => ({ ...f, is_primary: e.target.checked }))} />
+            Primary contact
+          </label>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setContactForm(null); setEditingId(null); }} className="text-xs px-3 py-1.5 rounded bg-gray-600 text-gray-300">Cancel</button>
+            <button onClick={save} disabled={saving || !contactForm.name.trim()} className="text-xs px-3 py-1.5 rounded text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+              {saving ? 'Saving…' : editingId ? 'Save' : 'Add'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {contacts.length === 0 && !contactForm && (
+        <p className="text-gray-600 text-xs">No contacts yet.</p>
+      )}
+      <div className="space-y-2">
+        {contacts.map(c => (
+          <div key={c.id} className="bg-gray-700/40 rounded-lg px-3 py-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white text-sm font-medium">{c.name}</span>
+                  {c.is_primary && <span className="text-xs text-orange-400 font-medium">primary</span>}
+                  {c.role_name && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-600 text-gray-300">{c.role_name}</span>}
+                  {c.title && <span className="text-gray-400 text-xs">{c.title}</span>}
+                </div>
+                <div className="flex flex-wrap gap-3 mt-1">
+                  {c.phone && <a href={`tel:${c.phone}`} className="text-orange-400 text-xs hover:underline">{c.phone}</a>}
+                  {c.email && <a href={`mailto:${c.email}`} className="text-orange-400 text-xs hover:underline">{c.email}</a>}
+                </div>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button onClick={() => openEdit(c)} className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1">Edit</button>
+                <button onClick={() => remove(c.id)} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1">×</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Distributor Modal ──────────────────────────────────────────────────────
 
 function DistributorModal({ distributor, productLines, onClose, onSaved }) {
   const isNew = !distributor;
   const [form, setForm] = useState({ name: distributor?.name || '', territory: distributor?.territory || '', notes: distributor?.notes || '' });
-  const [contacts, setContacts] = useState(distributor?.contacts || []);
   const [selectedProducts, setSelectedProducts] = useState((distributor?.product_lines || []).map(p => p.id));
-  const [contactForm, setContactForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleProduct = (id) => setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -765,22 +864,6 @@ function DistributorModal({ distributor, productLines, onClose, onSaved }) {
     const saved = await res.json();
     await jsonFetch(`/api/crm/distributors/${saved.id}/products`, 'PUT', { product_line_ids: selectedProducts });
     onSaved();
-  };
-
-  const addContact = async () => {
-    if (!contactForm?.name?.trim() || isNew) return;
-    await jsonFetch(`/api/crm/distributors/${distributor.id}/contacts`, 'POST', contactForm);
-    setContactForm(null);
-    const res = await apiFetch('/api/crm/distributors');
-    const all = await res.json();
-    const updated = all.find(d => d.id === distributor.id);
-    if (updated) setContacts(updated.contacts);
-  };
-
-  const removeContact = async (cId) => {
-    if (!window.confirm('Remove this contact?')) return;
-    await jsonFetch(`/api/crm/distributors/${distributor.id}/contacts/${cId}`, 'DELETE');
-    setContacts(prev => prev.filter(c => c.id !== cId));
   };
 
   return (
@@ -807,47 +890,7 @@ function DistributorModal({ distributor, productLines, onClose, onSaved }) {
           </div>
         )}
         <Field label="Notes"><textarea className={`${inputCls} resize-none`} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></Field>
-        {!isNew && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-gray-400 text-xs">Key Contacts</label>
-              <button onClick={() => setContactForm({ name: '', title: '', phone: '', email: '', is_primary: false })} className="text-xs text-orange-400 hover:text-orange-300">+ Add Contact</button>
-            </div>
-            {contactForm && (
-              <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-3 mb-2 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="Name *"><input className={inputCls} value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} /></Field>
-                  <Field label="Title"><input className={inputCls} value={contactForm.title} onChange={e => setContactForm(f => ({ ...f, title: e.target.value }))} /></Field>
-                  <Field label="Phone"><input className={inputCls} value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></Field>
-                  <Field label="Email"><input className={inputCls} value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></Field>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
-                  <input type="checkbox" checked={contactForm.is_primary} onChange={e => setContactForm(f => ({ ...f, is_primary: e.target.checked }))} />
-                  Primary contact
-                </label>
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setContactForm(null)} className="text-xs px-3 py-1 rounded bg-gray-600 text-gray-300">Cancel</button>
-                  <button onClick={addContact} disabled={!contactForm.name?.trim()} className="text-xs px-3 py-1 rounded text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>Add</button>
-                </div>
-              </div>
-            )}
-            {contacts.length === 0 && !contactForm && <p className="text-gray-600 text-xs">No contacts yet.</p>}
-            <div className="space-y-1">
-              {contacts.map(c => (
-                <div key={c.id} className="flex items-center justify-between bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div>
-                    <span className="text-white text-sm font-medium">{c.name}</span>
-                    {c.is_primary && <span className="ml-2 text-xs text-orange-400">primary</span>}
-                    {c.title && <span className="text-gray-400 text-xs ml-2">{c.title}</span>}
-                    <div className="text-gray-500 text-xs">{[c.phone, c.email].filter(Boolean).join(' · ')}</div>
-                  </div>
-                  <button onClick={() => removeContact(c.id)} className="text-gray-600 hover:text-red-400 text-sm ml-2">×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {isNew && <p className="text-gray-600 text-xs">Save the distributor first, then you can add contacts.</p>}
+        {isNew && <p className="text-gray-500 text-xs">You can add contacts after saving the distributor.</p>}
         <div className="flex gap-3 justify-end pt-2">
           <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Cancel</button>
           <button onClick={saveDistributor} disabled={saving || !form.name.trim()} className="text-sm px-4 py-2 rounded-lg font-medium text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
@@ -861,7 +904,7 @@ function DistributorModal({ distributor, productLines, onClose, onSaved }) {
 
 // ── Manage Tab ─────────────────────────────────────────────────────────────
 
-function ManageTab({ productLines, activityTypes, eventTypes, onRefreshProductLines, onRefreshActivityTypes, onRefreshEventTypes }) {
+function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRefreshProductLines, onRefreshActivityTypes, onRefreshEventTypes, onRefreshContactRoles }) {
   const [section, setSection] = useState('products');
   const [plForm, setPlForm] = useState({ name: '', type: 'beer' });
   const [editingPl, setEditingPl] = useState(null);
@@ -869,6 +912,8 @@ function ManageTab({ productLines, activityTypes, eventTypes, onRefreshProductLi
   const [editingAt, setEditingAt] = useState(null);
   const [etForm, setEtForm] = useState('');
   const [editingEt, setEditingEt] = useState(null);
+  const [crForm, setCrForm] = useState('');
+  const [editingCr, setEditingCr] = useState(null);
 
   const addProductLine = async () => {
     if (!plForm.name.trim()) return;
@@ -923,10 +968,29 @@ function ManageTab({ productLines, activityTypes, eventTypes, onRefreshProductLi
     onRefreshEventTypes();
   };
 
+  const addCr = async () => {
+    if (!crForm.trim()) return;
+    await jsonFetch('/api/crm/contact-roles', 'POST', { name: crForm });
+    setCrForm('');
+    onRefreshContactRoles();
+  };
+  const saveCr = async () => {
+    if (!editingCr?.name?.trim()) return;
+    await jsonFetch(`/api/crm/contact-roles/${editingCr.id}`, 'PATCH', { name: editingCr.name });
+    setEditingCr(null);
+    onRefreshContactRoles();
+  };
+  const deleteCr = async (id) => {
+    if (!window.confirm('Delete this contact role?')) return;
+    await jsonFetch(`/api/crm/contact-roles/${id}`, 'DELETE');
+    onRefreshContactRoles();
+  };
+
   const sections = [
     { id: 'products', label: 'Product Lines' },
     { id: 'activity-types', label: 'Activity Types' },
     { id: 'event-types', label: 'Event Types' },
+    { id: 'contact-roles', label: 'Contact Roles' },
   ];
 
   return (
@@ -1023,6 +1087,34 @@ function ManageTab({ productLines, activityTypes, eventTypes, onRefreshProductLi
                   <span className="text-white text-sm flex-1">{et.name}</span>
                   <button onClick={() => setEditingEt({ id: et.id, name: et.name })} className="text-gray-500 hover:text-gray-300 text-xs">Edit</button>
                   <button onClick={() => deleteEt(et.id)} className="text-gray-500 hover:text-red-400 text-xs">×</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {section === 'contact-roles' && (
+        <div className="max-w-xs space-y-3">
+          <p className="text-gray-500 text-xs">These roles appear as labels on distributor contacts (Sales Staff, Warehouse, etc.).</p>
+          <div className="flex gap-2">
+            <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+              placeholder="Role name…" value={crForm} onChange={e => setCrForm(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCr()} />
+            <button onClick={addCr} disabled={!crForm.trim()} className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 shrink-0" style={{ backgroundColor: '#F05A28' }}>Add</button>
+          </div>
+          {contactRoles.map(cr => (
+            <div key={cr.id} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+              {editingCr?.id === cr.id ? (
+                <>
+                  <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none" value={editingCr.name} onChange={e => setEditingCr(f => ({ ...f, name: e.target.value }))} autoFocus />
+                  <button onClick={saveCr} className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: '#F05A28' }}>Save</button>
+                  <button onClick={() => setEditingCr(null)} className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">Cancel</button>
+                </>
+              ) : (
+                <>
+                  <span className="text-white text-sm flex-1">{cr.name}</span>
+                  <button onClick={() => setEditingCr({ id: cr.id, name: cr.name })} className="text-gray-500 hover:text-gray-300 text-xs">Edit</button>
+                  <button onClick={() => deleteCr(cr.id)} className="text-gray-500 hover:text-red-400 text-xs">×</button>
                 </>
               )}
             </div>
@@ -1130,6 +1222,7 @@ function SalesCRM({ user, canUpload, onBack }) {
   const [productLines, setProductLines] = useState([]);
   const [activityTypes, setActivityTypes] = useState([]);
   const [eventTypes, setEventTypes] = useState([]);
+  const [contactRoles, setContactRoles] = useState([]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterDist, setFilterDist] = useState('');
@@ -1138,16 +1231,18 @@ function SalesCRM({ user, canUpload, onBack }) {
   const [accountEdit, setAccountEdit] = useState(null);
   const [activityAccount, setActivityAccount] = useState(null);
   const [distEdit, setDistEdit] = useState(null);
-  const [distDetail, setDistDetail] = useState(null);
+  const [distDetailId, setDistDetailId] = useState(null);
+  const distDetail = distDetailId ? distributors.find(d => d.id === distDetailId) || null : null;
 
-  const loadAccounts    = async () => { const r = await apiFetch('/api/crm/accounts');      setAccounts(await r.json()); };
-  const loadDistributors= async () => { const r = await apiFetch('/api/crm/distributors');  setDistributors(await r.json()); };
-  const loadProductLines= async () => { const r = await apiFetch('/api/crm/product-lines'); setProductLines(await r.json()); };
-  const loadActivityTypes=async () => { const r = await apiFetch('/api/crm/activity-types');setActivityTypes(await r.json()); };
-  const loadEventTypes  = async () => { const r = await apiFetch('/api/crm/event-types');   setEventTypes(await r.json()); };
+  const loadAccounts     = async () => { const r = await apiFetch('/api/crm/accounts');       setAccounts(await r.json()); };
+  const loadDistributors = async () => { const r = await apiFetch('/api/crm/distributors');   setDistributors(await r.json()); };
+  const loadProductLines = async () => { const r = await apiFetch('/api/crm/product-lines');  setProductLines(await r.json()); };
+  const loadActivityTypes= async () => { const r = await apiFetch('/api/crm/activity-types'); setActivityTypes(await r.json()); };
+  const loadEventTypes   = async () => { const r = await apiFetch('/api/crm/event-types');    setEventTypes(await r.json()); };
+  const loadContactRoles = async () => { const r = await apiFetch('/api/crm/contact-roles');  setContactRoles(await r.json()); };
 
   useEffect(() => {
-    loadAccounts(); loadDistributors(); loadProductLines(); loadActivityTypes(); loadEventTypes();
+    loadAccounts(); loadDistributors(); loadProductLines(); loadActivityTypes(); loadEventTypes(); loadContactRoles();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const deleteAccount = async (id) => {
@@ -1160,7 +1255,7 @@ function SalesCRM({ user, canUpload, onBack }) {
   const deleteDistributor = async (id) => {
     if (!window.confirm('Delete this distributor?')) return;
     await jsonFetch(`/api/crm/distributors/${id}`, 'DELETE');
-    setDistDetail(null);
+    setDistDetailId(null);
     loadDistributors();
     loadAccounts();
   };
@@ -1278,7 +1373,7 @@ function SalesCRM({ user, canUpload, onBack }) {
               : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {distributors.map(d => (
-                    <div key={d.id} onClick={() => setDistDetail(d)} className="bg-gray-800 border border-gray-700 rounded-xl p-5 cursor-pointer hover:border-orange-500/50 transition group">
+                    <div key={d.id} onClick={() => setDistDetailId(d.id)} className="bg-gray-800 border border-gray-700 rounded-xl p-5 cursor-pointer hover:border-orange-500/50 transition group">
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="text-white font-semibold group-hover:text-orange-400 transition">{d.name}</h3>
                         {d.territory && <span className="text-gray-500 text-xs shrink-0 ml-2">{d.territory}</span>}
@@ -1304,8 +1399,9 @@ function SalesCRM({ user, canUpload, onBack }) {
 
         {tab === 'manage' && canUpload && (
           <ManageTab
-            productLines={productLines} activityTypes={activityTypes} eventTypes={eventTypes}
-            onRefreshProductLines={loadProductLines} onRefreshActivityTypes={loadActivityTypes} onRefreshEventTypes={loadEventTypes}
+            productLines={productLines} activityTypes={activityTypes} eventTypes={eventTypes} contactRoles={contactRoles}
+            onRefreshProductLines={loadProductLines} onRefreshActivityTypes={loadActivityTypes}
+            onRefreshEventTypes={loadEventTypes} onRefreshContactRoles={loadContactRoles}
           />
         )}
       </main>
@@ -1325,36 +1421,22 @@ function SalesCRM({ user, canUpload, onBack }) {
         <ActivityLogModal account={activityAccount} activityTypes={activityTypes} onClose={() => setActivityAccount(null)} />
       )}
       {distDetail && !distEdit && (
-        <Modal title={distDetail.name} onClose={() => setDistDetail(null)} wide>
-          <div className="space-y-4">
+        <Modal title={distDetail.name} onClose={() => setDistDetailId(null)} wide>
+          <div className="space-y-5">
             {distDetail.territory && <p className="text-gray-400 text-sm">{distDetail.territory}</p>}
             {distDetail.product_lines.length > 0 && (
               <div><p className="text-gray-500 text-xs mb-2">Brands Carried</p><div className="flex flex-wrap gap-1.5">{distDetail.product_lines.map(pl => <ProductPill key={pl.id} line={pl} />)}</div></div>
             )}
-            {distDetail.contacts.length > 0 && (
-              <div>
-                <p className="text-gray-500 text-xs mb-2">Key Contacts</p>
-                <div className="space-y-2">
-                  {distDetail.contacts.map(c => (
-                    <div key={c.id} className="bg-gray-700/40 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white text-sm font-medium">{c.name}</span>
-                        {c.is_primary && <span className="text-xs text-orange-400">primary</span>}
-                        {c.title && <span className="text-gray-500 text-xs">{c.title}</span>}
-                      </div>
-                      <div className="text-gray-400 text-xs mt-0.5 flex gap-3">
-                        {c.phone && <a href={`tel:${c.phone}`} className="hover:text-orange-400">{c.phone}</a>}
-                        {c.email && <a href={`mailto:${c.email}`} className="hover:text-orange-400">{c.email}</a>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {distDetail.notes && <div><p className="text-gray-500 text-xs mb-1">Notes</p><p className="text-gray-300 text-sm whitespace-pre-wrap">{distDetail.notes}</p></div>}
+            <DistributorContactsSection
+              distributorId={distDetail.id}
+              contacts={distDetail.contacts}
+              contactRoles={contactRoles}
+              onRefresh={loadDistributors}
+            />
             {canUpload && (
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => setDistEdit(distDetail)} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Edit</button>
+              <div className="flex gap-2 pt-1 border-t border-gray-700">
+                <button onClick={() => setDistEdit(distDetail)} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Edit Distributor</button>
                 <button onClick={() => deleteDistributor(distDetail.id)} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-red-400 hover:bg-red-900/30 ml-auto">Delete</button>
               </div>
             )}
@@ -1364,7 +1446,7 @@ function SalesCRM({ user, canUpload, onBack }) {
       {distEdit !== null && (
         <DistributorModal distributor={distEdit || null} productLines={productLines}
           onClose={() => setDistEdit(null)}
-          onSaved={() => { setDistEdit(null); setDistDetail(null); loadDistributors(); }} />
+          onSaved={() => { setDistEdit(null); loadDistributors(); }} />
       )}
     </div>
   );

@@ -2514,11 +2514,48 @@ app.delete('/api/crm/activity-types/:id', authenticateToken, checkCRMManage, asy
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// Contact Roles
+app.get('/api/crm/contact-roles', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM crm_contact_roles ORDER BY sort_order, name');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/crm/contact-roles', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `INSERT INTO crm_contact_roles (name, sort_order) VALUES ($1,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_contact_roles)) RETURNING *`,
+      [req.body.name]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/contact-roles/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE crm_contact_roles SET name=$1 WHERE id=$2 RETURNING *', [req.body.name, req.params.id]);
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/contact-roles/:id', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_contact_roles WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 // Distributors
 app.get('/api/crm/distributors', authenticateToken, checkCRMView, async (req, res) => {
   try {
     const dist = await pool.query('SELECT * FROM crm_distributors ORDER BY sort_order, name');
-    const contacts = await pool.query('SELECT * FROM crm_distributor_contacts ORDER BY distributor_id, is_primary DESC, sort_order');
+    const contacts = await pool.query(
+      `SELECT dc.*, cr.name AS role_name
+       FROM crm_distributor_contacts dc
+       LEFT JOIN crm_contact_roles cr ON cr.id = dc.role_id
+       ORDER BY dc.distributor_id, dc.is_primary DESC, dc.sort_order`
+    );
     const prods = await pool.query(
       `SELECT dp.distributor_id, pl.id, pl.name, pl.type
        FROM crm_distributor_products dp JOIN crm_product_lines pl ON pl.id = dp.product_line_id`
@@ -2568,26 +2605,26 @@ app.delete('/api/crm/distributors/:id', authenticateToken, checkCRMManage, async
 });
 
 // Distributor contacts
-app.post('/api/crm/distributors/:id/contacts', authenticateToken, checkCRMManage, async (req, res) => {
+app.post('/api/crm/distributors/:id/contacts', authenticateToken, checkCRMView, async (req, res) => {
   try {
-    const { name, title, phone, email, is_primary } = req.body;
+    const { name, title, phone, email, is_primary, role_id } = req.body;
     const distId = req.params.id;
     if (is_primary) {
       await pool.query('UPDATE crm_distributor_contacts SET is_primary=FALSE WHERE distributor_id=$1', [distId]);
     }
     const r = await pool.query(
-      `INSERT INTO crm_distributor_contacts (distributor_id, name, title, phone, email, is_primary, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_distributor_contacts WHERE distributor_id=$1))
+      `INSERT INTO crm_distributor_contacts (distributor_id, name, title, phone, email, is_primary, role_id, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_distributor_contacts WHERE distributor_id=$1))
        RETURNING *`,
-      [distId, name, title || null, phone || null, email || null, !!is_primary]
+      [distId, name, title || null, phone || null, email || null, !!is_primary, role_id || null]
     );
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
-app.patch('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMManage, async (req, res) => {
+app.patch('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMView, async (req, res) => {
   try {
-    const { name, title, phone, email, is_primary } = req.body;
+    const { name, title, phone, email, is_primary, role_id } = req.body;
     const distId = req.params.id;
     if (is_primary) {
       await pool.query('UPDATE crm_distributor_contacts SET is_primary=FALSE WHERE distributor_id=$1', [distId]);
@@ -2595,15 +2632,15 @@ app.patch('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, ch
     const r = await pool.query(
       `UPDATE crm_distributor_contacts SET
          name=COALESCE($1,name), title=$2, phone=$3, email=$4,
-         is_primary=COALESCE($5,is_primary)
-       WHERE id=$6 RETURNING *`,
-      [name, title ?? null, phone ?? null, email ?? null, is_primary ?? null, req.params.contactId]
+         is_primary=COALESCE($5,is_primary), role_id=$6
+       WHERE id=$7 RETURNING *`,
+      [name, title ?? null, phone ?? null, email ?? null, is_primary ?? null, role_id ?? null, req.params.contactId]
     );
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
-app.delete('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMManage, async (req, res) => {
+app.delete('/api/crm/distributors/:id/contacts/:contactId', authenticateToken, checkCRMView, async (req, res) => {
   try {
     await pool.query('DELETE FROM crm_distributor_contacts WHERE id=$1', [req.params.contactId]);
     res.json({ message: 'Deleted' });
