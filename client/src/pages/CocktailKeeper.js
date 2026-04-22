@@ -397,6 +397,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
     status: cocktail?.status || 'menu',
     price: cocktail?.price || '',
     last_special_on: cocktail?.last_special_on || '',
+    suggested_by_name: cocktail?.suggested_by_name || '',
     notes: cocktail?.notes || '',
   });
   const [ingredients, setIngredients] = useState(
@@ -506,6 +507,10 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
                 <div>
                   <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Last Featured as Special</label>
                   <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Created By</label>
+                  <input className={inputCls} value={form.suggested_by_name} onChange={e => set('suggested_by_name', e.target.value)} placeholder="Creator's name…" />
                 </div>
               </>
             )}

@@ -2123,7 +2123,7 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoU
     );
     const canManage = manageCheck.rows.length > 0;
 
-    const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags } = req.body;
+    const { name, method, glass, ice, status, price, last_special_on, notes, suggested_by_name, linked_batched_item_ids, ingredients, tags } = req.body;
     const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM cocktails');
     let photo_filename = null;
     if (req.file) {
@@ -2133,7 +2133,7 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoU
     }
     const batchIds = JSON.parse(linked_batched_item_ids || '[]');
     const effectiveStatus = canManage ? (status || 'menu') : 'wip';
-    const suggestedByName = canManage ? null : req.user.name;
+    const suggestedByName = canManage ? (suggested_by_name || null) : req.user.name;
     const suggestedById   = canManage ? null : req.user.id;
     const result = await pool.query(
       `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order, suggested_by_name, suggested_by_id)
@@ -2176,7 +2176,7 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoU
 app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsView, cocktailPhotoUpload.single('photo'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags, remove_photo } = req.body;
+    const { name, method, glass, ice, status, price, last_special_on, notes, suggested_by_name, linked_batched_item_ids, ingredients, tags, remove_photo } = req.body;
     const existing = await pool.query('SELECT * FROM cocktails WHERE id=$1', [id]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
 
@@ -2211,10 +2211,12 @@ app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsView, cocktailP
     const effectivePrice      = isManager ? (price || null)        : existing.rows[0].price;
     const effectiveSpecialOn  = isManager ? (last_special_on||null): existing.rows[0].last_special_on;
 
+    const effectiveSuggestedBy = isManager ? (suggested_by_name || null) : existing.rows[0].suggested_by_name;
+
     const result = await pool.query(
-      `UPDATE cocktails SET name=$1, method=$2, glass=$3, ice=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10
-       WHERE id=$11 RETURNING *`,
-      [name, method||null, glass||null, ice||null, effectiveStatus, effectivePrice, effectiveSpecialOn, notes||null, photo_filename, newBatchIds, id]
+      `UPDATE cocktails SET name=$1, method=$2, glass=$3, ice=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10, suggested_by_name=$11
+       WHERE id=$12 RETURNING *`,
+      [name, method||null, glass||null, ice||null, effectiveStatus, effectivePrice, effectiveSpecialOn, notes||null, photo_filename, newBatchIds, effectiveSuggestedBy, id]
     );
 
     // Sync ingredients
