@@ -87,8 +87,8 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
       body: JSON.stringify({ beer_id: parseInt(assignBeerId), tank_id: tank.id, start_date: assignStart }),
     });
     setSaving(false);
-    onRefresh();
     setShowAssignForm(false);
+    onRefresh();
   };
 
   const handleEndAssignment = async () => {
@@ -920,19 +920,27 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
         )}
       </main>
 
-      {cellModal && (
-        <CellModal
-          date={cellModal.date}
-          tank={cellModal.tank}
-          assignment={cellModal.assignment}
-          tasks={cellModal.tasks}
-          beers={beers}
-          users={users}
-          canManage={canUpload}
-          onClose={() => setCellModal(null)}
-          onRefresh={() => { setCellModal(null); handleRefresh(); }}
-        />
-      )}
+      {cellModal && (() => {
+        const liveAssignment = assignments.find(a =>
+          a.tank_id === cellModal.tank.id &&
+          a.start_date <= cellModal.date &&
+          (a.end_date === null || a.end_date >= cellModal.date)
+        ) || null;
+        const liveTasks = tasks.filter(t => t.tank_id === cellModal.tank.id && t.date === cellModal.date);
+        return (
+          <CellModal
+            date={cellModal.date}
+            tank={cellModal.tank}
+            assignment={liveAssignment}
+            tasks={liveTasks}
+            beers={beers}
+            users={users}
+            canManage={canUpload}
+            onClose={() => setCellModal(null)}
+            onRefresh={handleRefresh}
+          />
+        );
+      })()}
     </div>
   );
 }
