@@ -294,9 +294,93 @@ function ComboSelect({ label, value, options, onChange }) {
   );
 }
 
+// ── Ingredient fuzzy autocomplete ─────────────────────────────────────────────
+
+function fuzzyMatch(query, target) {
+  const q = query.toLowerCase().replace(/\s+/g, '');
+  const t = target.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
+function IngredientInput({ value, allIngredients, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [warn, setWarn] = useState(false);
+  const justSelected = useRef(false);
+
+  const matches = value.length >= 2 ? allIngredients.filter(n => fuzzyMatch(value, n)) : [];
+  const exactMatch = allIngredients.some(n => n.toLowerCase() === value.toLowerCase());
+
+  const handleChange = (e) => {
+    onChange(e.target.value);
+    setWarn(false);
+    setOpen(e.target.value.length >= 2);
+  };
+
+  const select = (name) => {
+    justSelected.current = true;
+    onChange(name);
+    setOpen(false);
+    setWarn(false);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (justSelected.current) { justSelected.current = false; return; }
+      setOpen(false);
+      if (value.trim().length >= 2 && !exactMatch && allIngredients.filter(n => fuzzyMatch(value, n)).length > 0) {
+        setWarn(true);
+      }
+    }, 150);
+  };
+
+  return (
+    <div className="relative flex-1 min-w-0">
+      <input
+        className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
+        placeholder="Ingredient"
+        value={value}
+        onChange={handleChange}
+        onFocus={() => { if (value.length >= 2) setOpen(true); }}
+        onBlur={handleBlur}
+      />
+      {open && matches.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-gray-700 border border-gray-600 rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+          {matches.slice(0, 8).map(name => (
+            <button key={name} type="button" onMouseDown={() => select(name)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-600 transition">
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+      {warn && !open && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-gray-800 border border-orange-500/50 rounded-lg shadow-xl p-3">
+          <p className="text-orange-300 text-xs font-medium mb-2">Did you mean one of these?</p>
+          <div className="space-y-1 mb-3">
+            {allIngredients.filter(n => fuzzyMatch(value, n)).slice(0, 5).map(name => (
+              <button key={name} type="button" onMouseDown={() => select(name)}
+                className="block w-full text-left text-sm text-white hover:text-orange-400 transition px-1 py-0.5">
+                {name}
+              </button>
+            ))}
+          </div>
+          <button type="button" onMouseDown={() => setWarn(false)}
+            className="text-xs text-gray-500 hover:text-gray-300 transition">
+            No, add "{value}" as new ingredient
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Edit Modals ───────────────────────────────────────────────────────────────
 
-function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClose, isSuggestion }) {
+function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredients, onSave, onClose, isSuggestion }) {
   const isNew = !cocktail;
   const [form, setForm] = useState({
     name: cocktail?.name || '',
@@ -429,11 +513,10 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
                       <button type="button" onClick={() => moveIng(i, -1)} disabled={i === 0} className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
                       <button type="button" onClick={() => moveIng(i, 1)} disabled={i === ingredients.length - 1} className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
                     </div>
-                    <input
-                      className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
-                      placeholder="Ingredient"
+                    <IngredientInput
                       value={ing.ingredient_name}
-                      onChange={e => setIng(i, 'ingredient_name', e.target.value)}
+                      allIngredients={allIngredients}
+                      onChange={v => setIng(i, 'ingredient_name', v)}
                     />
                     <input
                       type="number" step="0.01"
@@ -718,6 +801,99 @@ function RecommendEditModal({ cocktail, onClose, onSave }) {
   );
 }
 
+// ── Ingredient Manager (Manage tab) ───────────────────────────────────────────
+
+function IngredientManager({ allIngredients, onMerged }) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [merging, setMerging] = useState(false);
+
+  const filtered = allIngredients.filter(n => !search || n.toLowerCase().includes(search.toLowerCase()));
+
+  const toggle = (name) => setSelected(prev => {
+    const s = new Set(prev);
+    s.has(name) ? s.delete(name) : s.add(name);
+    // Pre-fill merge target with longest selected name
+    const arr = [...s];
+    if (arr.length >= 2) setMergeTarget(arr.reduce((a, b) => a.length >= b.length ? a : b, ''));
+    return s;
+  });
+
+  const doMerge = async () => {
+    if (!mergeTarget.trim() || selected.size < 2) return;
+    setMerging(true);
+    await fetch(`${API}/api/cocktails/ingredients/merge`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: [...selected], to: mergeTarget.trim() }),
+    });
+    setSelected(new Set());
+    setMergeTarget('');
+    setMerging(false);
+    onMerged();
+  };
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <p className="text-gray-400 text-sm">Select two or more ingredients to merge them into one canonical name.</p>
+      <input
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+        placeholder="Search ingredients…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+
+      {selected.size >= 2 && (
+        <div className="bg-gray-700/60 border border-orange-500/40 rounded-lg p-4 space-y-3">
+          <p className="text-orange-300 text-sm font-medium">Merge {selected.size} ingredients into:</p>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+              value={mergeTarget}
+              onChange={e => setMergeTarget(e.target.value)}
+              placeholder="Canonical name…"
+            />
+            <button onClick={doMerge} disabled={merging || !mergeTarget.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 shrink-0"
+              style={{ backgroundColor: '#F05A28' }}>
+              {merging ? 'Merging…' : 'Merge'}
+            </button>
+            <button onClick={() => setSelected(new Set())}
+              className="px-3 py-2 rounded-lg text-sm bg-gray-600 text-gray-300 hover:bg-gray-500 shrink-0">
+              Cancel
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[...selected].map(n => (
+              <span key={n} className="text-xs px-2 py-0.5 rounded-full bg-orange-900/40 text-orange-300 border border-orange-700/40">{n}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selected.size === 1 && (
+        <p className="text-gray-500 text-xs">Select at least one more ingredient to merge.</p>
+      )}
+
+      <div className="space-y-1">
+        {filtered.length === 0 && <p className="text-gray-500 text-sm">No ingredients found.</p>}
+        {filtered.map(name => (
+          <label key={name} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-700/50 cursor-pointer transition">
+            <input
+              type="checkbox"
+              checked={selected.has(name)}
+              onChange={() => toggle(name)}
+              className="accent-orange-500"
+            />
+            <span className="text-white text-sm flex-1">{name}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 function CocktailKeeper({ user, canUpload, onBack }) {
@@ -725,6 +901,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const [batched, setBatched] = useState([]);
   const [catalog, setCatalog] = useState({});
   const [tagDefs, setTagDefs] = useState([]);
+  const [allIngredients, setAllIngredients] = useState([]);
   const [tab, setTab] = useState('cocktails');
   const [cocktailCategory, setCocktailCategory] = useState('all');
   const [manageTab, setManageTab] = useState('cocktails');
@@ -747,13 +924,15 @@ function CocktailKeeper({ user, canUpload, onBack }) {
         fetch(`${API}/api/cocktails/batched`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/catalog`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/tag-definitions`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/cocktails/ingredients`, { credentials: 'include' }).then(r => r.json()),
       ];
       if (canUpload) fetches.push(fetch(`${API}/api/cocktails/submissions`, { credentials: 'include' }).then(r => r.json()));
-      const [cRes, bRes, catRes, tdRes, subRes] = await Promise.all(fetches);
+      const [cRes, bRes, catRes, tdRes, ingRes, subRes] = await Promise.all(fetches);
       setCocktails(Array.isArray(cRes) ? cRes : []);
       setBatched(Array.isArray(bRes) ? bRes : []);
       setCatalog(catRes || {});
       setTagDefs(Array.isArray(tdRes) ? tdRes : []);
+      setAllIngredients(Array.isArray(ingRes) ? ingRes.map(r => r.name) : []);
       if (subRes) setSubmissions(Array.isArray(subRes) ? subRes : []);
     } catch {}
     setLoading(false);
@@ -980,6 +1159,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
               {[
                 { key: 'cocktails', label: 'Cocktails' },
                 { key: 'batched', label: 'Syrups/Infusions' },
+                { key: 'ingredients', label: 'Ingredients' },
                 { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
               ].map(t => (
                 <button
@@ -1035,6 +1215,15 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                   ))}
                 </div>
               </>
+            )}
+
+            {manageTab === 'ingredients' && (
+              <IngredientManager
+                allIngredients={allIngredients}
+                onMerged={() => {
+                  load();
+                }}
+              />
             )}
 
             {manageTab === 'submissions' && (
@@ -1151,6 +1340,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           catalog={catalog}
           tagDefs={tagDefs}
           batchedItems={batched}
+          allIngredients={allIngredients}
           onSave={afterSave}
           onClose={() => setEditCocktail(undefined)}
         />
@@ -1170,6 +1360,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           catalog={catalog}
           tagDefs={tagDefs}
           batchedItems={batched}
+          allIngredients={allIngredients}
           isSuggestion={true}
           onSave={afterSave}
           onClose={() => setSuggestOpen(false)}
