@@ -811,14 +811,20 @@ function IngredientManager({ allIngredients, onMerged }) {
 
   const filtered = allIngredients.filter(n => !search || n.toLowerCase().includes(search.toLowerCase()));
 
-  const toggle = (name) => setSelected(prev => {
-    const s = new Set(prev);
-    s.has(name) ? s.delete(name) : s.add(name);
-    // Pre-fill merge target with longest selected name
-    const arr = [...s];
-    if (arr.length >= 2) setMergeTarget(arr.reduce((a, b) => a.length >= b.length ? a : b, ''));
-    return s;
-  });
+  const toggle = (name) => {
+    setSelected(prev => {
+      const s = new Set(prev);
+      s.has(name) ? s.delete(name) : s.add(name);
+      return s;
+    });
+  };
+
+  useEffect(() => {
+    if (selected.size >= 2) {
+      const arr = [...selected];
+      setMergeTarget(arr.reduce((a, b) => a.length >= b.length ? a : b, ''));
+    }
+  }, [selected]);
 
   const doMerge = async () => {
     if (!mergeTarget.trim() || selected.size < 2) return;
