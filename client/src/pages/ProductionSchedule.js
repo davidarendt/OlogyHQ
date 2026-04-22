@@ -65,6 +65,14 @@ function dateDiff(a, b) {
   return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 }
 
+function hexToRgba(hex, alpha) {
+  if (!hex || hex.length < 7) return `rgba(99,102,241,${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // ── Cell Modal ────────────────────────────────────────────────────────────────
 
 function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onClose, onRefresh }) {
@@ -76,6 +84,7 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
   const [taskNote, setTaskNote] = useState('');
   const [taskAssignees, setTaskAssignees] = useState([]);
   const [editTaskId, setEditTaskId] = useState(null);
+  const [applyPresets, setApplyPresets] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const toggleAssignee = (id) => setTaskAssignees(prev =>
@@ -85,11 +94,17 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
   const handleAssign = async () => {
     if (!assignBeerId) return;
     setSaving(true);
-    await fetch(`${API}/api/production-schedule/assignments`, {
+    const r = await fetch(`${API}/api/production-schedule/assignments`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ beer_id: parseInt(assignBeerId), tank_id: tank.id, start_date: assignStart }),
     });
+    const newAsgn = await r.json();
+    if (applyPresets && newAsgn.id) {
+      await fetch(`${API}/api/production-schedule/assignments/${newAsgn.id}/apply-presets`, {
+        method: 'POST', credentials: 'include',
+      });
+    }
     setSaving(false);
     setShowAssignForm(false);
     onRefresh();
@@ -208,6 +223,11 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
                   <label className="text-gray-400 text-xs mb-1 block">Start date</label>
                   <input type="date" className={inputCls} value={assignStart} onChange={e => setAssignStart(e.target.value)} />
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={applyPresets} onChange={e => setApplyPresets(e.target.checked)}
+                    className="accent-orange-500" />
+                  <span className="text-gray-400 text-xs">Apply style task presets</span>
+                </label>
                 <div className="flex gap-2">
                   <button onClick={handleAssign} disabled={!assignBeerId || saving}
                     className="flex-1 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
@@ -436,8 +456,9 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                   const sourceDim = isDragSource(asgn, primary, date);
                   const prevCell = inPreview(tank.id, date);
 
+                  const beerColor = asgn?.beer_color || '#6366f1';
                   let bgColor = wknd ? '#0d1117' : '#111827';
-                  if (asgn && !tt) bgColor = wknd ? '#0f172a' : '#172033';
+                  if (asgn && !tt) bgColor = hexToRgba(beerColor, wknd ? 0.18 : 0.28);
                   if (tt) bgColor = allDone ? '#1a3a2a' : tt.bg;
                   if (prevCell && !sourceDim) bgColor = preview.mode === 'move_task' ? 'rgba(251,191,36,0.25)' : 'rgba(99,102,241,0.25)';
 
@@ -485,7 +506,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                         padding: '1px 3px',
                         borderRight: border,
                         borderBottom: newMonth ? '1px solid rgba(99,102,241,0.4)' : border,
-                        borderLeft: asgn ? (isStartCell ? '2px solid rgba(255,255,255,0.2)' : border) : border,
+                        borderLeft: asgn ? `3px solid ${hexToRgba(beerColor, 0.7)}` : border,
                         outline: prevCell ? '1px dashed rgba(99,102,241,0.7)' : undefined,
                         cursor: canManage ? (asgn || cellTasks.length ? 'grab' : 'cell') : (cellTasks.length ? 'pointer' : 'default'),
                         overflow: 'hidden',
@@ -497,8 +518,8 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', pointerEvents: 'none' }}>
                           {isStartCell && (
                             <div style={{
-                              fontSize: 7, fontWeight: 600, lineHeight: 1.1,
-                              color: tt ? 'rgba(255,255,255,0.55)' : '#4b5563',
+                              fontSize: 7, fontWeight: 700, lineHeight: 1.1,
+                              color: tt ? hexToRgba(beerColor, 0.9) : hexToRgba(beerColor, 0.7),
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                             }}>
                               {asgn.beer_name}
@@ -714,9 +735,154 @@ function BeerTrackerView({ beers, assignments, tasks }) {
   );
 }
 
+// ── Styles Tab ────────────────────────────────────────────────────────────────
+
+function StylesTab({ styles, onRefresh }) {
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ name: '', color: '#6366f1' });
+  const [adding, setAdding] = useState(false);
+  const [presetForm, setPresetForm] = useState({ task_type: 'brew', day_offset: 0 });
+  const [saving, setSaving] = useState(false);
+
+  const inputCls = 'bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  const saveStyle = async () => {
+    setSaving(true);
+    if (editId) {
+      await fetch(`${API}/api/production-schedule/styles/${editId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+    } else {
+      await fetch(`${API}/api/production-schedule/styles`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+    }
+    setSaving(false);
+    setAdding(false);
+    setEditId(null);
+    onRefresh();
+  };
+
+  const deleteStyle = async (id) => {
+    if (!window.confirm('Delete this style?')) return;
+    await fetch(`${API}/api/production-schedule/styles/${id}`, { method: 'DELETE', credentials: 'include' });
+    onRefresh();
+  };
+
+  const addPreset = async (styleId) => {
+    await fetch(`${API}/api/production-schedule/styles/${styleId}/presets`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(presetForm),
+    });
+    setPresetForm({ task_type: 'brew', day_offset: 0 });
+    onRefresh();
+  };
+
+  const deletePreset = async (styleId, presetId) => {
+    await fetch(`${API}/api/production-schedule/styles/${styleId}/presets/${presetId}`, { method: 'DELETE', credentials: 'include' });
+    onRefresh();
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-semibold">Beer Styles</h3>
+        <button onClick={() => { setAdding(true); setEditId(null); setForm({ name: '', color: '#6366f1' }); }}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#F05A28' }}>
+          + New Style
+        </button>
+      </div>
+
+      {(adding || editId) && (
+        <div className="bg-gray-700 rounded-xl p-4 mb-4 border border-gray-600">
+          <div className="flex gap-3 mb-3 flex-wrap">
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Style name (e.g. IPA, Lager…)" className={inputCls + ' flex-1'} />
+            <div className="flex items-center gap-2">
+              <label className="text-gray-400 text-sm">Color</label>
+              <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                className="w-10 h-9 rounded cursor-pointer border border-gray-600 bg-transparent" />
+              <span className="text-gray-400 text-xs font-mono">{form.color}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveStyle} disabled={!form.name || saving}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => { setAdding(false); setEditId(null); }}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-600 text-gray-300 hover:bg-gray-500">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {styles.map(s => (
+          <div key={s.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            {/* Style header */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+              <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="text-white font-semibold flex-1">{s.name}</span>
+              <button onClick={() => { setEditId(s.id); setAdding(false); setForm({ name: s.name, color: s.color }); }}
+                className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-gray-700">Edit</button>
+              <button onClick={() => deleteStyle(s.id)}
+                className="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded hover:bg-gray-700">Delete</button>
+            </div>
+
+            {/* Preset tasks */}
+            <div className="px-4 py-3">
+              <p className="text-gray-500 text-xs mb-2 uppercase tracking-wide">Task Presets</p>
+              {s.presets.length === 0 && <p className="text-gray-600 text-xs mb-2">No presets yet</p>}
+              <div className="space-y-1 mb-3">
+                {s.presets.map(p => {
+                  const tt = TASK_MAP[p.task_type] || TASK_MAP.other;
+                  return (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded w-12 text-center shrink-0"
+                        style={{ backgroundColor: tt.bg, color: tt.color }}>{tt.short}</span>
+                      <span className="text-gray-400 text-xs">Day {p.day_offset}</span>
+                      <button onClick={() => deletePreset(s.id, p.id)}
+                        className="ml-auto text-gray-600 hover:text-red-400 text-xs">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Add preset */}
+              <div className="flex gap-2 flex-wrap">
+                <select value={presetForm.task_type} onChange={e => setPresetForm(f => ({ ...f, task_type: e.target.value }))}
+                  className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none">
+                  {TASK_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-gray-500 text-xs">Day</span>
+                  <input type="number" min="0" value={presetForm.day_offset}
+                    onChange={e => setPresetForm(f => ({ ...f, day_offset: parseInt(e.target.value) || 0 }))}
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs w-14 focus:outline-none" />
+                </div>
+                <button onClick={() => addPreset(s.id)}
+                  className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs">+ Add</button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {styles.length === 0 && !adding && (
+          <p className="text-gray-500 text-center py-8">No styles yet. Create one above.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Manage View ───────────────────────────────────────────────────────────────
 
-function ManageView({ tanks, beers, onRefresh }) {
+function ManageView({ tanks, beers, styles, onRefresh }) {
   const [manageTab, setManageTab] = useState('tanks');
   const [tankName, setTankName] = useState('');
   const [tankCap, setTankCap] = useState('');
@@ -724,6 +890,7 @@ function ManageView({ tanks, beers, onRefresh }) {
   const [beerName, setBeerName] = useState('');
   const [beerStyle, setBeerStyle] = useState('');
   const [editBeer, setEditBeer] = useState(null);
+  const [beerForm, setBeerForm] = useState({ name: '', style: '', status: 'active', notes: '', style_id: null });
   const [saving, setSaving] = useState(false);
 
   const inputCls = 'bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
@@ -771,17 +938,17 @@ function ManageView({ tanks, beers, onRefresh }) {
       await fetch(`${API}/api/production-schedule/beers/${editBeer.id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: beerName, style: beerStyle || null }),
+        body: JSON.stringify({ name: beerName, style: beerStyle || null, style_id: beerForm.style_id }),
       });
     } else {
       await fetch(`${API}/api/production-schedule/beers`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: beerName, style: beerStyle || null }),
+        body: JSON.stringify({ name: beerName, style: beerStyle || null, style_id: beerForm.style_id }),
       });
     }
     setSaving(false);
-    setBeerName(''); setBeerStyle(''); setEditBeer(null);
+    setBeerName(''); setBeerStyle(''); setEditBeer(null); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null });
     onRefresh();
   };
 
@@ -794,7 +961,7 @@ function ManageView({ tanks, beers, onRefresh }) {
   return (
     <div>
       <div className="flex gap-2 mb-6">
-        {[{ key: 'tanks', label: 'Tanks' }, { key: 'beers', label: 'Beers' }].map(t => (
+        {[{ key: 'tanks', label: 'Tanks' }, { key: 'beers', label: 'Beers' }, { key: 'styles', label: 'Styles' }].map(t => (
           <button key={t.key} onClick={() => setManageTab(t.key)}
             className={`px-3 py-1.5 text-sm rounded-lg transition ${manageTab === t.key ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>
             {t.label}
@@ -843,13 +1010,20 @@ function ManageView({ tanks, beers, onRefresh }) {
             <h4 className="text-gray-300 text-sm font-semibold">{editBeer ? 'Edit Beer' : 'Add Beer'}</h4>
             <input className={`w-full ${inputCls}`} placeholder="Beer name…" value={beerName} onChange={e => setBeerName(e.target.value)} />
             <input className={`w-full ${inputCls}`} placeholder="Style (optional)…" value={beerStyle} onChange={e => setBeerStyle(e.target.value)} />
+            <select value={beerForm.style_id || ''} onChange={e => setBeerForm(f => ({ ...f, style_id: e.target.value ? parseInt(e.target.value) : null }))}
+              className={`w-full ${inputCls}`}>
+              <option value="">— No style —</option>
+              {styles.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
             <div className="flex gap-2">
               <button onClick={saveBeer} disabled={!beerName.trim() || saving}
                 className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
                 style={{ backgroundColor: '#F05A28' }}>
                 {saving ? 'Saving…' : editBeer ? 'Update' : 'Add Beer'}
               </button>
-              {editBeer && <button onClick={() => { setEditBeer(null); setBeerName(''); setBeerStyle(''); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-600 text-gray-300">Cancel</button>}
+              {editBeer && <button onClick={() => { setEditBeer(null); setBeerName(''); setBeerStyle(''); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null }); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-600 text-gray-300">Cancel</button>}
             </div>
           </div>
           <div className="space-y-2">
@@ -858,13 +1032,18 @@ function ManageView({ tanks, beers, onRefresh }) {
                 <div className="flex-1">
                   <span className="text-white text-sm font-medium">{beer.name}</span>
                   {beer.style && <span className="text-gray-500 text-xs ml-2">{beer.style}</span>}
+                  {beer.style_name && <span className="text-gray-600 text-xs ml-1">({beer.style_name})</span>}
                 </div>
-                <button onClick={() => { setEditBeer(beer); setBeerName(beer.name); setBeerStyle(beer.style || ''); }} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">Edit</button>
+                <button onClick={() => { setEditBeer(beer); setBeerName(beer.name); setBeerStyle(beer.style || ''); setBeerForm({ name: beer.name, style: beer.style || '', status: beer.status || 'active', notes: beer.notes || '', style_id: beer.style_id || null }); }} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">Edit</button>
                 <button onClick={() => archiveBeer(beer.id)} className="text-sm text-gray-500 hover:text-red-400 transition">Archive</button>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {manageTab === 'styles' && (
+        <StylesTab styles={styles} onRefresh={onRefresh} />
       )}
     </div>
   );
@@ -894,6 +1073,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]); // wider range for tracker/task list
   const [users, setUsers] = useState([]);
+  const [styles, setStyles] = useState([]);
   const [tab, setTab] = useState('schedule');
   const [viewStart, setViewStart] = useState(getMonday(new Date()));
   const [viewWeeks, setViewWeeks] = useState(5);
@@ -972,15 +1152,17 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [tanksRes, beersRes, usersRes, allRes] = await Promise.all([
+      const [tanksRes, beersRes, usersRes, allRes, stylesRes] = await Promise.all([
         fetch(`${API}/api/production-schedule/tanks`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/beers`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/users`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/grid?start=${allStart}&end=${allEnd}`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/production-schedule/styles`, { credentials: 'include' }).then(r => r.json()),
       ]);
       setTanks(Array.isArray(tanksRes) ? tanksRes : []);
       setBeers(Array.isArray(beersRes) ? beersRes : []);
       setUsers(Array.isArray(usersRes) ? usersRes : []);
+      setStyles(Array.isArray(stylesRes) ? stylesRes : []);
       if (allRes.assignments) setAssignments(allRes.assignments);
       if (allRes.tasks) { setTasks(allRes.tasks); setAllTasks(allRes.tasks); }
     } catch {}
@@ -1094,7 +1276,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
         )}
 
         {!loading && tab === 'manage' && canUpload && (
-          <ManageView tanks={tanks} beers={beers} onRefresh={loadAll} />
+          <ManageView tanks={tanks} beers={beers} styles={styles} onRefresh={loadAll} />
         )}
       </main>
 

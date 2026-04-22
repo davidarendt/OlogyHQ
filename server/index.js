@@ -3102,17 +3102,22 @@ app.delete('/api/production-schedule/tanks/:id', authenticateToken, checkProdMan
 // Beers
 app.get('/api/production-schedule/beers', authenticateToken, checkProdView, async (req, res) => {
   try {
-    const r = await pool.query("SELECT * FROM prod_beers WHERE status='active' ORDER BY name");
+    const r = await pool.query(
+      `SELECT b.*, bs.name AS style_name, COALESCE(b.color, bs.color, '#6366f1') AS resolved_color
+       FROM prod_beers b LEFT JOIN prod_beer_styles bs ON bs.id = b.style_id
+       WHERE b.status='active'
+       ORDER BY b.sort_order, b.name`
+    );
     res.json(r.rows);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.post('/api/production-schedule/beers', authenticateToken, checkProdManage, async (req, res) => {
   try {
-    const { name, style, notes } = req.body;
+    const { name, style, status, notes, style_id, color } = req.body;
     const r = await pool.query(
-      'INSERT INTO prod_beers (name, style, notes) VALUES ($1,$2,$3) RETURNING *',
-      [name, style || null, notes || null]
+      'INSERT INTO prod_beers (name, style, status, notes, style_id, color) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [name, style || null, status || 'active', notes || null, style_id || null, color || null]
     );
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }
@@ -3120,10 +3125,10 @@ app.post('/api/production-schedule/beers', authenticateToken, checkProdManage, a
 
 app.patch('/api/production-schedule/beers/:id', authenticateToken, checkProdManage, async (req, res) => {
   try {
-    const { name, style, notes, status } = req.body;
+    const { name, style, status, notes, style_id, color } = req.body;
     const r = await pool.query(
-      'UPDATE prod_beers SET name=COALESCE($1,name), style=COALESCE($2,style), notes=COALESCE($3,notes), status=COALESCE($4,status) WHERE id=$5 RETURNING *',
-      [name, style, notes, status, req.params.id]
+      `UPDATE prod_beers SET name=COALESCE($1,name), style=COALESCE($2,style), status=COALESCE($3,status), notes=$4, style_id=$5, color=$6 WHERE id=$7 RETURNING *`,
+      [name, style, status, notes !== undefined ? notes : null, style_id || null, color || null, req.params.id]
     );
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }
@@ -3142,8 +3147,11 @@ app.get('/api/production-schedule/grid', authenticateToken, checkProdView, async
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ message: 'start and end required' });
     const assignments = await pool.query(
-      `SELECT a.*, b.name AS beer_name FROM prod_tank_assignments a
+      `SELECT a.*, b.name AS beer_name,
+              COALESCE(b.color, bs.color, '#6366f1') AS beer_color
+       FROM prod_tank_assignments a
        JOIN prod_beers b ON b.id = a.beer_id
+       LEFT JOIN prod_beer_styles bs ON bs.id = b.style_id
        WHERE a.start_date <= $2 AND (a.end_date IS NULL OR a.end_date >= $1)
        ORDER BY a.start_date`,
       [start, end]
@@ -3215,6 +3223,37 @@ app.post('/api/production-schedule/assignments/:id/shift', authenticateToken, ch
   } finally {
     client.release();
   }
+});
+
+// Apply style presets to an assignment (auto-create tasks)
+app.post('/api/production-schedule/assignments/:id/apply-presets', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const asgn = await pool.query('SELECT * FROM prod_tank_assignments WHERE id=$1', [req.params.id]);
+    if (!asgn.rows.length) return res.status(404).json({ message: 'Not found' });
+    const a = asgn.rows[0];
+    const beer = await pool.query('SELECT * FROM prod_beers WHERE id=$1', [a.beer_id]);
+    if (!beer.rows.length) return res.status(404).json({ message: 'Beer not found' });
+    const b = beer.rows[0];
+    if (!b.style_id) return res.json({ created: 0, message: 'No style assigned to beer' });
+    const presets = await pool.query(
+      'SELECT * FROM prod_style_task_presets WHERE style_id=$1 ORDER BY day_offset, sort_order',
+      [b.style_id]
+    );
+    let created = 0;
+    for (const p of presets.rows) {
+      const taskDate = await pool.query(
+        `SELECT ($1::date + $2 * INTERVAL '1 day')::date AS d`,
+        [a.start_date, p.day_offset]
+      );
+      const d = taskDate.rows[0].d;
+      await pool.query(
+        'INSERT INTO prod_tasks (beer_id, tank_id, date, task_type, assigned_user_ids, created_by_id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+        [a.beer_id, a.tank_id, d, p.task_type, [], req.user.id]
+      );
+      created++;
+    }
+    res.json({ created });
+  } catch (e) { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.patch('/api/production-schedule/assignments/:id', authenticateToken, checkProdManage, async (req, res) => {
@@ -3290,6 +3329,69 @@ app.patch('/api/production-schedule/tasks/:id', authenticateToken, checkProdMana
 app.delete('/api/production-schedule/tasks/:id', authenticateToken, checkProdManage, async (req, res) => {
   try {
     await pool.query('DELETE FROM prod_tasks WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Beer Styles ──────────────────────────────────────────────────────────────
+
+app.get('/api/production-schedule/styles', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const styles = await pool.query('SELECT * FROM prod_beer_styles ORDER BY sort_order, name');
+    const presets = await pool.query('SELECT * FROM prod_style_task_presets ORDER BY style_id, day_offset, sort_order');
+    const result = styles.rows.map(s => ({
+      ...s,
+      presets: presets.rows.filter(p => p.style_id === s.id),
+    }));
+    res.json(result);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/production-schedule/styles', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, color } = req.body;
+    const max = await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM prod_beer_styles');
+    const r = await pool.query(
+      'INSERT INTO prod_beer_styles (name, color, sort_order) VALUES ($1,$2,$3) RETURNING *',
+      [name, color || '#6366f1', max.rows[0].n]
+    );
+    res.json({ ...r.rows[0], presets: [] });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/styles/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, color } = req.body;
+    const r = await pool.query(
+      'UPDATE prod_beer_styles SET name=COALESCE($1,name), color=COALESCE($2,color) WHERE id=$3 RETURNING *',
+      [name, color, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/styles/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_beer_styles WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/production-schedule/styles/:id/presets', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { task_type, day_offset } = req.body;
+    const max = await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM prod_style_task_presets WHERE style_id=$1', [req.params.id]);
+    const r = await pool.query(
+      'INSERT INTO prod_style_task_presets (style_id, task_type, day_offset, sort_order) VALUES ($1,$2,$3,$4) RETURNING *',
+      [req.params.id, task_type, day_offset || 0, max.rows[0].n]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/styles/:id/presets/:presetId', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_style_task_presets WHERE id=$1 AND style_id=$2', [req.params.presetId, req.params.id]);
     res.json({ message: 'Deleted' });
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
