@@ -399,7 +399,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
   };
 
   return (
-    <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)', userSelect: drag ? 'none' : 'auto', cursor: drag ? (drag.mode === 'resize_asgn' ? 's-resize' : 'grabbing') : 'auto' }}>
+    <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 110px)', userSelect: drag ? 'none' : 'auto', cursor: drag ? (drag.mode === 'resize_asgn' ? 's-resize' : 'grabbing') : 'auto' }}>
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
         <thead>
           <tr>
@@ -1195,20 +1195,17 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
-        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
-          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
-          <span className="text-cream text-2xl font-bold">HQ</span>
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-2 flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-2 hover:opacity-80 transition">
+          <span className="text-lg font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream text-lg font-bold">HQ</span>
         </button>
-        <button onClick={onBack} className="text-gray-400 hover:text-white text-sm transition">← Back to Dashboard</button>
+        <button onClick={onBack} className="text-gray-400 hover:text-white text-sm transition">← Dashboard</button>
       </nav>
 
-      <main className="px-4 sm:px-6 py-6 sm:py-8">
-        {/* Title */}
-        <h1 className="text-cream text-3xl sm:text-4xl font-bold mb-6">Production Schedule</h1>
-
+      <main className="px-4 sm:px-6 py-2">
         {/* Tabs */}
-        <div className="flex gap-1 mb-5 border-b border-gray-700 overflow-x-auto">
+        <div className="flex gap-1 mb-2 border-b border-gray-700 overflow-x-auto">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition -mb-px ${tab === t.key ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}>
@@ -1222,7 +1219,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
         {!loading && tab === 'schedule' && (
           <div>
             {/* Grid controls */}
-            <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <div className="flex items-center gap-1">
                 <button onClick={() => setViewStart(addDays(viewStart, -7))}
                   className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">←</button>
@@ -1241,7 +1238,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
                 ))}
               </div>
             </div>
-            <Legend />
+
             <ScheduleGrid
               tanks={tanks}
               assignments={assignments}
