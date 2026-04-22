@@ -332,7 +332,7 @@ function CellModal({ date, tank, assignment, tasks, beers, users, taskTypes, can
 
 // ── Schedule Grid ─────────────────────────────────────────────────────────────
 
-const ROW_H = 28;
+const ROW_H = 22;
 const DATE_W = 62;
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1012,7 +1012,7 @@ function TaskTypesTab({ taskTypes, onRefresh }) {
 
 // ── Manage View ───────────────────────────────────────────────────────────────
 
-function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }) {
+function ManageView({ tanks, beers, styles, taskTypes, onRefresh, manageTab, setManageTab }) {
   const [tankName, setTankName] = useState('');
   const [tankCap, setTankCap] = useState('');
   const [editTank, setEditTank] = useState(null);
@@ -1330,7 +1330,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
 
       <main className="px-4 sm:px-6 py-2">
         {/* Tabs */}
-        <div className="flex gap-1 mb-2 border-b border-gray-700 overflow-x-auto">
+        <div className="flex gap-1 mb-2 border-b border-gray-700">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition -mb-px ${tab === t.key ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}>
