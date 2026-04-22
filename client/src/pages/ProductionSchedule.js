@@ -836,10 +836,10 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
           <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream text-2xl font-bold">HQ</span>
-        </div>
+        </button>
         <button onClick={onBack} className="text-gray-400 hover:text-white text-sm transition">← Back to Dashboard</button>
       </nav>
 
