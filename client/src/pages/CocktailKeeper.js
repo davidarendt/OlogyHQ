@@ -248,6 +248,52 @@ function BatchedDetail({ item, cocktails, onClose, onEdit, canUpload }) {
   );
 }
 
+// ── ComboSelect — dropdown with freeform fallback ─────────────────────────────
+
+function ComboSelect({ label, value, options, onChange }) {
+  const isCustom = !!value && !options.includes(value);
+  const [custom, setCustom] = useState(isCustom);
+
+  const handleSelect = (e) => {
+    if (e.target.value === '__custom__') {
+      setCustom(true);
+      onChange('');
+    } else {
+      setCustom(false);
+      onChange(e.target.value);
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">{label}</label>
+      {custom ? (
+        <div className="flex gap-1">
+          <input
+            className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={`Custom ${label.toLowerCase()}…`}
+            autoFocus
+          />
+          <button type="button" onClick={() => { setCustom(false); onChange(''); }}
+            className="text-gray-500 hover:text-gray-300 px-2 text-lg leading-none">↩</button>
+        </div>
+      ) : (
+        <select
+          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer"
+          value={value}
+          onChange={handleSelect}
+        >
+          <option value="">—</option>
+          {options.map(v => <option key={v} value={v}>{v}</option>)}
+          <option value="__custom__">+ Add new…</option>
+        </select>
+      )}
+    </div>
+  );
+}
+
 // ── Edit Modals ───────────────────────────────────────────────────────────────
 
 function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClose, isSuggestion }) {
@@ -341,27 +387,9 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, onSave, onClo
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Method</label>
-                <select className={selectCls} value={form.method} onChange={e => set('method', e.target.value)}>
-                  <option value="">—</option>
-                  {(catalog.method || []).map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Glass</label>
-                <select className={selectCls} value={form.glass} onChange={e => set('glass', e.target.value)}>
-                  <option value="">—</option>
-                  {(catalog.glass || []).map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Ice</label>
-                <select className={selectCls} value={form.ice} onChange={e => set('ice', e.target.value)}>
-                  <option value="">—</option>
-                  {(catalog.ice || []).map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
+              <ComboSelect label="Method" value={form.method} options={catalog.method || []} onChange={v => set('method', v)} />
+              <ComboSelect label="Glass"  value={form.glass}  options={catalog.glass  || []} onChange={v => set('glass',  v)} />
+              <ComboSelect label="Ice"    value={form.ice}    options={catalog.ice    || []} onChange={v => set('ice',    v)} />
             </div>
 
             {isSuggestion ? (
