@@ -3266,12 +3266,30 @@ app.patch('/api/production-schedule/assignments/:id', authenticateToken, checkPr
        WHERE id=$6 RETURNING *`,
       [beer_id, tank_id, start_date, end_date !== undefined ? end_date : null, notes, req.params.id]
     );
-    res.json(r.rows[0]);
+    const updated = r.rows[0];
+    // If end_date was explicitly set, delete tasks that now fall outside the window
+    if (end_date !== undefined && end_date !== null && updated) {
+      await pool.query(
+        `DELETE FROM prod_tasks WHERE tank_id=$1 AND beer_id=$2 AND date > $3`,
+        [updated.tank_id, updated.beer_id, end_date]
+      );
+    }
+    res.json(updated);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.delete('/api/production-schedule/assignments/:id', authenticateToken, checkProdManage, async (req, res) => {
   try {
+    const asgn = await pool.query('SELECT * FROM prod_tank_assignments WHERE id=$1', [req.params.id]);
+    if (!asgn.rows.length) return res.status(404).json({ message: 'Not found' });
+    const { tank_id, beer_id, start_date, end_date } = asgn.rows[0];
+    // Delete all tasks for this brew/tank within the assignment window
+    await pool.query(
+      `DELETE FROM prod_tasks
+       WHERE tank_id=$1 AND beer_id=$2 AND date >= $3
+       AND ($4::date IS NULL OR date <= $4)`,
+      [tank_id, beer_id, start_date, end_date || null]
+    );
     await pool.query('DELETE FROM prod_tank_assignments WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
   } catch { res.status(500).json({ message: 'Server error' }); }
