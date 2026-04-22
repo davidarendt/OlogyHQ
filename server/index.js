@@ -3217,7 +3217,7 @@ app.post('/api/production-schedule/tasks', authenticateToken, checkProdManage, a
   try {
     const { beer_id, tank_id, date, task_type, custom_note, assigned_user_ids } = req.body;
     const r = await pool.query(
-      'INSERT INTO prod_tasks (beer_id, tank_id, date, task_type, custom_note, assigned_user_ids, created_by_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      'INSERT INTO prod_tasks (beer_id, tank_id, date, task_type, custom_note, assigned_user_ids, created_by_id) VALUES ($1,$2,$3,$4,$5,$6::integer[],$7) RETURNING *',
       [beer_id || null, tank_id || null, date, task_type, custom_note || null, assigned_user_ids || [], req.user.id]
     );
     res.json(r.rows[0]);
@@ -3228,7 +3228,7 @@ app.patch('/api/production-schedule/tasks/:id', authenticateToken, checkProdMana
   try {
     const { task_type, custom_note, assigned_user_ids } = req.body;
     const r = await pool.query(
-      `UPDATE prod_tasks SET task_type=COALESCE($1,task_type), custom_note=$2, assigned_user_ids=COALESCE($3,assigned_user_ids) WHERE id=$4 RETURNING *`,
+      `UPDATE prod_tasks SET task_type=COALESCE($1,task_type), custom_note=$2, assigned_user_ids=COALESCE($3::integer[],assigned_user_ids) WHERE id=$4 RETURNING *`,
       [task_type, custom_note !== undefined ? custom_note : null, assigned_user_ids, req.params.id]
     );
     res.json(r.rows[0]);
