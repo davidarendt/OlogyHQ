@@ -3,19 +3,19 @@ import { useState, useEffect, useCallback } from 'react';
 const API = process.env.REACT_APP_API_URL || '';
 
 const TASK_TYPES = [
-  { key: 'brew',               label: 'Brew',               short: 'Brew',  color: '#F05A28', bg: 'rgba(240,90,40,0.28)'   },
-  { key: 'transfer',           label: 'Transfer',           short: 'Tx',    color: '#10B981', bg: 'rgba(16,185,129,0.22)'  },
-  { key: 'dry_hop_1',          label: 'Dry Hop 1',          short: 'DH1',   color: '#34D399', bg: 'rgba(52,211,153,0.2)'   },
-  { key: 'dry_hop_2',          label: 'Dry Hop 2',          short: 'DH2',   color: '#6EE7B7', bg: 'rgba(110,231,183,0.18)' },
-  { key: 'pressurize_release', label: 'Pressurize/Release', short: 'P/R',   color: '#A78BFA', bg: 'rgba(167,139,250,0.2)'  },
-  { key: 'vdk_crash',          label: 'VDK/Crash',          short: 'VDK',   color: '#8B5CF6', bg: 'rgba(139,92,246,0.28)'  },
-  { key: 'carb',               label: 'Carb',               short: 'Carb',  color: '#60A5FA', bg: 'rgba(96,165,250,0.22)'  },
-  { key: 'adjunct',            label: 'Adjunct',            short: 'Adj',   color: '#FBBF24', bg: 'rgba(251,191,36,0.2)'   },
-  { key: 'package',            label: 'Package',            short: 'Pkg',   color: '#3B82F6', bg: 'rgba(59,130,246,0.3)'   },
-  { key: 'ramp_soak',          label: 'Ramp/Soak',          short: 'R&S',   color: '#FCD34D', bg: 'rgba(252,211,77,0.2)'   },
-  { key: 'harvest',            label: 'Harvest',            short: 'Harv',  color: '#4ADE80', bg: 'rgba(74,222,128,0.2)'   },
-  { key: 'whirl',              label: 'Whirl',              short: 'Whirl', color: '#2DD4BF', bg: 'rgba(45,212,191,0.2)'   },
-  { key: 'other',              label: 'Other',              short: '…',     color: '#9CA3AF', bg: 'rgba(156,163,175,0.15)' },
+  { key: 'brew',               label: 'Brew',               short: 'Brew',  color: '#fff',    bg: '#c2440f'               },
+  { key: 'package',            label: 'Package',            short: 'Pkg',   color: '#fff',    bg: '#1d4ed8'               },
+  { key: 'vdk_crash',          label: 'VDK/Crash',          short: 'VDK',   color: '#fff',    bg: '#7c3aed'               },
+  { key: 'transfer',           label: 'Transfer',           short: 'Tx',    color: '#fff',    bg: '#065f46'               },
+  { key: 'dry_hop_2',          label: 'Dry Hop 2',          short: 'DH2',   color: '#111',    bg: '#6ee7b7'               },
+  { key: 'dry_hop_1',          label: 'Dry Hop 1',          short: 'DH1',   color: '#111',    bg: '#34d399'               },
+  { key: 'carb',               label: 'Carb',               short: 'Carb',  color: '#fff',    bg: '#2563eb'               },
+  { key: 'pressurize_release', label: 'Pressurize/Release', short: 'P/R',   color: '#fff',    bg: '#6d28d9'               },
+  { key: 'adjunct',            label: 'Adjunct',            short: 'Adj',   color: '#111',    bg: '#fbbf24'               },
+  { key: 'ramp_soak',          label: 'Ramp/Soak',          short: 'R&S',   color: '#111',    bg: '#fde68a'               },
+  { key: 'whirl',              label: 'Whirl',              short: 'Whirl', color: '#111',    bg: '#5eead4'               },
+  { key: 'harvest',            label: 'Harvest',            short: 'Harv',  color: '#111',    bg: '#86efac'               },
+  { key: 'other',              label: 'Other',              short: '…',     color: '#e5e7eb', bg: '#374151'               },
 ];
 const TASK_MAP = Object.fromEntries(TASK_TYPES.map(t => [t.key, t]));
 const TASK_PRIORITY = ['other','whirl','harvest','ramp_soak','adjunct','carb','pressurize_release','dry_hop_2','dry_hop_1','transfer','vdk_crash','package','brew'];
@@ -307,6 +307,10 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
 
 // ── Schedule Grid ─────────────────────────────────────────────────────────────
 
+const COL_W = 58;  // tank column width px
+const ROW_H = 22;  // row height px
+const DATE_W = 62; // date column width px
+
 function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick }) {
   const getAssignment = useCallback((tankId, date) => {
     return assignments.find(a =>
@@ -320,26 +324,27 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
     return tasks.filter(t => t.tank_id === tankId && t.date === date);
   }, [tasks]);
 
-  const cellBorder = '1px solid rgba(75,85,99,0.35)';
+  const activeTanks = tanks.filter(t => t.active);
+  const border = '1px solid rgba(75,85,99,0.3)';
 
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
+    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
         <thead>
           <tr>
             <th style={{
               position: 'sticky', top: 0, left: 0, zIndex: 30,
-              backgroundColor: '#1f2937', width: 72, minWidth: 72,
-              padding: '8px 6px', borderRight: cellBorder, borderBottom: cellBorder,
-              textAlign: 'left', fontSize: 11, color: '#9ca3af', fontWeight: 600,
+              backgroundColor: '#111827', width: DATE_W, minWidth: DATE_W,
+              padding: '4px 5px', borderRight: border, borderBottom: '2px solid rgba(75,85,99,0.5)',
+              textAlign: 'left', fontSize: 10, color: '#6b7280', fontWeight: 600,
             }}>Date</th>
-            {tanks.filter(t => t.active).map(tank => (
+            {activeTanks.map(tank => (
               <th key={tank.id} style={{
                 position: 'sticky', top: 0, zIndex: 20,
-                backgroundColor: '#1f2937', width: 120, minWidth: 120,
-                padding: '8px 8px', borderRight: cellBorder, borderBottom: cellBorder,
-                textAlign: 'left', fontSize: 11, color: '#e5e7eb', fontWeight: 700,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                backgroundColor: '#111827', width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+                padding: '4px 3px', borderRight: border, borderBottom: '2px solid rgba(75,85,99,0.5)',
+                textAlign: 'center', fontSize: 9, color: '#d1d5db', fontWeight: 700,
+                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
               }}>{tank.name}</th>
             ))}
           </tr>
@@ -348,67 +353,63 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
           {dates.map(date => {
             const wknd = isWeekend(date);
             const today = isToday(date);
+            const rowBg = today ? '#14291f' : wknd ? '#0d1117' : '#111827';
             return (
               <tr key={date}>
                 <td style={{
                   position: 'sticky', left: 0, zIndex: 10,
-                  backgroundColor: today ? '#1e3a2f' : wknd ? '#161e29' : '#111827',
-                  width: 72, minWidth: 72, padding: '4px 6px',
-                  borderRight: cellBorder, borderBottom: cellBorder,
-                  fontSize: 11, fontWeight: today ? 700 : 500,
-                  color: today ? '#34d399' : wknd ? '#6b7280' : '#d1d5db',
-                  whiteSpace: 'nowrap',
+                  backgroundColor: rowBg,
+                  width: DATE_W, minWidth: DATE_W, height: ROW_H,
+                  padding: '0 5px', borderRight: border, borderBottom: border,
+                  fontSize: 10, fontWeight: today ? 700 : 400,
+                  color: today ? '#34d399' : wknd ? '#4b5563' : '#9ca3af',
+                  whiteSpace: 'nowrap', lineHeight: `${ROW_H}px`,
                 }}>
                   {formatDateLabel(date)}
                 </td>
-                {tanks.filter(t => t.active).map(tank => {
+                {activeTanks.map(tank => {
                   const asgn = getAssignment(tank.id, date);
                   const cellTasks = getCellTasks(tank.id, date);
                   const primary = getPrimaryTask(cellTasks);
-                  const hasCompleted = cellTasks.length > 0 && cellTasks.every(t => t.completed);
+                  const allDone = cellTasks.length > 0 && cellTasks.every(t => t.completed);
+                  const tt = primary ? (TASK_MAP[primary.task_type] || TASK_MAP.other) : null;
 
-                  let bgColor = wknd ? 'rgba(0,0,0,0.25)' : 'transparent';
-                  if (asgn && !primary) bgColor = 'rgba(242,237,228,0.04)';
-                  if (primary) bgColor = hasCompleted ? 'rgba(74,222,128,0.08)' : (TASK_MAP[primary.task_type]?.bg || bgColor);
+                  let bgColor = wknd ? '#0d1117' : '#111827';
+                  if (asgn && !tt) bgColor = wknd ? '#0f172a' : '#1a2235';
+                  if (tt) bgColor = allDone ? '#1a3a2a' : tt.bg;
+
+                  const textColor = tt ? (allDone ? '#4ade80' : tt.color) : (asgn ? '#6b7280' : 'transparent');
+
+                  // build label: primary task short + extra count
+                  let label = '';
+                  if (tt) {
+                    label = allDone ? '✓' : tt.short;
+                    if (cellTasks.length > 1) label += ` +${cellTasks.length - 1}`;
+                  } else if (asgn) {
+                    // no task — show abbreviated beer name
+                    label = asgn.beer_name.length > 7 ? asgn.beer_name.slice(0, 6) + '…' : asgn.beer_name;
+                  }
 
                   return (
                     <td key={tank.id}
                       onClick={() => onCellClick(date, tank, asgn, cellTasks)}
+                      title={[asgn?.beer_name, cellTasks.map(t => TASK_MAP[t.task_type]?.label).join(', ')].filter(Boolean).join(' — ')}
                       style={{
                         backgroundColor: bgColor,
-                        width: 120, minWidth: 120, maxWidth: 120,
-                        padding: '3px 5px', verticalAlign: 'top',
-                        borderRight: cellBorder, borderBottom: cellBorder,
+                        width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+                        height: ROW_H, lineHeight: `${ROW_H}px`,
+                        padding: '0 3px',
+                        borderRight: border, borderBottom: border,
                         cursor: canManage || cellTasks.length ? 'pointer' : 'default',
-                        height: 42,
-                      }}>
-                      {asgn && (
-                        <div>
-                          <div style={{ fontSize: 11, color: primary ? '#fff' : '#d1d5db', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
-                            {asgn.beer_name}
-                          </div>
-                          {cellTasks.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 2 }}>
-                              {cellTasks.slice(0, 2).map(t => {
-                                const tt = TASK_MAP[t.task_type] || TASK_MAP.other;
-                                return (
-                                  <span key={t.id} style={{
-                                    fontSize: 9, fontWeight: 700,
-                                    color: t.completed ? '#6b7280' : tt.color,
-                                    backgroundColor: t.completed ? 'rgba(107,114,128,0.15)' : (tt.color + '22'),
-                                    padding: '1px 3px', borderRadius: 3,
-                                    textDecoration: t.completed ? 'line-through' : 'none',
-                                  }}>{tt.short}</span>
-                                );
-                              })}
-                              {cellTasks.length > 2 && <span style={{ fontSize: 9, color: '#9ca3af' }}>+{cellTasks.length - 2}</span>}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {!asgn && canManage && (
-                        <div style={{ fontSize: 10, color: 'rgba(75,85,99,0.5)', paddingTop: 4 }}>+</div>
-                      )}
+                        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                        fontSize: 9, fontWeight: 700, color: textColor,
+                        textAlign: 'center',
+                        transition: 'filter 0.1s',
+                      }}
+                      onMouseEnter={e => { if (canManage || cellTasks.length) e.currentTarget.style.filter = 'brightness(1.3)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.filter = ''; }}
+                    >
+                      {label}
                     </td>
                   );
                 })}
@@ -776,7 +777,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [users, setUsers] = useState([]);
   const [tab, setTab] = useState('schedule');
   const [viewStart, setViewStart] = useState(getMonday(new Date()));
-  const [viewWeeks, setViewWeeks] = useState(4);
+  const [viewWeeks, setViewWeeks] = useState(5);
   const [cellModal, setCellModal] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -873,7 +874,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
               </div>
               <span className="text-gray-400 text-sm">{formatDateLabel(viewStart)} – {formatDateLabel(viewEnd)}</span>
               <div className="flex items-center gap-1 ml-auto">
-                {[2, 4, 8].map(w => (
+                {[2, 4, 5, 8, 12].map(w => (
                   <button key={w} onClick={() => setViewWeeks(w)}
                     className={`px-2 py-1 rounded text-xs ${viewWeeks === w ? 'bg-gray-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}>
                     {w}w
