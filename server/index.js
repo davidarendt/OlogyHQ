@@ -2065,7 +2065,7 @@ app.get('/api/cocktails/:id/photo', authenticateToken, async (req, res) => {
 app.get('/api/cocktails/ingredients', authenticateToken, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT name, COUNT(*)::int AS count FROM cocktail_ingredients GROUP BY name ORDER BY name`
+      `SELECT ingredient_name AS name, COUNT(*)::int AS count FROM cocktail_ingredients GROUP BY ingredient_name ORDER BY ingredient_name`
     );
     res.json(r.rows);
   } catch { res.status(500).json({ message: 'Server error' }); }
@@ -2075,7 +2075,7 @@ app.post('/api/cocktails/ingredients/merge', authenticateToken, async (req, res)
   try {
     const { from, to } = req.body; // from: string[], to: string
     if (!to || !Array.isArray(from) || from.length === 0) return res.status(400).json({ message: 'Invalid' });
-    await pool.query(`UPDATE cocktail_ingredients SET name=$1 WHERE name = ANY($2::text[])`, [to, from]);
+    await pool.query(`UPDATE cocktail_ingredients SET ingredient_name=$1 WHERE ingredient_name = ANY($2::text[])`, [to, from]);
     res.json({ message: 'Merged' });
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
