@@ -900,8 +900,7 @@ function StylesTab({ styles, onRefresh }) {
 
 // ── Manage View ───────────────────────────────────────────────────────────────
 
-function ManageView({ tanks, beers, styles, onRefresh }) {
-  const [manageTab, setManageTab] = useState('tanks');
+function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }) {
   const [tankName, setTankName] = useState('');
   const [tankCap, setTankCap] = useState('');
   const [editTank, setEditTank] = useState(null);
@@ -1079,6 +1078,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [users, setUsers] = useState([]);
   const [styles, setStyles] = useState([]);
   const [tab, setTab] = useState('schedule');
+  const [manageTab, setManageTab] = useState('tanks');
   const defaultViewStart = addDays(getMonday(new Date()), -14); // Monday 2 weeks ago
   const [viewStart, setViewStart] = useState(defaultViewStart);
   const [viewWeeks, setViewWeeks] = useState(5);
@@ -1278,7 +1278,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
         )}
 
         {!loading && tab === 'manage' && canUpload && (
-          <ManageView tanks={tanks} beers={beers} styles={styles} onRefresh={loadAll} />
+          <ManageView tanks={tanks} beers={beers} styles={styles} onRefresh={loadAll} manageTab={manageTab} setManageTab={setManageTab} />
         )}
       </main>
 
