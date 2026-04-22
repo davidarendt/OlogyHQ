@@ -3323,6 +3323,22 @@ app.post('/api/production-schedule/tasks', authenticateToken, checkProdManage, a
       'INSERT INTO prod_tasks (beer_id, tank_id, date, task_type, custom_note, assigned_user_ids, created_by_id) VALUES ($1,$2,$3,$4,$5,$6::integer[],$7) RETURNING *',
       [beer_id || null, tank_id || null, date, task_type, custom_note || null, assigned_user_ids || [], req.user.id]
     );
+    // Package task → auto-end the assignment on that date and trim later tasks
+    if (task_type === 'package' && tank_id && date) {
+      const asgn = await pool.query(
+        `SELECT * FROM prod_tank_assignments WHERE tank_id=$1 AND start_date <= $2 AND (end_date IS NULL OR end_date >= $2)`,
+        [tank_id, date]
+      );
+      if (asgn.rows.length) {
+        const a = asgn.rows[0];
+        await pool.query('UPDATE prod_tank_assignments SET end_date=$1 WHERE id=$2', [date, a.id]);
+        // Delete any tasks for this beer/tank scheduled after the package date
+        await pool.query(
+          'DELETE FROM prod_tasks WHERE tank_id=$1 AND beer_id=$2 AND date > $3',
+          [tank_id, a.beer_id, date]
+        );
+      }
+    }
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
