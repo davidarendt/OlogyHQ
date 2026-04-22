@@ -119,6 +119,14 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `crm_account_products` — account_id, product_line_id (PK: both)
 - `crm_activities` — id, account_id (→ crm_accounts, cascade), activity_type_id (→ crm_activity_types, SET NULL), activity_date, notes, created_by_id, created_by_name, created_at, updated_at
 
+- `prod_tanks` — id, name, capacity_bbl, active (bool), sort_order, created_at
+- `prod_beers` — id, name, style (text, legacy), style_id (→ prod_beer_styles, nullable), color, status ('active'|'archived'), notes, created_at. No `sort_order` column — order by name.
+- `prod_beer_styles` — id, name, color, sort_order
+- `prod_tank_assignments` — id, beer_id (→ prod_beers), tank_id (→ prod_tanks), start_date (DATE), end_date (DATE, nullable), notes, created_by_id, created_at
+- `prod_tasks` — id, beer_id, tank_id, date (DATE), task_type (text key), custom_note, assigned_user_ids (INTEGER[]), completed (bool), completed_by_id, completed_at, created_by_id, created_at. No `assignment_id` — tasks link to assignments via tank_id + beer_id + date range.
+- `prod_style_task_presets` — id, style_id (→ prod_beer_styles), task_type, day_offset (INT)
+- `prod_task_type_overrides` — key (TEXT PK), label, short, color, bg — stores user-customized display names/colors for the 13 built-in task types
+
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
 
@@ -137,6 +145,9 @@ All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buf
 Recipe photos are served differently — the server downloads the file from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the `RecipeImg` authenticated fetch pattern.
 
 Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`.
+
+### pg DATE Type Parsing
+`server/db.js` sets `types.setTypeParser(1082, val => val)` so PostgreSQL `DATE` columns come back as plain `'YYYY-MM-DD'` strings instead of JavaScript `Date` objects. Without this, dates JSON-serialize to ISO timestamps (`'2026-04-01T00:00:00.000Z'`) which break client date math that appends `'T12:00:00'`. This applies globally to all queries.
 
 ### Cross-Origin Authenticated Images
 httpOnly cookies are not sent for cross-origin `<img>` sub-resource requests. Use the `PhotoImg` component pattern: `fetch(url, { credentials: 'include' })` → `.blob()` → `URL.createObjectURL()`, stored in state and revoked on unmount.
@@ -229,3 +240,41 @@ Both tables have RLS enabled with open policies and are published to `supabase_r
 **Print invoices**: `GET /api/distro-orders/print-day?fileIds=id1,id2` downloads each PDF from `drive.usercontent.google.com/download?id=...&export=download&confirm=t` (returns `application/octet-stream`), merges with `pdf-lib`, and streams back a single `application/pdf`. The `binary` option in `serverless-http` config is required for this to work.
 
 **Taproom Inventory import**: Google Sheet `1aJ2R6OEvO5ixG-AsWdJlRSIsiMczEBOi_pk9Ra8Xuu0`, one tab per location (Midtown, Power Mill, Northside, Tampa). Asterisks in counts mean "on tap" — stripped for numeric parsing.
+
+### Production Schedule Tool
+`ProductionSchedule.js` is a brewery tank scheduling board. All logic is in a single file (~1400 lines). Permission middleware: `checkProdView` / `checkProdManage`.
+
+**Tabs**: Schedule | Tasks | Beers | Manage (`canUpload` only)
+
+**Core data model**:
+- `prod_tank_assignments` — a beer occupying a tank from `start_date` to `end_date`
+- `prod_tasks` — individual brew tasks (brew, package, transfer, dry hop, etc.) tied to a tank + beer + date
+- Tasks have no `assignment_id`; they're linked to assignments via matching `tank_id + beer_id` within the date range
+
+**Task types**: 13 built-in types defined as `TASK_TYPES` constant (key, label, short, color, bg). Display names and colors can be customized per-installation via `prod_task_type_overrides` table. The main component loads overrides in `loadAll()`, merges with defaults, and threads the merged `taskTypes` array as a prop to every sub-component. Each sub-component derives its own `taskMap` via `useMemo`.
+
+**Schedule grid** (`ScheduleGrid` component):
+- HTML `<table>` with sticky header row and sticky date column
+- `tableLayout: 'fixed'` with column widths calculated dynamically via `ResizeObserver` — tank columns fill the full container width (`overflowX: 'hidden'`)
+- `ROW_H = 22px`, `DATE_W = 62px`; `colW` is computed state
+- On the assignment start cell, if the primary task is `brew`, the beer name is shown instead of the "Brew" label
+- Month boundaries get an indigo accent border row
+
+**Drag and drop**: Mouse-based (`onMouseDown` + `document.addEventListener`). Three modes: `move_asgn` (drag whole assignment), `resize_asgn` (5px handle at bottom of last cell), `move_task` (drag individual task). Drag state shape: `{ mode, id, tankId, startDate, currentDate, currentTankId, originalStart, originalEnd }`. Uses `dragCommitted` ref to prevent double-firing on mouseup. Target cell detected via `document.elementFromPoint` reading `data-date` / `data-tank-id` attributes.
+
+**Data loading**: `loadAll(showSpinner?)` fetches tanks, beers, users, grid data, styles, and task-type overrides in parallel. Only the initial mount call passes `showSpinner=true` — refreshes after saves/drags are silent (no loading flash). `loadGrid()` fetches only the visible window. `handleRefresh` calls both.
+
+**Package task auto-end**: When a `package` task is created (`POST /tasks`) or moved/edited (`PATCH /tasks/:id`), the server finds the active assignment on that tank and sets its `end_date` to the package date, then deletes tasks scheduled after that date.
+
+**Removing an assignment**: `DELETE /assignments/:id` fetches the assignment first, deletes all matching tasks (`tank_id + beer_id` within start/end range), then deletes the assignment row. `PATCH /assignments/:id` with an `end_date` trims tasks after that date.
+
+**Beer styles and presets**: A style (`prod_beer_styles`) can have task presets (`prod_style_task_presets`, day_offset from brew day). When assigning a beer via `CellModal`, an "Apply style task presets" checkbox triggers `POST /assignments/:id/apply-presets` which creates tasks at `start_date + day_offset`.
+
+**Manage sub-tabs**: Tanks | Beers | Styles | Tasks
+- **Tasks sub-tab** (`TaskTypesTab` component): edits `prod_task_type_overrides` (label, short, bg color, text color per key). Keys are fixed — only display is customizable.
+- **Beers sub-tab**: no free-text style field; only the style dropdown (linking to `prod_beer_styles`). Beer form sends only `name` and `style_id`.
+- `manageTab` state is lifted to the parent `ProductionSchedule` component (not inside `ManageView`) so it survives `loadAll()` re-renders.
+
+**Route ordering** in `server/index.js` for production-schedule routes:
+- `GET /api/production-schedule/task-types` and all style/preset routes before `/:id` catch-alls
+- `POST /api/production-schedule/assignments/:id/shift` and `/apply-presets` before `PATCH /assignments/:id`
