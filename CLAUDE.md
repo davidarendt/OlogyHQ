@@ -101,17 +101,19 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `inspections` — id, location, date, improvements, score_pct, rated_count, created_at
 - `inspection_ratings` — id, inspection_id (→ inspections, cascade), section_id, item_index, rating ('1'–'5'|'NA'|null), note, updated_at; unique on (inspection_id, section_id, item_index)
 - `recipes` — id, name, category ('brunch'|'shareables'|'flatbreads'|'specials'|'prep'), cook_time, description, ingredients, instructions, plating, notes, image_filename, linked_recipe_ids (INTEGER[]), sort_order, created_by_id, created_by_name, created_at, updated_at
-- `cocktails` — id, name, status ('menu'|'special'|'wip'), description, price, glass, method, ice, garnish, last_special_on, image_filename, linked_batched_item_ids (INTEGER[]), sort_order, suggested_by_name, created_at, updated_at
-- `cocktail_ingredients` — id, cocktail_id (→ cocktails, cascade), name, amount, unit, sort_order, is_garnish
+- `cocktails` — id, name, status ('menu'|'special'|'wip'), description, price, glass, method, ice, garnish, last_special_on, photo_filename, linked_batched_item_ids (INTEGER[]), sort_order, suggested_by_name, suggested_by_id (→ users, SET NULL), created_at, updated_at
+- `cocktail_ingredients` — id, cocktail_id (→ cocktails, cascade), ingredient_name, amount, unit, sort_order, is_garnish
 - `cocktail_tag_definitions` — id, name, color, sort_order
 - `cocktail_tags` — cocktail_id, tag_definition_id (PK: both)
 - `cocktail_catalog` — id, name, description, sort_order (reference list of spirit/ingredient categories)
+- `cocktail_settings` — singleton row (id=1), show_creator (boolean, default true)
 - `batched_cocktail_items` — id, name, description, instructions, yield_amount, yield_unit, image_filename, linked_cocktail_ids (INTEGER[]), sort_order, created_at, updated_at
 - `cocktail_submissions` — id, type ('new'|'change'), cocktail_id (nullable, for change requests), submitted_by_id, submitted_by_name, cocktail_name, description, status ('pending'|'reviewed'), created_at
 - `crm_product_lines` — id, name, type ('beer'|'spirit'|'other'), sort_order
 - `crm_activity_types` — id, name, sort_order
+- `crm_contact_roles` — id, name, sort_order (e.g. Sales Staff, Sales Manager, Warehouse, Billing, Driver)
 - `crm_distributors` — id, name, territory, notes, sort_order, created_at, updated_at
-- `crm_distributor_contacts` — id, distributor_id (→ crm_distributors, cascade), name, title, phone, email, is_primary, sort_order
+- `crm_distributor_contacts` — id, distributor_id (→ crm_distributors, cascade), name, title, phone, email, role_id (→ crm_contact_roles, SET NULL), is_primary, sort_order
 - `crm_distributor_products` — distributor_id, product_line_id (PK: both)
 - `crm_accounts` — id, name, type ('bar'|'restaurant'|'retail'|'hotel'|'other'), address, city, state, phone, email, contact_name, contact_title, distributor_id (→ crm_distributors, SET NULL), notes, sort_order, created_at, updated_at
 - `crm_account_products` — account_id, product_line_id (PK: both)
@@ -158,25 +160,36 @@ Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/
 ### Cocktail Keeper Tool
 `CocktailKeeper.js` manages cocktail recipes with two parallel hierarchies: **cocktails** and **house-made items** (batched syrups, infusions, juices, etc.).
 
-**Tabs**: Cocktails | House-Made | Manage (canUpload only)
+**Tabs**: Cocktails | Syrups/Infusions | Manage (canUpload only)
 
-**Cocktail categories** (controlled by `status` column):
+**Cocktail categories** (controlled by `status` column, filter defaults to `'all'`):
 - `menu` — currently on the menu
 - `special` — rotating/seasonal specials
 - `wip` — Work-In-Progress (suggestions and drafts)
 
-**House-made ↔ cocktail linking** uses bidirectional arrays: `linked_batched_item_ids INTEGER[]` on cocktails, `linked_cocktail_ids INTEGER[]` on batched items. Same pattern as prep↔menu in Recipes. House-made chips in the cocktail detail view are clickable and navigate to that item.
+**Syrups/Infusions ↔ cocktail linking** uses bidirectional arrays: `linked_batched_item_ids INTEGER[]` on cocktails, `linked_cocktail_ids INTEGER[]` on batched items. Same pattern as prep↔menu in Recipes. House-made chips in the cocktail detail view are clickable and navigate to that item.
 
-**Suggestion flow**: View-only users (no `upload` permission) can click "Suggest a Cocktail" which opens the same `CocktailModal` with `isSuggestion=true`. The modal hides status/price/last_special_on and shows a "Work-In-Progress" badge. On submit, `POST /api/cocktails` checks manage permission internally — view-only users get `status='wip'` and `suggested_by_name=req.user.name` forced server-side. Managers can then edit/promote from the Manage → WIP tab.
+**Suggestion flow**: View-only users (no `upload` permission) can click "Suggest a Cocktail" which opens the same `CocktailModal` with `isSuggestion=true`. The modal hides status/price/last_special_on/suggested_by_name and shows a "Work-In-Progress" badge. On submit, `POST /api/cocktails` checks manage permission internally — view-only users get `status='wip'` and `suggested_by_name=req.user.name` + `suggested_by_id=req.user.id` forced server-side. Managers can then edit/promote from the Manage → WIP tab.
+
+**Ownership-based editing**: View-only users can edit cocktails they originally submitted (WIP only). The edit button is shown when `canUpload || cocktail.suggested_by_id === user?.id`. The `PATCH /api/cocktails/:id` endpoint uses `checkCocktailsView` and checks ownership server-side — non-managers who don't own the cocktail get 403. Non-managers cannot change `status`, `price`, `last_special_on`, or `suggested_by_name`.
 
 **Recommend an Edit**: From the cocktail detail modal, view-only users see a "Recommend an Edit" button which opens `RecommendEditModal` — a focused text form that POSTs to `POST /api/cocktails/submissions` with `type='change'`.
 
 **Submissions management**: Manage tab includes a Submissions sub-tab (with pending count badge) where managers can review/dismiss/delete suggestion submissions.
 
+**Creator banner**: An orange diagonal ribbon in the top-right corner of each cocktail card shows the creator's name as "First L." format (e.g. "Sarah M."). The `formatCreatorName(name)` helper produces this format. Controlled by `cocktail_settings.show_creator` (toggled in Manage → Settings sub-tab). The detail modal also shows a creator banner using the same abbreviated name.
+
+**Ingredient autocomplete**: `IngredientInput` component wraps the ingredient name field. Typing ≥ 1 character shows a fuzzy-matched dropdown. `fuzzyMatch(query, target)` uses subsequence matching (query chars must appear in order in target — e.g. `vdka` matches `Vodka`). On blur, if the typed value isn't an exact match but has fuzzy matches, a "Did you mean?" warning panel appears.
+
+**Ingredient management**: Manage → Ingredients sub-tab renders `IngredientManager`. Lists all distinct ingredient names from `cocktail_ingredients`, searchable, multi-selectable. Selecting ≥ 2 shows a merge panel; `POST /api/cocktails/ingredients/merge` renames all matching rows to the canonical name.
+
 **Route ordering** in `server/index.js`:
+- `GET /api/cocktails/settings` and `GET /api/cocktails/ingredients` must be before `GET /api/cocktails/:id/photo`
 - `PATCH /api/cocktails/reorder` must be before `PATCH /api/cocktails/:id`
 - `PATCH /api/cocktails/batched/reorder` must be before `PATCH /api/cocktails/batched/:id`
 - All `/api/cocktails/batched/*` and `/api/cocktails/submissions/*` routes must be before `/api/cocktails/:id`
+
+**Manage sub-tabs**: Cocktails | Syrups/Infusions | Ingredients | Submissions | Settings
 
 **Photo serving**: `GET /api/cocktails/:id/photo` streams buffer directly from `cocktail-photos` bucket (same pattern as recipe photos, no redirect). Uses `PhotoImg` component with auth fetch pattern.
 
@@ -189,15 +202,19 @@ Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/
 
 **Accounts** (full CRUD for `view` users): name, type (bar/restaurant/retail/hotel/other), contact info, linked distributor, products carried, notes. Activity log is per-account (log visits, calls, tastings, etc.) — opens in a separate modal with full history.
 
-**Distributors** (browse for all; add/edit/delete for `upload` users): name, territory, notes, key contacts (multiple, with is_primary flag), brands carried.
+**Distributors** (browse for all; add/edit/delete for `upload` users): name, territory, notes, contacts (multiple per distributor with role category and is_primary flag), brands carried. The distributor detail view uses a `distDetailId` state (stores just the ID) — the full object is derived from the live `distributors` array so the detail modal auto-refreshes after contact changes. All phone numbers render as `tel:` links.
 
-**Manage tab** (`upload` only): Product Lines (name + type beer/spirit/other) and Activity Types — both are fully editable reference lists.
+**Distributor contacts**: `DistributorContactsSection` component handles the contact list within the distributor detail view. Both `view` and `upload` users can add/edit/delete contacts. Each contact has a `role_id` referencing `crm_contact_roles` (e.g. Sales Staff, Sales Manager, Warehouse, Billing, Driver).
+
+**Manage tab** (`upload` only): Product Lines (name + type beer/spirit/other), Activity Types, and Contact Roles — all fully editable reference lists.
+
+**Location lookup**: "Find Locations Near Me" button uses the Overpass API to find nearby bars/restaurants. POST to `https://overpass-api.de/api/interpreter` with `Content-Type: application/x-www-form-urlencoded` and body `data=<encoded query>` (not raw body).
 
 **Permission levels**:
-- `view` — full CRUD on accounts and activities
-- `upload` — additionally: add/edit/delete distributors and access the Manage tab (product lines, activity types)
+- `view` — full CRUD on accounts, activities, and distributor contacts
+- `upload` — additionally: add/edit/delete distributors and access the Manage tab (product lines, activity types, contact roles)
 
-**Route ordering** in `server/index.js`: all CRM routes follow the same middleware pattern — `checkCRMView` for account/activity endpoints, `checkCRMManage` for distributor/product-line/activity-type management.
+**Route ordering** in `server/index.js`: all CRM routes follow the same middleware pattern — `checkCRMView` for account/activity/contact endpoints, `checkCRMManage` for distributor/product-line/activity-type/contact-role management.
 
 ### Taproom Inspections — Real-Time Architecture
 `TaproomInspections.js` is a multi-user bar inspection checklist. It uses a **split data pattern**:
