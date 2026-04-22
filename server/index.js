@@ -2061,6 +2061,25 @@ app.get('/api/cocktails/:id/photo', authenticateToken, async (req, res) => {
   }
 });
 
+// Cocktail settings (singleton row)
+app.get('/api/cocktails/settings', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM cocktail_settings WHERE id = 1');
+    res.json(r.rows[0] || { show_creator: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/cocktails/settings', authenticateToken, checkCocktailsManage, async (req, res) => {
+  try {
+    const { show_creator } = req.body;
+    await pool.query(
+      `INSERT INTO cocktail_settings (id, show_creator) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET show_creator = $1`,
+      [show_creator]
+    );
+    res.json({ show_creator });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 // Ingredient list + merge — must be before /:id routes
 app.get('/api/cocktails/ingredients', authenticateToken, async (req, res) => {
   try {

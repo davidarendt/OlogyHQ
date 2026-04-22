@@ -35,7 +35,7 @@ function TagBadge({ name, color }) {
 
 // ── Detail Views ─────────────────────────────────────────────────────────────
 
-function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload, user }) {
+function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload, user, showCreator }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
   const serviceInfo = [cocktail.method, cocktail.glass, cocktail.ice].filter(Boolean).join(' · ');
@@ -112,6 +112,13 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
                   Last Special · {new Date(cocktail.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Creator banner */}
+          {showCreator && cocktail.suggested_by_name && (
+            <div className="mb-6 px-3 py-2 rounded-lg bg-gray-600/40 border border-gray-500/30 text-sm text-gray-400">
+              Created by <span className="text-gray-200 font-medium">{cocktail.suggested_by_name}</span>
             </div>
           )}
 
@@ -908,6 +915,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const [catalog, setCatalog] = useState({});
   const [tagDefs, setTagDefs] = useState([]);
   const [allIngredients, setAllIngredients] = useState([]);
+  const [cocktailSettings, setCocktailSettings] = useState({ show_creator: true });
   const [tab, setTab] = useState('cocktails');
   const [cocktailCategory, setCocktailCategory] = useState('all');
   const [manageTab, setManageTab] = useState('cocktails');
@@ -931,14 +939,16 @@ function CocktailKeeper({ user, canUpload, onBack }) {
         fetch(`${API}/api/cocktails/catalog`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/tag-definitions`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/cocktails/ingredients`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/cocktails/settings`, { credentials: 'include' }).then(r => r.json()),
       ];
       if (canUpload) fetches.push(fetch(`${API}/api/cocktails/submissions`, { credentials: 'include' }).then(r => r.json()));
-      const [cRes, bRes, catRes, tdRes, ingRes, subRes] = await Promise.all(fetches);
+      const [cRes, bRes, catRes, tdRes, ingRes, settingsRes, subRes] = await Promise.all(fetches);
       setCocktails(Array.isArray(cRes) ? cRes : []);
       setBatched(Array.isArray(bRes) ? bRes : []);
       setCatalog(catRes || {});
       setTagDefs(Array.isArray(tdRes) ? tdRes : []);
       setAllIngredients(Array.isArray(ingRes) ? ingRes.map(r => r.name) : []);
+      if (settingsRes && !settingsRes.message) setCocktailSettings(settingsRes);
       if (subRes) setSubmissions(Array.isArray(subRes) ? subRes : []);
     } catch {}
     setLoading(false);
@@ -1120,6 +1130,9 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                     {c.price && (
                       <p className="text-sm font-semibold mt-2" style={{ color: '#F05A28' }}>${parseFloat(c.price).toFixed(2)}</p>
                     )}
+                    {cocktailSettings.show_creator && c.suggested_by_name && (
+                      <p className="text-xs text-gray-500 mt-2">Created by {c.suggested_by_name}</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1167,6 +1180,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                 { key: 'batched', label: 'Syrups/Infusions' },
                 { key: 'ingredients', label: 'Ingredients' },
                 { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
+                { key: 'settings', label: 'Settings' },
               ].map(t => (
                 <button
                   key={t.key}
@@ -1313,6 +1327,29 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                 </div>
               </>
             )}
+
+            {manageTab === 'settings' && (
+              <div className="max-w-sm space-y-4">
+                <p className="text-gray-400 text-sm">Configure how cocktails appear to all users.</p>
+                <label className="flex items-center justify-between gap-4 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 cursor-pointer">
+                  <span className="text-white text-sm">Show creator name on cocktails</span>
+                  <button
+                    onClick={async () => {
+                      const next = !cocktailSettings.show_creator;
+                      setCocktailSettings(s => ({ ...s, show_creator: next }));
+                      await fetch(`${API}/api/cocktails/settings`, {
+                        method: 'PATCH', credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ show_creator: next }),
+                      });
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${cocktailSettings.show_creator ? 'bg-orange-500' : 'bg-gray-600'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${cocktailSettings.show_creator ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </label>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -1324,6 +1361,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           batched={batched}
           canUpload={canUpload}
           user={user}
+          showCreator={cocktailSettings.show_creator}
           onClose={() => setViewCocktail(null)}
           onEdit={() => { setEditCocktail(viewCocktail); setViewCocktail(null); }}
           onViewBatched={(item) => { setViewCocktail(null); setViewBatched(item); }}
