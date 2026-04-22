@@ -3172,6 +3172,51 @@ app.post('/api/production-schedule/assignments', authenticateToken, checkProdMan
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// Shift assignment (and optionally its tasks) by N days, optionally to a new tank
+app.post('/api/production-schedule/assignments/:id/shift', authenticateToken, checkProdManage, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { days, new_tank_id, move_tasks } = req.body;
+    if (!days && !new_tank_id) return res.status(400).json({ message: 'days or new_tank_id required' });
+    // Get current assignment
+    const cur = await client.query('SELECT * FROM prod_tank_assignments WHERE id=$1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ message: 'Not found' });
+    const asgn = cur.rows[0];
+    const d = parseInt(days) || 0;
+    const newTankId = new_tank_id || asgn.tank_id;
+    const newStart = d ? asgn.start_date + '' : asgn.start_date; // will use SQL interval
+    // Update assignment
+    const r = await client.query(
+      `UPDATE prod_tank_assignments SET
+        start_date = start_date + ($1 * INTERVAL '1 day'),
+        end_date = CASE WHEN end_date IS NOT NULL THEN end_date + ($1 * INTERVAL '1 day') ELSE NULL END,
+        tank_id = $2
+       WHERE id = $3 RETURNING *`,
+      [d, newTankId, req.params.id]
+    );
+    // Move associated tasks
+    if (move_tasks) {
+      await client.query(
+        `UPDATE prod_tasks SET
+          date = date + ($1 * INTERVAL '1 day'),
+          tank_id = $2
+         WHERE tank_id = $3
+           AND date >= $4
+           AND ($5::date IS NULL OR date <= $5::date)`,
+        [d, newTankId, asgn.tank_id, asgn.start_date, asgn.end_date]
+      );
+    }
+    await client.query('COMMIT');
+    res.json(r.rows[0]);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 app.patch('/api/production-schedule/assignments/:id', authenticateToken, checkProdManage, async (req, res) => {
   try {
     const { beer_id, tank_id, start_date, end_date, notes } = req.body;
@@ -3227,10 +3272,16 @@ app.post('/api/production-schedule/tasks', authenticateToken, checkProdManage, a
 
 app.patch('/api/production-schedule/tasks/:id', authenticateToken, checkProdManage, async (req, res) => {
   try {
-    const { task_type, custom_note, assigned_user_ids } = req.body;
+    const { task_type, custom_note, assigned_user_ids, date, tank_id } = req.body;
     const r = await pool.query(
-      `UPDATE prod_tasks SET task_type=COALESCE($1,task_type), custom_note=$2, assigned_user_ids=COALESCE($3::integer[],assigned_user_ids) WHERE id=$4 RETURNING *`,
-      [task_type, custom_note !== undefined ? custom_note : null, assigned_user_ids, req.params.id]
+      `UPDATE prod_tasks SET
+        task_type=COALESCE($1,task_type),
+        custom_note=$2,
+        assigned_user_ids=COALESCE($3::integer[],assigned_user_ids),
+        date=COALESCE($4::date,date),
+        tank_id=COALESCE($5,tank_id)
+       WHERE id=$6 RETURNING *`,
+      [task_type, custom_note !== undefined ? custom_note : null, assigned_user_ids, date || null, tank_id || null, req.params.id]
     );
     res.json(r.rows[0]);
   } catch { res.status(500).json({ message: 'Server error' }); }

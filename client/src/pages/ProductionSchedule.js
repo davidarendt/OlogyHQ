@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -59,6 +59,10 @@ function isToday(dateStr) {
 function userName(users, id) {
   const u = users.find(x => x.id === id);
   return u ? u.name.split(' ')[0] : '?';
+}
+
+function dateDiff(a, b) {
+  return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 }
 
 // ── Cell Modal ────────────────────────────────────────────────────────────────
@@ -307,11 +311,22 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
 
 // ── Schedule Grid ─────────────────────────────────────────────────────────────
 
-const COL_W = 58;  // tank column width px
-const ROW_H = 28;  // row height px
-const DATE_W = 62; // date column width px
+const COL_W = 58;
+const ROW_H = 28;
+const DATE_W = 62;
 
-function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick }) {
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCellClick, onDragStart }) {
+  const scrollRef = useRef(null);
+
+  // Auto-scroll to today on first render
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const todayEl = scrollRef.current.querySelector('[data-today="1"]');
+    if (todayEl) todayEl.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, []);
+
   const getAssignment = useCallback((tankId, date) => {
     return assignments.find(a =>
       a.tank_id === tankId &&
@@ -327,8 +342,44 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
   const activeTanks = tanks.filter(t => t.active);
   const border = '1px solid rgba(75,85,99,0.3)';
 
+  // Compute drag preview ranges
+  const preview = useMemo(() => {
+    if (!drag) return null;
+    const diff = dateDiff(drag.startDate, drag.currentDate);
+    if (drag.mode === 'move_asgn') {
+      const ns = addDays(drag.originalStart, diff);
+      const ne = drag.originalEnd ? addDays(drag.originalEnd, diff) : null;
+      return { mode: 'move_asgn', tankId: drag.currentTankId, start: ns, end: ne || ns, id: drag.id };
+    }
+    if (drag.mode === 'resize_asgn') {
+      const base = drag.originalEnd || drag.startDate;
+      const ne = addDays(base, diff);
+      const clamped = ne >= drag.originalStart ? ne : drag.originalStart;
+      return { mode: 'resize_asgn', tankId: drag.tankId, start: drag.originalStart, end: clamped, id: drag.id };
+    }
+    if (drag.mode === 'move_task') {
+      return { mode: 'move_task', tankId: drag.currentTankId, date: drag.currentDate, id: drag.id };
+    }
+    return null;
+  }, [drag]);
+
+  const inPreview = (tankId, date) => {
+    if (!preview) return false;
+    if (preview.mode === 'move_task') return preview.tankId === tankId && preview.date === date;
+    if (preview.tankId !== tankId) return false;
+    return date >= preview.start && date <= preview.end;
+  };
+
+  const isDragSource = (asgn, task, date) => {
+    if (!drag) return false;
+    if (drag.mode === 'move_asgn' && asgn?.id === drag.id) return true;
+    if (drag.mode === 'resize_asgn' && asgn?.id === drag.id) return true;
+    if (drag.mode === 'move_task' && task?.id === drag.id) return true;
+    return false;
+  };
+
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
+    <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)', userSelect: drag ? 'none' : 'auto', cursor: drag ? (drag.mode === 'resize_asgn' ? 's-resize' : 'grabbing') : 'auto' }}>
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
         <thead>
           <tr>
@@ -350,22 +401,28 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
           </tr>
         </thead>
         <tbody>
-          {dates.map(date => {
+          {dates.map((date, dateIdx) => {
             const wknd = isWeekend(date);
             const today = isToday(date);
             const rowBg = today ? '#14291f' : wknd ? '#0d1117' : '#111827';
+            // Month separator
+            const prevDate = dateIdx > 0 ? dates[dateIdx - 1] : null;
+            const newMonth = prevDate && date.slice(0, 7) !== prevDate.slice(0, 7);
+
             return (
-              <tr key={date}>
+              <tr key={date} data-today={today ? '1' : undefined}>
                 <td style={{
                   position: 'sticky', left: 0, zIndex: 10,
-                  backgroundColor: rowBg,
+                  backgroundColor: newMonth ? '#1a2030' : rowBg,
                   width: DATE_W, minWidth: DATE_W, height: ROW_H,
-                  padding: '0 5px', borderRight: border, borderBottom: border,
-                  fontSize: 10, fontWeight: today ? 700 : 400,
-                  color: today ? '#34d399' : wknd ? '#4b5563' : '#9ca3af',
+                  padding: '0 5px', borderRight: border,
+                  borderBottom: newMonth ? '1px solid rgba(99,102,241,0.4)' : border,
+                  borderTop: newMonth ? '1px solid rgba(99,102,241,0.4)' : undefined,
+                  fontSize: newMonth ? 9 : 10, fontWeight: today ? 700 : (newMonth ? 600 : 400),
+                  color: today ? '#34d399' : wknd ? '#4b5563' : (newMonth ? '#818cf8' : '#9ca3af'),
                   whiteSpace: 'nowrap', lineHeight: `${ROW_H}px`,
                 }}>
-                  {formatDateLabel(date)}
+                  {newMonth ? `${MONTH_NAMES[parseInt(date.slice(5,7))-1]} ${date.slice(8,10)}` : formatDateLabel(date)}
                 </td>
                 {activeTanks.map(tank => {
                   const asgn = getAssignment(tank.id, date);
@@ -373,39 +430,71 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
                   const primary = getPrimaryTask(cellTasks);
                   const allDone = cellTasks.length > 0 && cellTasks.every(t => t.completed);
                   const tt = primary ? (TASK_MAP[primary.task_type] || TASK_MAP.other) : null;
-
-                  // Show beer name only at start of assignment block
                   const isStartCell = asgn && (asgn.start_date === date || date === dates[0]);
+                  const isLastCell = asgn && (asgn.end_date === date || (asgn.end_date === null && dateIdx === dates.length - 1));
+
+                  const sourceDim = isDragSource(asgn, primary, date);
+                  const prevCell = inPreview(tank.id, date);
 
                   let bgColor = wknd ? '#0d1117' : '#111827';
                   if (asgn && !tt) bgColor = wknd ? '#0f172a' : '#172033';
                   if (tt) bgColor = allDone ? '#1a3a2a' : tt.bg;
+                  if (prevCell && !sourceDim) bgColor = preview.mode === 'move_task' ? 'rgba(251,191,36,0.25)' : 'rgba(99,102,241,0.25)';
 
                   const taskLabel = tt
                     ? (allDone ? '✓' : tt.short) + (cellTasks.length > 1 ? ` +${cellTasks.length - 1}` : '')
                     : null;
 
+                  const handleMouseDown = (e) => {
+                    if (!canManage) return;
+                    e.preventDefault();
+                    if (e.target.dataset.resize) {
+                      // Resize handle
+                      onDragStart('resize_asgn', asgn.id, tank.id, date, {
+                        originalStart: asgn.start_date,
+                        originalEnd: asgn.end_date || date,
+                      });
+                    } else if (primary && cellTasks.length > 0) {
+                      // Drag the primary task
+                      onDragStart('move_task', primary.id, tank.id, date, {});
+                    } else if (asgn) {
+                      // Drag the whole assignment
+                      onDragStart('move_asgn', asgn.id, tank.id, date, {
+                        originalStart: asgn.start_date,
+                        originalEnd: asgn.end_date,
+                      });
+                    }
+                  };
+
                   return (
-                    <td key={tank.id}
-                      onClick={() => onCellClick(date, tank, asgn, cellTasks)}
+                    <td
+                      key={tank.id}
+                      data-date={date}
+                      data-tank-id={tank.id}
+                      onClick={(e) => {
+                        if (drag) return; // don't open modal after drag
+                        onCellClick(date, tank, asgn, cellTasks);
+                      }}
+                      onMouseDown={handleMouseDown}
                       title={[asgn?.beer_name, cellTasks.map(t => TASK_MAP[t.task_type]?.label).join(', ')].filter(Boolean).join(' — ')}
                       style={{
                         backgroundColor: bgColor,
+                        opacity: sourceDim ? 0.35 : 1,
                         width: COL_W, minWidth: COL_W, maxWidth: COL_W,
                         height: ROW_H,
                         padding: '1px 3px',
-                        borderRight: border, borderBottom: border,
-                        borderLeft: isStartCell ? '2px solid rgba(255,255,255,0.15)' : border,
-                        cursor: canManage || cellTasks.length ? 'pointer' : 'default',
+                        borderRight: border,
+                        borderBottom: newMonth ? '1px solid rgba(99,102,241,0.4)' : border,
+                        borderLeft: asgn ? (isStartCell ? '2px solid rgba(255,255,255,0.2)' : border) : border,
+                        outline: prevCell ? '1px dashed rgba(99,102,241,0.7)' : undefined,
+                        cursor: canManage ? (asgn || cellTasks.length ? 'grab' : 'cell') : (cellTasks.length ? 'pointer' : 'default'),
                         overflow: 'hidden',
-                        transition: 'filter 0.1s',
+                        position: 'relative',
                         verticalAlign: 'middle',
                       }}
-                      onMouseEnter={e => { if (canManage || cellTasks.length) e.currentTarget.style.filter = 'brightness(1.3)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.filter = ''; }}
                     >
                       {(isStartCell || taskLabel) ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', pointerEvents: 'none' }}>
                           {isStartCell && (
                             <div style={{
                               fontSize: 7, fontWeight: 600, lineHeight: 1.1,
@@ -427,6 +516,18 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
                           )}
                         </div>
                       ) : null}
+                      {/* Resize handle on last cell of assignment */}
+                      {isLastCell && canManage && (
+                        <div
+                          data-resize="1"
+                          style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0, height: 5,
+                            cursor: 's-resize',
+                            backgroundColor: 'rgba(255,255,255,0.12)',
+                            borderTop: '1px solid rgba(255,255,255,0.15)',
+                          }}
+                        />
+                      )}
                     </td>
                   );
                 })}
@@ -798,6 +899,63 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [viewWeeks, setViewWeeks] = useState(5);
   const [cellModal, setCellModal] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [drag, setDrag] = useState(null);
+  const dragCommitted = useRef(false);
+
+  const startDrag = useCallback((mode, id, tankId, startDate, extras) => {
+    dragCommitted.current = false;
+    setDrag({ mode, id, tankId, startDate, currentDate: startDate, currentTankId: tankId, ...extras });
+  }, []);
+
+  // Global mouse move + up listeners while dragging
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const td = el?.closest('[data-date]');
+      if (!td) return;
+      setDrag(d => d ? { ...d, currentDate: td.dataset.date, currentTankId: parseInt(td.dataset.tankId) } : null);
+    };
+    const onUp = async () => {
+      if (dragCommitted.current) return;
+      dragCommitted.current = true;
+      const d = drag;
+      setDrag(null);
+      const diff = dateDiff(d.startDate, d.currentDate);
+      const tankChanged = d.currentTankId !== d.tankId;
+      if (diff === 0 && !tankChanged) return;
+      if (d.mode === 'resize_asgn') {
+        const base = d.originalEnd || d.startDate;
+        const newEnd = addDays(base, diff);
+        if (newEnd < d.originalStart) return;
+        await fetch(`${API}/api/production-schedule/assignments/${d.id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ end_date: newEnd }),
+        });
+      } else if (d.mode === 'move_asgn') {
+        await fetch(`${API}/api/production-schedule/assignments/${d.id}/shift`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: diff, new_tank_id: d.currentTankId, move_tasks: true }),
+        });
+      } else if (d.mode === 'move_task') {
+        const newDate = addDays(d.startDate, diff);
+        await fetch(`${API}/api/production-schedule/tasks/${d.id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: newDate, tank_id: d.currentTankId }),
+        });
+      }
+      handleRefresh();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [drag]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const viewEnd = addDays(viewStart, viewWeeks * 7 - 1);
 
@@ -907,7 +1065,9 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
               tasks={tasks}
               dates={dates}
               canManage={canUpload}
+              drag={drag}
               onCellClick={openCellModal}
+              onDragStart={startDrag}
             />
             {tanks.filter(t => t.active).length === 0 && (
               <p className="text-gray-500 text-center py-12 mt-4">No tanks configured. Add tanks in the Manage tab.</p>
