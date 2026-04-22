@@ -1270,8 +1270,8 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
     if (r.tasks) setTasks(r.tasks);
   }, [viewStart, viewEnd]);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
       const [tanksRes, beersRes, usersRes, allRes, stylesRes, ttRes] = await Promise.all([
         fetch(`${API}/api/production-schedule/tanks`, { credentials: 'include' }).then(r => r.json()),
@@ -1295,7 +1295,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
     setLoading(false);
   }, [allStart, allEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { loadAll(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadAll(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!loading) loadGrid();
