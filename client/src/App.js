@@ -13,6 +13,7 @@ import TaproomInspections from './pages/TaproomInspections';
 import Recipes from './pages/Recipes';
 import CocktailKeeper from './pages/CocktailKeeper';
 import SalesCRM from './pages/SalesCRM';
+import ProductionSchedule from './pages/ProductionSchedule';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -80,6 +81,7 @@ function App() {
   if (page === 'recipes') return <Recipes user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'cocktail-keeper') return <CocktailKeeper user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'sales-crm') return <SalesCRM user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'production-schedule') return <ProductionSchedule user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }

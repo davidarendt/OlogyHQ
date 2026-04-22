@@ -3023,6 +3023,225 @@ app.delete('/api/crm/accounts/:id/activities/:actId', authenticateToken, checkCR
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Production Schedule ──────────────────────────────────────────────────────
+
+const checkProdView = (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = $1 AND t.slug = 'production-schedule' AND p.permission_level IN ('view','upload')`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'No access' }))
+  .catch(() => res.status(500).json({ message: 'Server error' }));
+};
+
+const checkProdManage = (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = $1 AND t.slug = 'production-schedule' AND p.permission_level = 'upload'`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'No manage access' }))
+  .catch(() => res.status(500).json({ message: 'Server error' }));
+};
+
+// Users (for task assignment)
+app.get('/api/production-schedule/users', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT id, name, role FROM users ORDER BY name');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Tanks
+app.get('/api/production-schedule/tanks', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM prod_tanks ORDER BY sort_order, name');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/production-schedule/tanks', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, capacity_bbl } = req.body;
+    const ord = await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM prod_tanks');
+    const r = await pool.query(
+      'INSERT INTO prod_tanks (name, capacity_bbl, sort_order) VALUES ($1,$2,$3) RETURNING *',
+      [name, capacity_bbl || null, ord.rows[0].n]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/tanks/reorder', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query('UPDATE prod_tanks SET sort_order=$1 WHERE id=$2', [i, ids[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/tanks/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, capacity_bbl, active } = req.body;
+    const r = await pool.query(
+      'UPDATE prod_tanks SET name=COALESCE($1,name), capacity_bbl=COALESCE($2,capacity_bbl), active=COALESCE($3,active) WHERE id=$4 RETURNING *',
+      [name, capacity_bbl, active, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/tanks/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_tanks WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Beers
+app.get('/api/production-schedule/beers', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const r = await pool.query("SELECT * FROM prod_beers WHERE status='active' ORDER BY name");
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/production-schedule/beers', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, style, notes } = req.body;
+    const r = await pool.query(
+      'INSERT INTO prod_beers (name, style, notes) VALUES ($1,$2,$3) RETURNING *',
+      [name, style || null, notes || null]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/beers/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { name, style, notes, status } = req.body;
+    const r = await pool.query(
+      'UPDATE prod_beers SET name=COALESCE($1,name), style=COALESCE($2,style), notes=COALESCE($3,notes), status=COALESCE($4,status) WHERE id=$5 RETURNING *',
+      [name, style, notes, status, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/beers/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query("UPDATE prod_beers SET status='archived' WHERE id=$1", [req.params.id]);
+    res.json({ message: 'Archived' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Grid data (assignments + tasks for a date range)
+app.get('/api/production-schedule/grid', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ message: 'start and end required' });
+    const assignments = await pool.query(
+      `SELECT a.*, b.name AS beer_name FROM prod_tank_assignments a
+       JOIN prod_beers b ON b.id = a.beer_id
+       WHERE a.start_date <= $2 AND (a.end_date IS NULL OR a.end_date >= $1)
+       ORDER BY a.start_date`,
+      [start, end]
+    );
+    const tasks = await pool.query(
+      `SELECT t.*, b.name AS beer_name FROM prod_tasks t
+       LEFT JOIN prod_beers b ON b.id = t.beer_id
+       WHERE t.date >= $1 AND t.date <= $2
+       ORDER BY t.date, t.created_at`,
+      [start, end]
+    );
+    res.json({ assignments: assignments.rows, tasks: tasks.rows });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Assignments
+app.post('/api/production-schedule/assignments', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { beer_id, tank_id, start_date, end_date, notes } = req.body;
+    const r = await pool.query(
+      'INSERT INTO prod_tank_assignments (beer_id, tank_id, start_date, end_date, notes, created_by_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [beer_id, tank_id, start_date, end_date || null, notes || null, req.user.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/assignments/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { beer_id, tank_id, start_date, end_date, notes } = req.body;
+    const r = await pool.query(
+      `UPDATE prod_tank_assignments SET
+        beer_id=COALESCE($1,beer_id), tank_id=COALESCE($2,tank_id),
+        start_date=COALESCE($3,start_date), end_date=$4, notes=COALESCE($5,notes)
+       WHERE id=$6 RETURNING *`,
+      [beer_id, tank_id, start_date, end_date !== undefined ? end_date : null, notes, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/assignments/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_tank_assignments WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Tasks — complete route BEFORE /:id
+app.patch('/api/production-schedule/tasks/:id/complete', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const { completed } = req.body;
+    let r;
+    if (completed) {
+      r = await pool.query(
+        'UPDATE prod_tasks SET completed=true, completed_by_id=$1, completed_at=NOW() WHERE id=$2 RETURNING *',
+        [req.user.id, req.params.id]
+      );
+    } else {
+      r = await pool.query(
+        'UPDATE prod_tasks SET completed=false, completed_by_id=NULL, completed_at=NULL WHERE id=$1 RETURNING *',
+        [req.params.id]
+      );
+    }
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/production-schedule/tasks', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { beer_id, tank_id, date, task_type, custom_note, assigned_user_ids } = req.body;
+    const r = await pool.query(
+      'INSERT INTO prod_tasks (beer_id, tank_id, date, task_type, custom_note, assigned_user_ids, created_by_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [beer_id || null, tank_id || null, date, task_type, custom_note || null, assigned_user_ids || [], req.user.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/tasks/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { task_type, custom_note, assigned_user_ids } = req.body;
+    const r = await pool.query(
+      `UPDATE prod_tasks SET task_type=COALESCE($1,task_type), custom_note=$2, assigned_user_ids=COALESCE($3,assigned_user_ids) WHERE id=$4 RETURNING *`,
+      [task_type, custom_note !== undefined ? custom_note : null, assigned_user_ids, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/production-schedule/tasks/:id', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_tasks WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
