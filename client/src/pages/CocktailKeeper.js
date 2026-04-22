@@ -311,13 +311,13 @@ function IngredientInput({ value, allIngredients, onChange }) {
   const [warn, setWarn] = useState(false);
   const justSelected = useRef(false);
 
-  const matches = value.length >= 2 ? allIngredients.filter(n => fuzzyMatch(value, n)) : [];
+  const matches = value.length >= 1 ? allIngredients.filter(n => fuzzyMatch(value, n)) : [];
   const exactMatch = allIngredients.some(n => n.toLowerCase() === value.toLowerCase());
 
   const handleChange = (e) => {
     onChange(e.target.value);
     setWarn(false);
-    setOpen(e.target.value.length >= 2);
+    setOpen(e.target.value.length >= 1);
   };
 
   const select = (name) => {
@@ -331,7 +331,7 @@ function IngredientInput({ value, allIngredients, onChange }) {
     setTimeout(() => {
       if (justSelected.current) { justSelected.current = false; return; }
       setOpen(false);
-      if (value.trim().length >= 2 && !exactMatch && allIngredients.filter(n => fuzzyMatch(value, n)).length > 0) {
+      if (value.trim().length >= 1 && !exactMatch && allIngredients.filter(n => fuzzyMatch(value, n)).length > 0) {
         setWarn(true);
       }
     }, 150);
@@ -344,7 +344,7 @@ function IngredientInput({ value, allIngredients, onChange }) {
         placeholder="Ingredient"
         value={value}
         onChange={handleChange}
-        onFocus={() => { if (value.length >= 2) setOpen(true); }}
+        onFocus={() => { if (value.length >= 1) setOpen(true); }}
         onBlur={handleBlur}
       />
       {open && matches.length > 0 && (
