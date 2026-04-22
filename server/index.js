@@ -3106,7 +3106,7 @@ app.get('/api/production-schedule/beers', authenticateToken, checkProdView, asyn
       `SELECT b.*, bs.name AS style_name, COALESCE(b.color, bs.color, '#6366f1') AS resolved_color
        FROM prod_beers b LEFT JOIN prod_beer_styles bs ON bs.id = b.style_id
        WHERE b.status='active'
-       ORDER BY b.sort_order, b.name`
+       ORDER BY b.name`
     );
     res.json(r.rows);
   } catch { res.status(500).json({ message: 'Server error' }); }
