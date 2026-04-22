@@ -75,7 +75,8 @@ function hexToRgba(hex, alpha) {
 
 // ── Cell Modal ────────────────────────────────────────────────────────────────
 
-function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onClose, onRefresh }) {
+function CellModal({ date, tank, assignment, tasks, beers, users, taskTypes, canManage, onClose, onRefresh }) {
+  const taskMap = useMemo(() => Object.fromEntries((taskTypes || TASK_TYPES).map(t => [t.key, t])), [taskTypes]);
   const [showAssignForm, setShowAssignForm] = useState(!assignment && canManage);
   const [assignBeerId, setAssignBeerId] = useState('');
   const [assignStart, setAssignStart] = useState(date);
@@ -255,7 +256,7 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
             )}
             <div className="space-y-2">
               {tasks.map(t => {
-                const tt = TASK_MAP[t.task_type] || TASK_MAP.other;
+                const tt = taskMap[t.task_type] || taskMap.other;
                 return (
                   <div key={t.id} className={`rounded-lg px-3 py-2 border ${t.completed ? 'border-gray-700 opacity-60' : 'border-gray-600'}`}
                     style={{ backgroundColor: tt.bg }}>
@@ -290,7 +291,7 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
             {showTaskForm && (
               <div className="mt-3 bg-gray-700/40 border border-gray-600 rounded-lg p-3 space-y-2">
                 <select className={selectCls} value={taskType} onChange={e => setTaskType(e.target.value)}>
-                  {TASK_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  {(taskTypes || TASK_TYPES).map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
                 <input className={inputCls} placeholder="Note (optional)…" value={taskNote} onChange={e => setTaskNote(e.target.value)} />
                 <div>
@@ -336,7 +337,8 @@ const DATE_W = 62;
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCellClick, onDragStart }) {
+function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, taskTypes, onCellClick, onDragStart }) {
+  const taskMap = useMemo(() => Object.fromEntries((taskTypes || TASK_TYPES).map(t => [t.key, t])), [taskTypes]);
   const scrollRef = useRef(null);
   const [colW, setColW] = useState(58);
 
@@ -467,7 +469,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                   const cellTasks = getCellTasks(tank.id, date);
                   const primary = getPrimaryTask(cellTasks);
                   const allDone = cellTasks.length > 0 && cellTasks.every(t => t.completed);
-                  const tt = primary ? (TASK_MAP[primary.task_type] || TASK_MAP.other) : null;
+                  const tt = primary ? (taskMap[primary.task_type] || taskMap.other) : null;
                   const isStartCell = asgn && (asgn.start_date === date || date === dates[0]);
                   const isLastCell = asgn && (asgn.end_date === date || (asgn.end_date === null && dateIdx === dates.length - 1));
 
@@ -515,7 +517,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                         onCellClick(date, tank, asgn, cellTasks);
                       }}
                       onMouseDown={handleMouseDown}
-                      title={[asgn?.beer_name, cellTasks.map(t => TASK_MAP[t.task_type]?.label).join(', ')].filter(Boolean).join(' — ')}
+                      title={[asgn?.beer_name, cellTasks.map(t => taskMap[t.task_type]?.label).join(', ')].filter(Boolean).join(' — ')}
                       style={{
                         backgroundColor: bgColor,
                         opacity: sourceDim ? 0.35 : 1,
@@ -581,7 +583,8 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
 
 // ── Task List View ────────────────────────────────────────────────────────────
 
-function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
+function TaskListView({ tasks, users, currentUser, canManage, taskTypes, onRefresh }) {
+  const taskMap = useMemo(() => Object.fromEntries((taskTypes || TASK_TYPES).map(t => [t.key, t])), [taskTypes]);
   const [myOnly, setMyOnly] = useState(false);
   const [weekStart, setWeekStart] = useState(getMonday(new Date()));
 
@@ -637,7 +640,7 @@ function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
             </div>
             <div className="space-y-2">
               {dayTasks.map(t => {
-                const tt = TASK_MAP[t.task_type] || TASK_MAP.other;
+                const tt = taskMap[t.task_type] || taskMap.other;
                 const assigneeNames = (t.assigned_user_ids || []).map(id => userName(users, id)).join(', ');
                 return (
                   <div key={t.id} className={`flex items-start gap-3 bg-gray-800 border rounded-xl px-4 py-3 ${t.completed ? 'border-gray-700 opacity-60' : 'border-gray-700'}`}
@@ -675,7 +678,8 @@ function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
 
 // ── Beer Tracker ──────────────────────────────────────────────────────────────
 
-function BeerTrackerView({ beers, assignments, tasks }) {
+function BeerTrackerView({ beers, assignments, tasks, taskTypes }) {
+  const taskMap = useMemo(() => Object.fromEntries((taskTypes || TASK_TYPES).map(t => [t.key, t])), [taskTypes]);
   const today = new Date().toISOString().split('T')[0];
 
   const beerData = beers.map(beer => {
@@ -699,8 +703,8 @@ function BeerTrackerView({ beers, assignments, tasks }) {
   const scheduled = beerData.filter(b => !b.activeAssignment);
 
   const BeerCard = ({ b }) => {
-    const tt = b.currentTask ? (TASK_MAP[b.currentTask.task_type] || TASK_MAP.other) : null;
-    const nt = b.nextTask ? (TASK_MAP[b.nextTask.task_type] || TASK_MAP.other) : null;
+    const tt = b.currentTask ? (taskMap[b.currentTask.task_type] || taskMap.other) : null;
+    const nt = b.nextTask ? (taskMap[b.nextTask.task_type] || taskMap.other) : null;
     return (
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -755,7 +759,8 @@ function BeerTrackerView({ beers, assignments, tasks }) {
 
 // ── Styles Tab ────────────────────────────────────────────────────────────────
 
-function StylesTab({ styles, onRefresh }) {
+function StylesTab({ styles, onRefresh, taskTypes }) {
+  const taskMap = useMemo(() => Object.fromEntries((taskTypes || TASK_TYPES).map(t => [t.key, t])), [taskTypes]);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ name: '', color: '#6366f1' });
   const [adding, setAdding] = useState(false);
@@ -860,7 +865,7 @@ function StylesTab({ styles, onRefresh }) {
               {s.presets.length === 0 && <p className="text-gray-600 text-xs mb-2">No presets yet</p>}
               <div className="space-y-1 mb-3">
                 {s.presets.map(p => {
-                  const tt = TASK_MAP[p.task_type] || TASK_MAP.other;
+                  const tt = taskMap[p.task_type] || taskMap.other;
                   return (
                     <div key={p.id} className="flex items-center gap-2">
                       <span className="text-xs font-bold px-1.5 py-0.5 rounded w-12 text-center shrink-0"
@@ -876,7 +881,7 @@ function StylesTab({ styles, onRefresh }) {
               <div className="flex gap-2 flex-wrap">
                 <select value={presetForm.task_type} onChange={e => setPresetForm(f => ({ ...f, task_type: e.target.value }))}
                   className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none">
-                  {TASK_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  {(taskTypes || TASK_TYPES).map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
                 <div className="flex items-center gap-1">
                   <span className="text-gray-500 text-xs">Day</span>
@@ -894,6 +899,113 @@ function StylesTab({ styles, onRefresh }) {
           <p className="text-gray-500 text-center py-8">No styles yet. Create one above.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Task Types Tab ────────────────────────────────────────────────────────────
+
+function TaskTypesTab({ taskTypes, onRefresh }) {
+  const [editKey, setEditKey] = useState(null);
+  const [form, setForm] = useState({ label: '', short: '', color: '#ffffff', bg: '#374151' });
+  const [saving, setSaving] = useState(false);
+
+  const inputCls = 'bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  const startEdit = (t) => {
+    setEditKey(t.key);
+    setForm({ label: t.label, short: t.short, color: t.color, bg: t.bg });
+  };
+
+  const cancel = () => { setEditKey(null); };
+
+  const save = async () => {
+    setSaving(true);
+    await fetch(`${API}/api/production-schedule/task-types/${editKey}`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    setSaving(false);
+    setEditKey(null);
+    onRefresh();
+  };
+
+  return (
+    <div className="max-w-lg space-y-2">
+      <p className="text-gray-500 text-xs mb-4">Edit the display name, abbreviation, and colors for each task type. The key (internal ID) cannot be changed.</p>
+      {taskTypes.map(t => (
+        <div key={t.key} className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          {editKey === t.key ? (
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-gray-500 text-xs font-mono">{t.key}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Full Name</label>
+                  <input className={inputCls} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Abbreviation (cell)</label>
+                  <input className={inputCls} value={form.short} onChange={e => setForm(f => ({ ...f, short: e.target.value }))} maxLength={6} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Background Color</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.bg} onChange={e => setForm(f => ({ ...f, bg: e.target.value }))}
+                      className="w-10 h-9 rounded cursor-pointer bg-transparent border-0" />
+                    <input className={`flex-1 ${inputCls}`} value={form.bg} onChange={e => setForm(f => ({ ...f, bg: e.target.value }))} placeholder="#374151" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Text Color</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                      className="w-10 h-9 rounded cursor-pointer bg-transparent border-0" />
+                    <input className={`flex-1 ${inputCls}`} value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} placeholder="#ffffff" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="text-gray-400 text-xs mb-1 block">Preview</label>
+                  <span className="inline-block text-xs font-bold px-3 py-1 rounded"
+                    style={{ backgroundColor: form.bg, color: form.color }}>
+                    {form.short || '…'}
+                  </span>
+                  <span className="ml-3 text-sm font-semibold" style={{ color: form.color === '#ffffff' || form.color === '#fff' ? '#e5e7eb' : form.color }}>
+                    {form.label || '…'}
+                  </span>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={save} disabled={!form.label.trim() || !form.short.trim() || saving}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+                    style={{ backgroundColor: '#F05A28' }}>
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button onClick={cancel} className="px-3 py-1.5 rounded-lg text-sm bg-gray-600 text-gray-300">Cancel</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span className="text-xs font-bold px-2 py-1 rounded w-14 text-center shrink-0"
+                style={{ backgroundColor: t.bg, color: t.color }}>{t.short}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-white text-sm font-medium">{t.label}</span>
+                <span className="text-gray-600 text-xs ml-2 font-mono">{t.key}</span>
+              </div>
+              <button onClick={() => startEdit(t)}
+                className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500 shrink-0">
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -955,17 +1067,17 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
       await fetch(`${API}/api/production-schedule/beers/${editBeer.id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: beerName, style: beerStyle || null, style_id: beerForm.style_id }),
+        body: JSON.stringify({ name: beerName, style_id: beerForm.style_id }),
       });
     } else {
       await fetch(`${API}/api/production-schedule/beers`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: beerName, style: beerStyle || null, style_id: beerForm.style_id }),
+        body: JSON.stringify({ name: beerName, style_id: beerForm.style_id }),
       });
     }
     setSaving(false);
-    setBeerName(''); setBeerStyle(''); setEditBeer(null); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null });
+    setBeerName(''); setEditBeer(null); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null });
     onRefresh();
   };
 
@@ -978,7 +1090,7 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
   return (
     <div>
       <div className="flex gap-2 mb-6">
-        {[{ key: 'tanks', label: 'Tanks' }, { key: 'beers', label: 'Beers' }, { key: 'styles', label: 'Styles' }].map(t => (
+        {[{ key: 'tanks', label: 'Tanks' }, { key: 'beers', label: 'Beers' }, { key: 'styles', label: 'Styles' }, { key: 'task-types', label: 'Tasks' }].map(t => (
           <button key={t.key} onClick={() => setManageTab(t.key)}
             className={`px-3 py-1.5 text-sm rounded-lg transition ${manageTab === t.key ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>
             {t.label}
@@ -1026,7 +1138,6 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
             <h4 className="text-gray-300 text-sm font-semibold">{editBeer ? 'Edit Beer' : 'Add Beer'}</h4>
             <input className={`w-full ${inputCls}`} placeholder="Beer name…" value={beerName} onChange={e => setBeerName(e.target.value)} />
-            <input className={`w-full ${inputCls}`} placeholder="Style (optional)…" value={beerStyle} onChange={e => setBeerStyle(e.target.value)} />
             <select value={beerForm.style_id || ''} onChange={e => setBeerForm(f => ({ ...f, style_id: e.target.value ? parseInt(e.target.value) : null }))}
               className={`w-full ${inputCls}`}>
               <option value="">— No style —</option>
@@ -1040,7 +1151,7 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
                 style={{ backgroundColor: '#F05A28' }}>
                 {saving ? 'Saving…' : editBeer ? 'Update' : 'Add Beer'}
               </button>
-              {editBeer && <button onClick={() => { setEditBeer(null); setBeerName(''); setBeerStyle(''); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null }); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-600 text-gray-300">Cancel</button>}
+              {editBeer && <button onClick={() => { setEditBeer(null); setBeerName(''); setBeerForm({ name: '', style: '', status: 'active', notes: '', style_id: null }); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-600 text-gray-300">Cancel</button>}
             </div>
           </div>
           <div className="space-y-2">
@@ -1051,7 +1162,7 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
                   {beer.style && <span className="text-gray-500 text-xs ml-2">{beer.style}</span>}
                   {beer.style_name && <span className="text-gray-600 text-xs ml-1">({beer.style_name})</span>}
                 </div>
-                <button onClick={() => { setEditBeer(beer); setBeerName(beer.name); setBeerStyle(beer.style || ''); setBeerForm({ name: beer.name, style: beer.style || '', status: beer.status || 'active', notes: beer.notes || '', style_id: beer.style_id || null }); }} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">Edit</button>
+                <button onClick={() => { setEditBeer(beer); setBeerName(beer.name); setBeerForm({ name: beer.name, style: beer.style || '', status: beer.status || 'active', notes: beer.notes || '', style_id: beer.style_id || null }); }} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">Edit</button>
                 <button onClick={() => archiveBeer(beer.id)} className="text-sm text-gray-500 hover:text-red-400 transition">Archive</button>
               </div>
             ))}
@@ -1060,7 +1171,11 @@ function ManageView({ tanks, beers, styles, onRefresh, manageTab, setManageTab }
       )}
 
       {manageTab === 'styles' && (
-        <StylesTab styles={styles} onRefresh={onRefresh} />
+        <StylesTab styles={styles} onRefresh={onRefresh} taskTypes={taskTypes} />
+      )}
+
+      {manageTab === 'task-types' && (
+        <TaskTypesTab taskTypes={taskTypes || TASK_TYPES} onRefresh={onRefresh} />
       )}
     </div>
   );
@@ -1077,6 +1192,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [allTasks, setAllTasks] = useState([]); // wider range for tracker/task list
   const [users, setUsers] = useState([]);
   const [styles, setStyles] = useState([]);
+  const [taskTypes, setTaskTypes] = useState(TASK_TYPES);
   const [tab, setTab] = useState('schedule');
   const [manageTab, setManageTab] = useState('tanks');
   const defaultViewStart = addDays(getMonday(new Date()), -14); // Monday 2 weeks ago
@@ -1157,17 +1273,22 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [tanksRes, beersRes, usersRes, allRes, stylesRes] = await Promise.all([
+      const [tanksRes, beersRes, usersRes, allRes, stylesRes, ttRes] = await Promise.all([
         fetch(`${API}/api/production-schedule/tanks`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/beers`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/users`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/grid?start=${allStart}&end=${allEnd}`, { credentials: 'include' }).then(r => r.json()),
         fetch(`${API}/api/production-schedule/styles`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/production-schedule/task-types`, { credentials: 'include' }).then(r => r.json()),
       ]);
       setTanks(Array.isArray(tanksRes) ? tanksRes : []);
       setBeers(Array.isArray(beersRes) ? beersRes : []);
       setUsers(Array.isArray(usersRes) ? usersRes : []);
       setStyles(Array.isArray(stylesRes) ? stylesRes : []);
+      if (Array.isArray(ttRes)) {
+        const overrideMap = Object.fromEntries(ttRes.map(r => [r.key, r]));
+        setTaskTypes(TASK_TYPES.map(t => overrideMap[t.key] ? { ...t, ...overrideMap[t.key] } : t));
+      }
       if (allRes.assignments) setAssignments(allRes.assignments);
       if (allRes.tasks) { setTasks(allRes.tasks); setAllTasks(allRes.tasks); }
     } catch {}
@@ -1250,6 +1371,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
               dates={dates}
               canManage={canUpload}
               drag={drag}
+              taskTypes={taskTypes}
               onCellClick={openCellModal}
               onDragStart={startDrag}
             />
@@ -1265,6 +1387,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
             users={users}
             currentUser={user}
             canManage={canUpload}
+            taskTypes={taskTypes}
             onRefresh={handleRefresh}
           />
         )}
@@ -1274,11 +1397,12 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
             beers={beers}
             assignments={assignments}
             tasks={allTasks}
+            taskTypes={taskTypes}
           />
         )}
 
         {!loading && tab === 'manage' && canUpload && (
-          <ManageView tanks={tanks} beers={beers} styles={styles} onRefresh={loadAll} manageTab={manageTab} setManageTab={setManageTab} />
+          <ManageView tanks={tanks} beers={beers} styles={styles} taskTypes={taskTypes} onRefresh={loadAll} manageTab={manageTab} setManageTab={setManageTab} />
         )}
       </main>
 
@@ -1297,6 +1421,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
             tasks={liveTasks}
             beers={beers}
             users={users}
+            taskTypes={taskTypes}
             canManage={canUpload}
             onClose={() => setCellModal(null)}
             onRefresh={handleRefresh}

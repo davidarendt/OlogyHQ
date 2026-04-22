@@ -3396,6 +3396,27 @@ app.delete('/api/production-schedule/styles/:id/presets/:presetId', authenticate
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// Task type overrides
+app.get('/api/production-schedule/task-types', authenticateToken, checkProdView, async (req, res) => {
+  try {
+    const rows = await pool.query('SELECT * FROM prod_task_type_overrides ORDER BY key');
+    res.json(rows.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/production-schedule/task-types/:key', authenticateToken, checkProdManage, async (req, res) => {
+  try {
+    const { label, short, color, bg } = req.body;
+    await pool.query(
+      `INSERT INTO prod_task_type_overrides (key, label, short, color, bg)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (key) DO UPDATE SET label=$2, short=$3, color=$4, bg=$5`,
+      [req.params.key, label, short, color, bg]
+    );
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
