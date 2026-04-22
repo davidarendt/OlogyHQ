@@ -698,7 +698,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const [catalog, setCatalog] = useState({});
   const [tagDefs, setTagDefs] = useState([]);
   const [tab, setTab] = useState('cocktails');
-  const [cocktailCategory, setCocktailCategory] = useState('menu');
+  const [cocktailCategory, setCocktailCategory] = useState('all');
   const [manageTab, setManageTab] = useState('cocktails');
   const [tagFilter, setTagFilter] = useState(null);
   const [search, setSearch] = useState('');
@@ -736,7 +736,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
   const allTags = [...new Set(cocktails.flatMap(c => (c.tags || []).map(t => t.name)))].sort();
 
   const filteredCocktails = cocktails.filter(c => {
-    if (c.status !== cocktailCategory) return false;
+    if (cocktailCategory !== 'all' && c.status !== cocktailCategory) return false;
     if (tagFilter && !(c.tags || []).some(t => t.name === tagFilter)) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -821,6 +821,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
             {/* Category sub-tabs + Suggest button */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               {[
+                { key: 'all', label: 'All' },
                 { key: 'menu', label: 'Menu Items' },
                 { key: 'special', label: 'Specials' },
                 { key: 'wip', label: 'Work-In-Progress' },
