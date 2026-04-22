@@ -17,7 +17,6 @@ const TASK_TYPES = [
   { key: 'harvest',            label: 'Harvest',            short: 'Harv',  color: '#111',    bg: '#86efac'               },
   { key: 'other',              label: 'Other',              short: '…',     color: '#e5e7eb', bg: '#374151'               },
 ];
-const TASK_MAP = Object.fromEntries(TASK_TYPES.map(t => [t.key, t]));
 const TASK_PRIORITY = ['other','whirl','harvest','ramp_soak','adjunct','carb','pressurize_release','dry_hop_2','dry_hop_1','transfer','vdk_crash','package','brew'];
 
 function getPrimaryTask(tasks) {
@@ -1017,7 +1016,6 @@ function ManageView({ tanks, beers, styles, taskTypes, onRefresh, manageTab, set
   const [tankCap, setTankCap] = useState('');
   const [editTank, setEditTank] = useState(null);
   const [beerName, setBeerName] = useState('');
-  const [beerStyle, setBeerStyle] = useState('');
   const [editBeer, setEditBeer] = useState(null);
   const [beerForm, setBeerForm] = useState({ name: '', style: '', status: 'active', notes: '', style_id: null });
   const [saving, setSaving] = useState(false);
