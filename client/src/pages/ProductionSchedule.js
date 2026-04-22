@@ -331,7 +331,6 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
 
 // ── Schedule Grid ─────────────────────────────────────────────────────────────
 
-const COL_W = 58;
 const ROW_H = 28;
 const DATE_W = 62;
 
@@ -339,6 +338,24 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 
 function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCellClick, onDragStart }) {
   const scrollRef = useRef(null);
+  const [colW, setColW] = useState(58);
+
+  const activeTanksCount = tanks.filter(t => t.active).length;
+
+  // Dynamic column width — fill available horizontal space
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const update = () => {
+      const available = el.clientWidth - DATE_W - 2;
+      const n = activeTanksCount || 1;
+      setColW(Math.max(36, Math.floor(available / n)));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [activeTanksCount]);
 
   // Auto-scroll to today on first render
   useEffect(() => {
@@ -361,6 +378,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
 
   const activeTanks = tanks.filter(t => t.active);
   const border = '1px solid rgba(75,85,99,0.3)';
+
 
   // Compute drag preview ranges
   const preview = useMemo(() => {
@@ -399,7 +417,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
   };
 
   return (
-    <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 110px)', userSelect: drag ? 'none' : 'auto', cursor: drag ? (drag.mode === 'resize_asgn' ? 's-resize' : 'grabbing') : 'auto' }}>
+    <div ref={scrollRef} style={{ overflowX: 'hidden', overflowY: 'auto', maxHeight: 'calc(100vh - 110px)', userSelect: drag ? 'none' : 'auto', cursor: drag ? (drag.mode === 'resize_asgn' ? 's-resize' : 'grabbing') : 'auto' }}>
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
         <thead>
           <tr>
@@ -412,7 +430,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
             {activeTanks.map(tank => (
               <th key={tank.id} style={{
                 position: 'sticky', top: 0, zIndex: 20,
-                backgroundColor: '#111827', width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+                backgroundColor: '#111827', width: colW, minWidth: colW, maxWidth: colW,
                 padding: '4px 3px', borderRight: border, borderBottom: '2px solid rgba(75,85,99,0.5)',
                 textAlign: 'center', fontSize: 9, color: '#d1d5db', fontWeight: 700,
                 overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
@@ -501,7 +519,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, onCel
                       style={{
                         backgroundColor: bgColor,
                         opacity: sourceDim ? 0.35 : 1,
-                        width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+                        width: colW, minWidth: colW, maxWidth: colW,
                         height: ROW_H,
                         padding: '1px 3px',
                         borderRight: border,
@@ -1049,20 +1067,6 @@ function ManageView({ tanks, beers, styles, onRefresh }) {
   );
 }
 
-// ── Legend ────────────────────────────────────────────────────────────────────
-
-function Legend() {
-  return (
-    <div className="flex flex-wrap gap-2 mb-3">
-      {TASK_TYPES.filter(t => t.key !== 'other').map(t => (
-        <span key={t.key} className="text-xs px-2 py-0.5 rounded font-semibold"
-          style={{ backgroundColor: t.color + '22', color: t.color }}>
-          {t.short}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
