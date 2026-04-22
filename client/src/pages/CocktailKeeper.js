@@ -781,7 +781,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
 
   const TABS = [
     { key: 'cocktails', label: 'Cocktails' },
-    { key: 'batched', label: 'House-Made' },
+    { key: 'batched', label: 'Syrups/Infusions' },
     ...(canUpload ? [{ key: 'manage', label: 'Manage' }] : []),
   ];
 
@@ -950,7 +950,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
             <div className="flex gap-2 mb-6">
               {[
                 { key: 'cocktails', label: 'Cocktails' },
-                { key: 'batched', label: 'House-Made' },
+                { key: 'batched', label: 'Syrups/Infusions' },
                 { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
               ].map(t => (
                 <button
