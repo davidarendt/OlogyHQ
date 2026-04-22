@@ -537,14 +537,15 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, drag, taskT
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', pointerEvents: 'none' }}>
                           {isStartCell && (
                             <div style={{
-                              fontSize: 7, fontWeight: 700, lineHeight: 1.1,
-                              color: tt ? hexToRgba(beerColor, 0.9) : hexToRgba(beerColor, 0.7),
+                              fontSize: isStartCell && primary?.task_type === 'brew' ? 9 : 7,
+                              fontWeight: 700, lineHeight: 1.1,
+                              color: hexToRgba(beerColor, 0.9),
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                             }}>
                               {asgn.beer_name}
                             </div>
                           )}
-                          {taskLabel && (
+                          {taskLabel && !(isStartCell && primary?.task_type === 'brew') && (
                             <div style={{
                               fontSize: 9, fontWeight: 700, lineHeight: 1,
                               color: allDone ? '#4ade80' : (tt?.color || '#9ca3af'),
