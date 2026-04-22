@@ -3149,8 +3149,9 @@ app.get('/api/production-schedule/grid', authenticateToken, checkProdView, async
       [start, end]
     );
     const tasks = await pool.query(
-      `SELECT t.*, b.name AS beer_name FROM prod_tasks t
+      `SELECT t.*, b.name AS beer_name, tk.name AS tank_name FROM prod_tasks t
        LEFT JOIN prod_beers b ON b.id = t.beer_id
+       LEFT JOIN prod_tanks tk ON tk.id = t.tank_id
        WHERE t.date >= $1 AND t.date <= $2
        ORDER BY t.date, t.created_at`,
       [start, end]

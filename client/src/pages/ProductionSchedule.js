@@ -308,7 +308,7 @@ function CellModal({ date, tank, assignment, tasks, beers, users, canManage, onC
 // ── Schedule Grid ─────────────────────────────────────────────────────────────
 
 const COL_W = 58;  // tank column width px
-const ROW_H = 22;  // row height px
+const ROW_H = 28;  // row height px
 const DATE_W = 62; // date column width px
 
 function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick }) {
@@ -321,7 +321,7 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
   }, [assignments]);
 
   const getCellTasks = useCallback((tankId, date) => {
-    return tasks.filter(t => t.tank_id === tankId && t.date === date);
+    return tasks.filter(t => t.tank_id === tankId && (t.date || '').slice(0, 10) === date);
   }, [tasks]);
 
   const activeTanks = tanks.filter(t => t.active);
@@ -374,21 +374,16 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
                   const allDone = cellTasks.length > 0 && cellTasks.every(t => t.completed);
                   const tt = primary ? (TASK_MAP[primary.task_type] || TASK_MAP.other) : null;
 
+                  // Show beer name only at start of assignment block
+                  const isStartCell = asgn && (asgn.start_date === date || date === dates[0]);
+
                   let bgColor = wknd ? '#0d1117' : '#111827';
-                  if (asgn && !tt) bgColor = wknd ? '#0f172a' : '#1a2235';
+                  if (asgn && !tt) bgColor = wknd ? '#0f172a' : '#172033';
                   if (tt) bgColor = allDone ? '#1a3a2a' : tt.bg;
 
-                  const textColor = tt ? (allDone ? '#4ade80' : tt.color) : (asgn ? '#6b7280' : 'transparent');
-
-                  // build label: primary task short + extra count
-                  let label = '';
-                  if (tt) {
-                    label = allDone ? '✓' : tt.short;
-                    if (cellTasks.length > 1) label += ` +${cellTasks.length - 1}`;
-                  } else if (asgn) {
-                    // no task — show abbreviated beer name
-                    label = asgn.beer_name.length > 7 ? asgn.beer_name.slice(0, 6) + '…' : asgn.beer_name;
-                  }
+                  const taskLabel = tt
+                    ? (allDone ? '✓' : tt.short) + (cellTasks.length > 1 ? ` +${cellTasks.length - 1}` : '')
+                    : null;
 
                   return (
                     <td key={tank.id}
@@ -397,19 +392,41 @@ function ScheduleGrid({ tanks, assignments, tasks, dates, canManage, onCellClick
                       style={{
                         backgroundColor: bgColor,
                         width: COL_W, minWidth: COL_W, maxWidth: COL_W,
-                        height: ROW_H, lineHeight: `${ROW_H}px`,
-                        padding: '0 3px',
+                        height: ROW_H,
+                        padding: '1px 3px',
                         borderRight: border, borderBottom: border,
+                        borderLeft: isStartCell ? '2px solid rgba(255,255,255,0.15)' : border,
                         cursor: canManage || cellTasks.length ? 'pointer' : 'default',
-                        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                        fontSize: 9, fontWeight: 700, color: textColor,
-                        textAlign: 'center',
+                        overflow: 'hidden',
                         transition: 'filter 0.1s',
+                        verticalAlign: 'middle',
                       }}
                       onMouseEnter={e => { if (canManage || cellTasks.length) e.currentTarget.style.filter = 'brightness(1.3)'; }}
                       onMouseLeave={e => { e.currentTarget.style.filter = ''; }}
                     >
-                      {label}
+                      {(isStartCell || taskLabel) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center' }}>
+                          {isStartCell && (
+                            <div style={{
+                              fontSize: 7, fontWeight: 600, lineHeight: 1.1,
+                              color: tt ? 'rgba(255,255,255,0.55)' : '#4b5563',
+                              overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                            }}>
+                              {asgn.beer_name}
+                            </div>
+                          )}
+                          {taskLabel && (
+                            <div style={{
+                              fontSize: 9, fontWeight: 700, lineHeight: 1,
+                              color: allDone ? '#4ade80' : (tt?.color || '#9ca3af'),
+                              textAlign: isStartCell ? 'left' : 'center',
+                              overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                            }}>
+                              {taskLabel}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </td>
                   );
                 })}
@@ -432,7 +449,8 @@ function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const filtered = tasks.filter(t => {
-    if (t.date < weekStart || t.date > weekEnd) return false;
+    const d = (t.date || '').slice(0, 10);
+    if (d < weekStart || d > weekEnd) return false;
     if (myOnly && !(t.assigned_user_ids || []).includes(currentUser.id)) return false;
     return true;
   });
@@ -470,7 +488,7 @@ function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
 
       {/* Days */}
       {weekDates.map(date => {
-        const dayTasks = filtered.filter(t => t.date === date);
+        const dayTasks = filtered.filter(t => (t.date || '').slice(0, 10) === date);
         if (!dayTasks.length) return null;
         return (
           <div key={date} className="mb-5">
@@ -508,7 +526,7 @@ function TaskListView({ tasks, users, currentUser, canManage, onRefresh }) {
         );
       })}
 
-      {filtered.length === 0 && (
+      {!weekDates.some(d => filtered.some(t => (t.date || '').slice(0, 10) === d)) && (
         <p className="text-gray-500 text-center py-16">No tasks for this week.</p>
       )}
     </div>
