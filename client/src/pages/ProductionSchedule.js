@@ -1075,7 +1075,8 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   const [users, setUsers] = useState([]);
   const [styles, setStyles] = useState([]);
   const [tab, setTab] = useState('schedule');
-  const [viewStart, setViewStart] = useState(getMonday(new Date()));
+  const defaultViewStart = addDays(getMonday(new Date()), -14); // Monday 2 weeks ago
+  const [viewStart, setViewStart] = useState(defaultViewStart);
   const [viewWeeks, setViewWeeks] = useState(5);
   const [cellModal, setCellModal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1225,7 +1226,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
               <div className="flex items-center gap-1">
                 <button onClick={() => setViewStart(addDays(viewStart, -7))}
                   className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">←</button>
-                <button onClick={() => setViewStart(getMonday(new Date()))}
+                <button onClick={() => setViewStart(addDays(getMonday(new Date()), -14))}
                   className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">Today</button>
                 <button onClick={() => setViewStart(addDays(viewStart, 7))}
                   className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">→</button>
