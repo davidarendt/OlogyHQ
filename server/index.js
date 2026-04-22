@@ -3356,7 +3356,23 @@ app.patch('/api/production-schedule/tasks/:id', authenticateToken, checkProdMana
        WHERE id=$6 RETURNING *`,
       [task_type, custom_note !== undefined ? custom_note : null, assigned_user_ids, date || null, tank_id || null, req.params.id]
     );
-    res.json(r.rows[0]);
+    const updated = r.rows[0];
+    // If this is a package task, keep the assignment end_date in sync
+    if (updated && updated.task_type === 'package' && updated.tank_id && updated.date) {
+      const asgn = await pool.query(
+        `SELECT * FROM prod_tank_assignments WHERE tank_id=$1 AND start_date <= $2 AND (end_date IS NULL OR end_date >= $2)`,
+        [updated.tank_id, updated.date]
+      );
+      if (asgn.rows.length) {
+        const a = asgn.rows[0];
+        await pool.query('UPDATE prod_tank_assignments SET end_date=$1 WHERE id=$2', [updated.date, a.id]);
+        await pool.query(
+          'DELETE FROM prod_tasks WHERE tank_id=$1 AND beer_id=$2 AND date > $3 AND id != $4',
+          [updated.tank_id, a.beer_id, updated.date, updated.id]
+        );
+      }
+    }
+    res.json(updated);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
