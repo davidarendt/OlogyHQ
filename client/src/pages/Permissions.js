@@ -57,7 +57,8 @@ function Permissions({ onBack, onHome }) {
   const cocktailTool  = tools.find(t => t.slug === 'cocktail-keeper');
   const crmTool       = tools.find(t => t.slug === 'sales-crm');
   const labelTool     = tools.find(t => t.slug === 'label-inventory');
-  const dualSlugs     = ['hr-documents', 'sops-checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory'];
+  const prodSchedTool = tools.find(t => t.slug === 'production-schedule');
+  const dualSlugs     = ['hr-documents', 'sops-checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule'];
   const otherTools    = tools.filter(t => !dualSlugs.includes(t.slug));
 
   return (
@@ -309,6 +310,39 @@ function Permissions({ onBack, onHome }) {
                         <Toggle
                           active={hasPermission(role, crmTool.id, 'upload')}
                           onClick={() => togglePermission(role, crmTool.id, 'upload')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              )}
+
+              {/* Production Schedule — two rows: Access and Manage */}
+              {prodSchedTool && (
+                <>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="px-3 pt-3 pb-1 whitespace-nowrap">
+                      <div className="text-white text-sm font-medium">Production Schedule</div>
+                      <div className="text-gray-500 text-xs mt-0.5">Access</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-3 pb-1 text-center">
+                        <Toggle
+                          active={hasPermission(role, prodSchedTool.id, 'view')}
+                          onClick={() => togglePermission(role, prodSchedTool.id, 'view')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-gray-700">
+                    <td className="px-3 pt-1 pb-3 whitespace-nowrap">
+                      <div className="text-gray-500 text-xs">Manage</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-1 pb-3 text-center">
+                        <Toggle
+                          active={hasPermission(role, prodSchedTool.id, 'upload')}
+                          onClick={() => togglePermission(role, prodSchedTool.id, 'upload')}
                         />
                       </td>
                     ))}
