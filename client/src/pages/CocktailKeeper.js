@@ -1143,19 +1143,19 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                       <p className="text-sm font-semibold mt-2" style={{ color: '#F05A28' }}>${parseFloat(c.price).toFixed(2)}</p>
                     )}
                   </div>
+                  {cocktailSettings.show_creator && c.suggested_by_name && (
+                    <div style={{
+                      position: 'absolute', top: '18px', right: '-26px',
+                      width: '110px', backgroundColor: '#F05A28', color: 'white',
+                      fontSize: '10px', fontWeight: '700', textAlign: 'center',
+                      padding: '4px 0', transform: 'rotate(45deg)',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.5)', letterSpacing: '0.04em',
+                      pointerEvents: 'none',
+                    }}>
+                      {formatCreatorName(c.suggested_by_name)}
+                    </div>
+                  )}
                 </div>
-                {cocktailSettings.show_creator && c.suggested_by_name && (
-                  <div style={{
-                    position: 'absolute', top: '18px', right: '-26px',
-                    width: '110px', backgroundColor: '#F05A28', color: 'white',
-                    fontSize: '10px', fontWeight: '700', textAlign: 'center',
-                    padding: '4px 0', transform: 'rotate(45deg)',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.5)', letterSpacing: '0.04em',
-                    pointerEvents: 'none',
-                  }}>
-                    {formatCreatorName(c.suggested_by_name)}
-                  </div>
-                )}
               ))}
             </div>
           </>
