@@ -2,6 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
+function formatCreatorName(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+}
+
 // Auth-gated image component (identical pattern to Recipes)
 function PhotoImg({ src, alt, className }) {
   const [objectUrl, setObjectUrl] = useState(null);
@@ -118,7 +125,7 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
           {/* Creator banner */}
           {showCreator && cocktail.suggested_by_name && (
             <div className="mb-6 px-3 py-2 rounded-lg bg-gray-600/40 border border-gray-500/30 text-sm text-gray-400">
-              Created by <span className="text-gray-200 font-medium">{cocktail.suggested_by_name}</span>
+              Created by <span className="text-gray-200 font-medium">{formatCreatorName(cocktail.suggested_by_name)}</span>
             </div>
           )}
 
@@ -1111,7 +1118,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                 <div
                   key={c.id}
                   onClick={() => setViewCocktail(c)}
-                  className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden cursor-pointer hover:border-orange-500 transition group"
+                  className="relative bg-gray-800 border border-gray-700 rounded-xl overflow-hidden cursor-pointer hover:border-orange-500 transition group"
                 >
                   {c.photo_filename && (
                     <div className="w-full h-32 bg-gray-900 overflow-hidden">
@@ -1135,11 +1142,20 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                     {c.price && (
                       <p className="text-sm font-semibold mt-2" style={{ color: '#F05A28' }}>${parseFloat(c.price).toFixed(2)}</p>
                     )}
-                    {cocktailSettings.show_creator && c.suggested_by_name && (
-                      <p className="text-xs text-gray-500 mt-2">Created by {c.suggested_by_name}</p>
-                    )}
                   </div>
                 </div>
+                {cocktailSettings.show_creator && c.suggested_by_name && (
+                  <div style={{
+                    position: 'absolute', top: '18px', right: '-26px',
+                    width: '110px', backgroundColor: '#F05A28', color: 'white',
+                    fontSize: '10px', fontWeight: '700', textAlign: 'center',
+                    padding: '4px 0', transform: 'rotate(45deg)',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.5)', letterSpacing: '0.04em',
+                    pointerEvents: 'none',
+                  }}>
+                    {formatCreatorName(c.suggested_by_name)}
+                  </div>
+                )}
               ))}
             </div>
           </>
@@ -1222,7 +1238,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                             {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'WIP'}
                           </span>
                           {c.suggested_by_name && (
-                            <span className="text-xs text-gray-500">suggested by {c.suggested_by_name}</span>
+                            <span className="text-xs text-gray-500">by {formatCreatorName(c.suggested_by_name)}</span>
                           )}
                         </div>
                         <div className="flex gap-1 mt-0.5 flex-wrap">
