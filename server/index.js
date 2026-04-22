@@ -2115,10 +2115,11 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoU
     const batchIds = JSON.parse(linked_batched_item_ids || '[]');
     const effectiveStatus = canManage ? (status || 'menu') : 'wip';
     const suggestedByName = canManage ? null : req.user.name;
+    const suggestedById   = canManage ? null : req.user.id;
     const result = await pool.query(
-      `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order, suggested_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [name, method||null, glass||null, ice||null, effectiveStatus, canManage ? (price||null) : null, canManage ? (last_special_on||null) : null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1, suggestedByName]
+      `INSERT INTO cocktails (name, method, glass, ice, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order, suggested_by_name, suggested_by_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [name, method||null, glass||null, ice||null, effectiveStatus, canManage ? (price||null) : null, canManage ? (last_special_on||null) : null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1, suggestedByName, suggestedById]
     );
     const cocktail = result.rows[0];
     const ingList = JSON.parse(ingredients || '[]');
@@ -2153,12 +2154,23 @@ app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoU
 });
 
 // Update cocktail
-app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsManage, cocktailPhotoUpload.single('photo'), async (req, res) => {
+app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsView, cocktailPhotoUpload.single('photo'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, method, glass, ice, status, price, last_special_on, notes, linked_batched_item_ids, ingredients, tags, remove_photo } = req.body;
     const existing = await pool.query('SELECT * FROM cocktails WHERE id=$1', [id]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    // Non-managers can only edit cocktails they submitted
+    const canManage = await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+      [req.user.role]
+    );
+    const isManager = req.user.role === 'admin' || canManage.rows.length > 0;
+    if (!isManager && existing.rows[0].suggested_by_id !== req.user.id) {
+      return res.status(403).json({ message: 'You can only edit cocktails you submitted.' });
+    }
 
     let photo_filename = existing.rows[0].photo_filename;
     if (remove_photo === 'true' && photo_filename) {
@@ -2175,10 +2187,15 @@ app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsManage, cocktai
     const oldBatchIds = existing.rows[0].linked_batched_item_ids || [];
     const newBatchIds = JSON.parse(linked_batched_item_ids || '[]');
 
+    // Non-managers cannot change status, price, or last_special_on
+    const effectiveStatus     = isManager ? (status || 'menu')     : existing.rows[0].status;
+    const effectivePrice      = isManager ? (price || null)        : existing.rows[0].price;
+    const effectiveSpecialOn  = isManager ? (last_special_on||null): existing.rows[0].last_special_on;
+
     const result = await pool.query(
       `UPDATE cocktails SET name=$1, method=$2, glass=$3, ice=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10
        WHERE id=$11 RETURNING *`,
-      [name, method||null, glass||null, ice||null, status||'menu', price||null, last_special_on||null, notes||null, photo_filename, newBatchIds, id]
+      [name, method||null, glass||null, ice||null, effectiveStatus, effectivePrice, effectiveSpecialOn, notes||null, photo_filename, newBatchIds, id]
     );
 
     // Sync ingredients

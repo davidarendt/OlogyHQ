@@ -35,7 +35,7 @@ function TagBadge({ name, color }) {
 
 // ── Detail Views ─────────────────────────────────────────────────────────────
 
-function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload }) {
+function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload, user }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
   const serviceInfo = [cocktail.method, cocktail.glass, cocktail.ice].filter(Boolean).join(' · ');
@@ -72,7 +72,7 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 pt-1">
-              {canUpload ? (
+              {(canUpload || cocktail.suggested_by_id === user?.id) ? (
                 <button
                   onClick={onEdit}
                   className="text-sm font-medium px-3 py-1.5 rounded-lg transition"
@@ -1317,6 +1317,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           cocktail={viewCocktail}
           batched={batched}
           canUpload={canUpload}
+          user={user}
           onClose={() => setViewCocktail(null)}
           onEdit={() => { setEditCocktail(viewCocktail); setViewCocktail(null); }}
           onViewBatched={(item) => { setViewCocktail(null); setViewBatched(item); }}
@@ -1341,6 +1342,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
           tagDefs={tagDefs}
           batchedItems={batched}
           allIngredients={allIngredients}
+          isSuggestion={!canUpload}
           onSave={afterSave}
           onClose={() => setEditCocktail(undefined)}
         />
