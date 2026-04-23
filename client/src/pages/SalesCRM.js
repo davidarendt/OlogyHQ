@@ -729,10 +729,57 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   );
 }
 
-function AccountDetail({ account, onClose, onEdit, onDelete, onActivity }) {
+function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
+  const [activities, setActivities] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [showFollowUp, setShowFollowUp] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ activity_type_id: '', activity_date: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await apiFetch(`/api/crm/accounts/${account.id}/activities`);
+    setActivities(await res.json());
+  }, [account.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { load(); }, [load]);
+
+  const openNew = () => {
+    setForm({ activity_type_id: activityTypes[0]?.id || '', activity_date: new Date().toISOString().slice(0, 10), notes: '' });
+    setEditingId(null);
+    setShowFollowUp(false);
+    setShowForm(true);
+  };
+
+  const openEdit = (act) => {
+    setForm({ activity_type_id: act.activity_type_id || '', activity_date: act.activity_date?.slice(0, 10) || '', notes: act.notes || '' });
+    setEditingId(act.id);
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    const method = editingId ? 'PATCH' : 'POST';
+    const url = editingId ? `/api/crm/accounts/${account.id}/activities/${editingId}` : `/api/crm/accounts/${account.id}/activities`;
+    await jsonFetch(url, method, { ...form, activity_type_id: form.activity_type_id || null });
+    setShowForm(false);
+    setSaving(false);
+    load();
+    if (!editingId) setShowFollowUp(true);
+  };
+
+  const del = async (id) => {
+    if (!window.confirm('Delete this activity?')) return;
+    await jsonFetch(`/api/crm/accounts/${account.id}/activities/${id}`, 'DELETE');
+    load();
+  };
+
+  const completed = activities.filter(a => !a.is_scheduled);
+  const scheduled = activities.filter(a => a.is_scheduled);
+
   return (
     <Modal title={account.name} onClose={onClose} wide>
-      <div className="space-y-5">
+      <div className="space-y-4 pb-5 mb-5 border-b border-gray-700">
         <div className="flex flex-wrap gap-2 items-center">
           <TypeBadge type={account.type} />
           {account.distributor_name && <span className="text-xs text-gray-400">via {account.distributor_name}</span>}
@@ -750,12 +797,56 @@ function AccountDetail({ account, onClose, onEdit, onDelete, onActivity }) {
           </div>
         )}
         {account.notes && <div><p className="text-gray-500 text-xs mb-1">Notes</p><p className="text-gray-300 text-sm whitespace-pre-wrap">{account.notes}</p></div>}
-        <div className="flex gap-2 flex-wrap pt-1">
-          <button onClick={onActivity} className="text-sm px-4 py-2 rounded-lg font-medium text-white" style={{ backgroundColor: '#F05A28' }}>Activity Log</button>
+        <div className="flex gap-2 flex-wrap">
           <button onClick={onEdit} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Edit</button>
           <button onClick={onDelete} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-red-400 hover:bg-red-900/30 ml-auto">Delete</button>
         </div>
       </div>
+
+      {/* Activity log */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={openNew} className="flex-1 sm:flex-none text-sm px-4 py-2.5 rounded-lg font-medium text-white" style={{ backgroundColor: '#F05A28' }}>+ Log Activity</button>
+      </div>
+
+      {showForm && (
+        <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Type">
+              <select className={selectCls} value={form.activity_type_id} onChange={e => setForm(f => ({ ...f, activity_type_id: e.target.value }))}>
+                <option value="">— select —</option>
+                {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Date">
+              <input type="date" className={inputCls} value={form.activity_date} onChange={e => setForm(f => ({ ...f, activity_date: e.target.value }))} />
+            </Field>
+          </div>
+          <Field label="Notes">
+            <textarea className={`${inputCls} resize-none`} rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </Field>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setShowForm(false)} className="text-sm px-3 py-1.5 rounded-lg bg-gray-600 text-gray-300">Cancel</button>
+            <button onClick={save} disabled={saving || !form.activity_date} className="text-sm px-4 py-1.5 rounded-lg font-medium text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+              {saving ? 'Saving…' : 'Log'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFollowUp && (
+        <FollowUpPrompt accountId={account.id} accountName={account.name} activityTypes={activityTypes} onDone={() => { setShowFollowUp(false); load(); }} />
+      )}
+
+      {completed.length === 0 && !showForm && (
+        <p className="text-gray-500 text-sm text-center py-6">No activity yet.</p>
+      )}
+
+      {completed.length > 0 && (
+        <div>
+          <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">History</p>
+          <div className="space-y-2">{completed.map(act => <ActivityRow key={act.id} act={act} onEdit={openEdit} onDelete={del} />)}</div>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -1271,7 +1362,6 @@ function SalesCRM({ user, canUpload, onBack }) {
 
   const [accountDetail, setAccountDetail] = useState(null);
   const [accountEdit, setAccountEdit] = useState(null);
-  const [activityAccount, setActivityAccount] = useState(null);
   const [distEdit, setDistEdit] = useState(null);
   const [distDetailId, setDistDetailId] = useState(null);
   const distDetail = distDetailId ? distributors.find(d => d.id === distDetailId) || null : null;
@@ -1449,18 +1539,14 @@ function SalesCRM({ user, canUpload, onBack }) {
       </main>
 
       {/* Modals */}
-      {accountDetail && !accountEdit && !activityAccount && (
-        <AccountDetail account={accountDetail} onClose={() => setAccountDetail(null)}
-          onEdit={() => setAccountEdit(accountDetail)} onDelete={() => deleteAccount(accountDetail.id)}
-          onActivity={() => setActivityAccount(accountDetail)} />
+      {accountDetail && !accountEdit && (
+        <AccountDetail account={accountDetail} activityTypes={activityTypes} onClose={() => setAccountDetail(null)}
+          onEdit={() => setAccountEdit(accountDetail)} onDelete={() => deleteAccount(accountDetail.id)} />
       )}
       {accountEdit !== null && (
         <AccountModal account={accountEdit || null} distributors={distributors} productLines={productLines}
           onClose={() => setAccountEdit(null)}
           onSaved={() => { setAccountEdit(null); setAccountDetail(null); loadAccounts(); }} />
-      )}
-      {activityAccount && (
-        <ActivityLogModal account={activityAccount} activityTypes={activityTypes} onClose={() => setActivityAccount(null)} />
       )}
       {distDetail && !distEdit && (
         <Modal title={distDetail.name} onClose={() => setDistDetailId(null)} wide>
