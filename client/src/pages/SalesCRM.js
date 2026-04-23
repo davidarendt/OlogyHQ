@@ -664,7 +664,7 @@ function MergeAccountModal({ account, accounts, onClose, onMerged }) {
 
 // ── Account Detail ─────────────────────────────────────────────────────────
 
-function AccountDetail({ account, activityTypes, canUpload, accounts, onClose, onEdit, onDelete, onRefreshAccounts }) {
+function AccountDetail({ account, activityTypes, productLines, canUpload, accounts, onClose, onEdit, onDelete, onRefreshAccounts }) {
   const [contacts, setContacts] = useState(account.contacts || []);
   const [activities, setActivities] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -672,6 +672,7 @@ function AccountDetail({ account, activityTypes, canUpload, accounts, onClose, o
   const [showMerge, setShowMerge] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ activity_type_id: '', activity_date: '', notes: '', contact_name: '', contact_title: '', samples: '' });
+  const [selectedSamples, setSelectedSamples] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const loadActivities = useCallback(async () => {
@@ -688,22 +689,35 @@ function AccountDetail({ account, activityTypes, canUpload, accounts, onClose, o
 
   const openNew = () => {
     setForm({ activity_type_id: activityTypes[0]?.id || '', activity_date: new Date().toISOString().slice(0, 10), notes: '', contact_name: '', contact_title: '', samples: '' });
+    setSelectedSamples([]);
     setEditingId(null);
     setShowFollowUp(false);
     setShowForm(true);
   };
 
   const openEdit = (act) => {
+    const samplesStr = act.samples || '';
+    const plNames = productLines.map(p => p.name);
+    const preSelected = samplesStr.split(',').map(s => s.trim()).filter(s => plNames.includes(s));
     setForm({
       activity_type_id: act.activity_type_id || '',
       activity_date: act.activity_date?.slice(0, 10) || '',
       notes: act.notes || '',
       contact_name: act.contact_name || '',
       contact_title: act.contact_title || '',
-      samples: act.samples || '',
+      samples: samplesStr,
     });
+    setSelectedSamples(preSelected);
     setEditingId(act.id);
     setShowForm(true);
+  };
+
+  const toggleSample = (name) => {
+    setSelectedSamples(prev => {
+      const next = prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name];
+      setForm(f => ({ ...f, samples: next.join(', ') }));
+      return next;
+    });
   };
 
   const save = async () => {
@@ -783,7 +797,22 @@ function AccountDetail({ account, activityTypes, canUpload, accounts, onClose, o
             </Field>
           </div>
           <Field label="Products tried / Samples delivered">
-            <textarea className={`${inputCls} resize-none`} rows={2} value={form.samples} onChange={e => setForm(f => ({ ...f, samples: e.target.value }))} placeholder="e.g. Hazy IPA pint, 2 cases of Lager" />
+            {productLines.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {productLines.map(pl => {
+                  const on = selectedSamples.includes(pl.name);
+                  return (
+                    <button key={pl.id} type="button" onClick={() => toggleSample(pl.name)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${on ? 'border-orange-500 text-white' : 'border-gray-600 text-gray-400 hover:border-gray-400'}`}
+                      style={on ? { backgroundColor: '#F05A28' } : {}}>
+                      {pl.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-xs">No product lines configured. Add them in the Manage tab.</p>
+            )}
           </Field>
           <Field label="Notes">
             <textarea className={`${inputCls} resize-none`} rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
@@ -1254,7 +1283,7 @@ function SalesCRM({ user, canUpload, onBack }) {
           <p className="text-gray-400 mt-2">Distributor &amp; account relationships</p>
         </div>
 
-        <div className="flex gap-1 border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 border-b border-gray-700 mb-6">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap shrink-0 ${tab === t.id ? 'border-orange-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>
@@ -1368,7 +1397,7 @@ function SalesCRM({ user, canUpload, onBack }) {
 
       {/* Modals */}
       {accountDetail && !accountEdit && (
-        <AccountDetail account={accountDetail} activityTypes={activityTypes} canUpload={canUpload}
+        <AccountDetail account={accountDetail} activityTypes={activityTypes} productLines={productLines} canUpload={canUpload}
           accounts={accounts} onClose={() => setAccountDetail(null)}
           onEdit={() => setAccountEdit(accountDetail)} onDelete={() => deleteAccount(accountDetail.id)}
           onRefreshAccounts={loadAccounts} />
