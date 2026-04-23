@@ -125,9 +125,9 @@ function FollowUpPrompt({ accountId, accountName, activityTypes, onDone }) {
 }
 
 
-function ActivityRow({ act, onEdit, onDelete, scheduled }) {
+function ActivityRow({ act, onEdit, onDelete }) {
   return (
-    <div className={`border rounded-lg p-3 flex gap-3 ${scheduled ? 'border-orange-500/20 bg-orange-900/10' : 'border-gray-600/40 bg-gray-700/40'}`}>
+    <div className="border border-gray-600/40 bg-gray-700/40 rounded-lg p-3 flex gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           {act.activity_type_name && (
@@ -136,7 +136,13 @@ function ActivityRow({ act, onEdit, onDelete, scheduled }) {
           <span className="text-gray-400 text-xs">{act.activity_date?.slice(0, 10)}</span>
           <span className="text-gray-600 text-xs">by {act.created_by_name}</span>
         </div>
-        {act.notes && <p className="text-gray-300 text-sm">{act.notes}</p>}
+        {(act.contact_name || act.contact_title) && (
+          <p className="text-gray-400 text-xs mb-1">
+            Spoke with: <span className="text-gray-200">{act.contact_name}{act.contact_title ? ` (${act.contact_title})` : ''}</span>
+          </p>
+        )}
+        {act.samples && <p className="text-gray-400 text-xs mb-1">Samples: <span className="text-gray-200">{act.samples}</span></p>}
+        {act.notes && <p className="text-gray-300 text-sm mt-1">{act.notes}</p>}
       </div>
       <div className="flex gap-1 shrink-0">
         <button onClick={() => onEdit(act)} className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1">Edit</button>
@@ -414,8 +420,6 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   const [form, setForm] = useState({
     name: account?.name || '', type: account?.type || 'bar',
     address: account?.address || '', city: account?.city || '', state: account?.state || 'FL',
-    phone: account?.phone || '', email: account?.email || '',
-    contact_name: account?.contact_name || '', contact_title: account?.contact_title || '',
     distributor_id: account?.distributor_id || '', notes: account?.notes || '',
   });
   const [selectedProducts, setSelectedProducts] = useState((account?.product_lines || []).map(p => p.id));
@@ -552,12 +556,6 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
           <div className="col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={e => set('address', e.target.value)} /></Field></div>
           <Field label="City"><input className={inputCls} value={form.city} onChange={e => setCity(e.target.value)} /></Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Contact Name"><input className={inputCls} value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></Field>
-          <Field label="Contact Title"><input className={inputCls} value={form.contact_title} onChange={e => set('contact_title', e.target.value)} /></Field>
-          <Field label="Phone"><input className={inputCls} value={form.phone} onChange={e => set('phone', e.target.value)} /></Field>
-          <Field label="Email"><input className={inputCls} type="email" value={form.email} onChange={e => set('email', e.target.value)} /></Field>
-        </div>
         <Field label="Distributor">
           <select className={selectCls} value={form.distributor_id} onChange={e => set('distributor_id', e.target.value)}>
             <option value="">— none —</option>
@@ -592,30 +590,180 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   );
 }
 
-function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
+// ── Account Contacts Section ───────────────────────────────────────────────
+
+function AccountContactsSection({ accountId, contacts, onRefresh }) {
+  const emptyForm = { name: '', title: '', phone: '', email: '', is_primary: false };
+  const [contactForm, setContactForm] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const openNew = () => { setContactForm({ ...emptyForm }); setEditingId(null); };
+  const openEdit = (c) => {
+    setContactForm({ name: c.name, title: c.title || '', phone: c.phone || '', email: c.email || '', is_primary: c.is_primary });
+    setEditingId(c.id);
+  };
+
+  const save = async () => {
+    if (!contactForm.name.trim()) return;
+    setSaving(true);
+    const method = editingId ? 'PATCH' : 'POST';
+    const url = editingId ? `/api/crm/accounts/${accountId}/contacts/${editingId}` : `/api/crm/accounts/${accountId}/contacts`;
+    await jsonFetch(url, method, contactForm);
+    setContactForm(null); setEditingId(null); setSaving(false);
+    onRefresh();
+  };
+
+  const remove = async (cId) => {
+    if (!window.confirm('Remove this contact?')) return;
+    await jsonFetch(`/api/crm/accounts/${accountId}/contacts/${cId}`, 'DELETE');
+    onRefresh();
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-gray-500 text-xs uppercase tracking-wider">Contacts</p>
+        {!contactForm && <button onClick={openNew} className="text-xs text-orange-400 hover:text-orange-300">+ Add</button>}
+      </div>
+
+      {contactForm && (
+        <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-3 mb-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Name *"><input className={inputCls} value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} autoFocus /></Field>
+            <Field label="Title"><input className={inputCls} value={contactForm.title} onChange={e => setContactForm(f => ({ ...f, title: e.target.value }))} /></Field>
+            <Field label="Phone"><input className={inputCls} value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></Field>
+            <Field label="Email"><input className={inputCls} type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+            <input type="checkbox" checked={contactForm.is_primary} onChange={e => setContactForm(f => ({ ...f, is_primary: e.target.checked }))} className="accent-orange-500" />
+            Primary contact
+          </label>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setContactForm(null); setEditingId(null); }} className="text-xs px-3 py-1.5 rounded bg-gray-600 text-gray-300">Cancel</button>
+            <button onClick={save} disabled={saving || !contactForm.name.trim()} className="text-xs px-3 py-1.5 rounded text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>Save</button>
+          </div>
+        </div>
+      )}
+
+      {contacts.length === 0 && !contactForm && <p className="text-gray-600 text-sm">No contacts yet.</p>}
+      <div className="space-y-2">
+        {contacts.map(c => (
+          <div key={c.id} className="flex items-start gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-white text-sm font-medium">{c.name}</span>
+                {c.is_primary && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300">Primary</span>}
+                {c.title && <span className="text-gray-400 text-xs">{c.title}</span>}
+              </div>
+              <div className="flex gap-3 mt-0.5 flex-wrap">
+                {c.phone && <a href={`tel:${c.phone}`} className="text-orange-400 hover:underline text-xs">{c.phone}</a>}
+                {c.email && <a href={`mailto:${c.email}`} className="text-orange-400 hover:underline text-xs">{c.email}</a>}
+              </div>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => openEdit(c)} className="text-gray-500 hover:text-gray-300 text-xs px-1">Edit</button>
+              <button onClick={() => remove(c.id)} className="text-gray-500 hover:text-red-400 text-xs px-1">×</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Merge Account Modal ────────────────────────────────────────────────────
+
+function MergeAccountModal({ account, accounts, onClose, onMerged }) {
+  const [selectedId, setSelectedId] = useState('');
+  const [search, setSearch] = useState('');
+  const [merging, setMerging] = useState(false);
+  const others = accounts.filter(a => a.id !== account.id && a.name.toLowerCase().includes(search.toLowerCase()));
+  const selected = accounts.find(a => a.id === Number(selectedId));
+
+  const doMerge = async () => {
+    if (!selectedId) return;
+    setMerging(true);
+    await jsonFetch(`/api/crm/accounts/${account.id}/merge`, 'POST', { source_id: Number(selectedId) });
+    onMerged();
+  };
+
+  return (
+    <Modal title="Merge Accounts" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-gray-400 text-sm">
+          Select the duplicate account to absorb into <span className="text-white font-medium">{account.name}</span>.
+          All its activity history and contacts will be moved here, then it will be deleted.
+        </p>
+        <Field label="Search accounts">
+          <input className={inputCls} placeholder="Type to filter…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+        </Field>
+        <div className="max-h-52 overflow-y-auto space-y-1">
+          {others.length === 0 && <p className="text-gray-500 text-sm text-center py-4">No accounts found.</p>}
+          {others.map(a => (
+            <label key={a.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition ${Number(selectedId) === a.id ? 'border-orange-500 bg-orange-900/20' : 'border-gray-700 bg-gray-800 hover:border-gray-600'}`}>
+              <input type="radio" name="merge-target" value={a.id} checked={Number(selectedId) === a.id} onChange={e => setSelectedId(e.target.value)} className="accent-orange-500" />
+              <span className="text-white text-sm">{a.name}</span>
+              {a.city && <span className="text-gray-500 text-xs">{a.city}</span>}
+            </label>
+          ))}
+        </div>
+        {selected && (
+          <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-lg p-3 text-sm text-yellow-300">
+            <strong>{selected.name}</strong> will be deleted. Its {selected.contacts?.length || 0} contact(s) and all activity history will move to <strong>{account.name}</strong>.
+          </div>
+        )}
+        <div className="flex gap-3 justify-end pt-1">
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300">Cancel</button>
+          <button onClick={doMerge} disabled={!selectedId || merging} className="text-sm px-4 py-2 rounded-lg font-medium text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+            {merging ? 'Merging…' : 'Merge'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Account Detail ─────────────────────────────────────────────────────────
+
+function AccountDetail({ account, activityTypes, canUpload, accounts, onClose, onEdit, onDelete, onRefreshAccounts }) {
+  const [contacts, setContacts] = useState(account.contacts || []);
   const [activities, setActivities] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showFollowUp, setShowFollowUp] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ activity_type_id: '', activity_date: '', notes: '' });
+  const [form, setForm] = useState({ activity_type_id: '', activity_date: '', notes: '', contact_name: '', contact_title: '', samples: '' });
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadActivities = useCallback(async () => {
     const res = await apiFetch(`/api/crm/accounts/${account.id}/activities`);
     setActivities(await res.json());
   }, [account.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load(); }, [load]);
+  const loadContacts = useCallback(async () => {
+    const res = await apiFetch(`/api/crm/accounts/${account.id}/contacts`);
+    setContacts(await res.json());
+  }, [account.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadActivities(); }, [loadActivities]);
 
   const openNew = () => {
-    setForm({ activity_type_id: activityTypes[0]?.id || '', activity_date: new Date().toISOString().slice(0, 10), notes: '' });
+    setForm({ activity_type_id: activityTypes[0]?.id || '', activity_date: new Date().toISOString().slice(0, 10), notes: '', contact_name: '', contact_title: '', samples: '' });
     setEditingId(null);
     setShowFollowUp(false);
     setShowForm(true);
   };
 
   const openEdit = (act) => {
-    setForm({ activity_type_id: act.activity_type_id || '', activity_date: act.activity_date?.slice(0, 10) || '', notes: act.notes || '' });
+    setForm({
+      activity_type_id: act.activity_type_id || '',
+      activity_date: act.activity_date?.slice(0, 10) || '',
+      notes: act.notes || '',
+      contact_name: act.contact_name || '',
+      contact_title: act.contact_title || '',
+      samples: act.samples || '',
+    });
     setEditingId(act.id);
     setShowForm(true);
   };
@@ -627,41 +775,43 @@ function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
     await jsonFetch(url, method, { ...form, activity_type_id: form.activity_type_id || null });
     setShowForm(false);
     setSaving(false);
-    load();
+    loadActivities();
     if (!editingId) setShowFollowUp(true);
   };
 
   const del = async (id) => {
     if (!window.confirm('Delete this activity?')) return;
     await jsonFetch(`/api/crm/accounts/${account.id}/activities/${id}`, 'DELETE');
-    load();
+    loadActivities();
   };
 
   const completed = activities.filter(a => !a.is_scheduled);
 
   return (
     <Modal title={account.name} onClose={onClose} wide>
+      {/* Info + contacts */}
       <div className="space-y-4 pb-5 mb-5 border-b border-gray-700">
         <div className="flex flex-wrap gap-2 items-center">
           <TypeBadge type={account.type} />
           {account.distributor_name && <span className="text-xs text-gray-400">via {account.distributor_name}</span>}
+          {(account.address || account.city) && <span className="text-gray-500 text-xs">{[account.address, account.city, account.state].filter(Boolean).join(', ')}</span>}
         </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-          {account.contact_name && (<><span className="text-gray-500">Contact</span><span className="text-gray-200">{account.contact_name}{account.contact_title ? `, ${account.contact_title}` : ''}</span></>)}
-          {account.phone && (<><span className="text-gray-500">Phone</span><a href={`tel:${account.phone}`} className="text-orange-400 hover:underline">{account.phone}</a></>)}
-          {account.email && (<><span className="text-gray-500">Email</span><a href={`mailto:${account.email}`} className="text-orange-400 hover:underline">{account.email}</a></>)}
-          {(account.address || account.city) && (<><span className="text-gray-500">Address</span><span className="text-gray-200">{[account.address, account.city, account.state].filter(Boolean).join(', ')}</span></>)}
-        </div>
+
         {account.product_lines?.length > 0 && (
-          <div>
-            <p className="text-gray-500 text-xs mb-2">Products Carried</p>
-            <div className="flex flex-wrap gap-1.5">{account.product_lines.map(pl => <ProductPill key={pl.id} line={pl} />)}</div>
-          </div>
+          <div className="flex flex-wrap gap-1.5">{account.product_lines.map(pl => <ProductPill key={pl.id} line={pl} />)}</div>
         )}
-        {account.notes && <div><p className="text-gray-500 text-xs mb-1">Notes</p><p className="text-gray-300 text-sm whitespace-pre-wrap">{account.notes}</p></div>}
-        <div className="flex gap-2 flex-wrap">
+        {account.notes && <p className="text-gray-300 text-sm whitespace-pre-wrap">{account.notes}</p>}
+
+        <AccountContactsSection accountId={account.id} contacts={contacts} onRefresh={loadContacts} />
+
+        <div className="flex gap-2 flex-wrap pt-1">
           <button onClick={onEdit} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Edit</button>
-          <button onClick={onDelete} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-red-400 hover:bg-red-900/30 ml-auto">Delete</button>
+          {canUpload && (
+            <>
+              <button onClick={() => setShowMerge(true)} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Merge…</button>
+              <button onClick={onDelete} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-red-400 hover:bg-red-900/30 ml-auto">Delete</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -683,8 +833,22 @@ function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
               <input type="date" className={inputCls} value={form.activity_date} onChange={e => setForm(f => ({ ...f, activity_date: e.target.value }))} />
             </Field>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Who did you talk to?">
+              <input className={inputCls} list="contact-names" value={form.contact_name} onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} placeholder="Contact name" />
+              <datalist id="contact-names">{contacts.map(c => <option key={c.id} value={c.name} />)}</datalist>
+            </Field>
+            <Field label="Their position">
+              <input className={inputCls} value={form.contact_title}
+                onChange={e => setForm(f => ({ ...f, contact_title: e.target.value }))}
+                placeholder="e.g. Bar Manager" />
+            </Field>
+          </div>
+          <Field label="Products tried / Samples delivered">
+            <textarea className={`${inputCls} resize-none`} rows={2} value={form.samples} onChange={e => setForm(f => ({ ...f, samples: e.target.value }))} placeholder="e.g. Hazy IPA pint, 2 cases of Lager" />
+          </Field>
           <Field label="Notes">
-            <textarea className={`${inputCls} resize-none`} rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            <textarea className={`${inputCls} resize-none`} rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </Field>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowForm(false)} className="text-sm px-3 py-1.5 rounded-lg bg-gray-600 text-gray-300">Cancel</button>
@@ -696,7 +860,7 @@ function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
       )}
 
       {showFollowUp && (
-        <FollowUpPrompt accountId={account.id} accountName={account.name} activityTypes={activityTypes} onDone={() => { setShowFollowUp(false); load(); }} />
+        <FollowUpPrompt accountId={account.id} accountName={account.name} activityTypes={activityTypes} onDone={() => { setShowFollowUp(false); loadActivities(); }} />
       )}
 
       {completed.length === 0 && !showForm && (
@@ -708,6 +872,11 @@ function AccountDetail({ account, activityTypes, onClose, onEdit, onDelete }) {
           <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">History</p>
           <div className="space-y-2">{completed.map(act => <ActivityRow key={act.id} act={act} onEdit={openEdit} onDelete={del} />)}</div>
         </div>
+      )}
+
+      {showMerge && (
+        <MergeAccountModal account={account} accounts={accounts} onClose={() => setShowMerge(false)}
+          onMerged={() => { setShowMerge(false); onClose(); onRefreshAccounts(); }} />
       )}
     </Modal>
   );
@@ -1402,8 +1571,10 @@ function SalesCRM({ user, canUpload, onBack }) {
 
       {/* Modals */}
       {accountDetail && !accountEdit && (
-        <AccountDetail account={accountDetail} activityTypes={activityTypes} onClose={() => setAccountDetail(null)}
-          onEdit={() => setAccountEdit(accountDetail)} onDelete={() => deleteAccount(accountDetail.id)} />
+        <AccountDetail account={accountDetail} activityTypes={activityTypes} canUpload={canUpload}
+          accounts={accounts} onClose={() => setAccountDetail(null)}
+          onEdit={() => setAccountEdit(accountDetail)} onDelete={() => deleteAccount(accountDetail.id)}
+          onRefreshAccounts={loadAccounts} />
       )}
       {accountEdit !== null && (
         <AccountModal account={accountEdit || null} distributors={distributors} productLines={productLines}

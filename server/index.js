@@ -2721,19 +2721,16 @@ app.put('/api/crm/distributors/:id/products', authenticateToken, checkCRMManage,
 // Accounts
 app.get('/api/crm/accounts', authenticateToken, checkCRMView, async (req, res) => {
   try {
-    const accts = await pool.query(
-      `SELECT a.*, d.name AS distributor_name
-       FROM crm_accounts a
-       LEFT JOIN crm_distributors d ON d.id = a.distributor_id
-       ORDER BY a.sort_order, a.name`
-    );
-    const prods = await pool.query(
-      `SELECT ap.account_id, pl.id, pl.name, pl.type
-       FROM crm_account_products ap JOIN crm_product_lines pl ON pl.id = ap.product_line_id`
-    );
+    const [accts, prods, contacts] = await Promise.all([
+      pool.query(`SELECT a.*, d.name AS distributor_name FROM crm_accounts a LEFT JOIN crm_distributors d ON d.id = a.distributor_id ORDER BY a.sort_order, a.name`),
+      pool.query(`SELECT ap.account_id, pl.id, pl.name, pl.type FROM crm_account_products ap JOIN crm_product_lines pl ON pl.id = ap.product_line_id`),
+      pool.query(`SELECT * FROM crm_account_contacts ORDER BY is_primary DESC, sort_order`),
+    ]);
     const prodMap = {};
     prods.rows.forEach(p => { (prodMap[p.account_id] ||= []).push({ id: p.id, name: p.name, type: p.type }); });
-    res.json(accts.rows.map(a => ({ ...a, product_lines: prodMap[a.id] || [] })));
+    const contactMap = {};
+    contacts.rows.forEach(c => { (contactMap[c.account_id] ||= []).push(c); });
+    res.json(accts.rows.map(a => ({ ...a, product_lines: prodMap[a.id] || [], contacts: contactMap[a.id] || [] })));
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
@@ -2768,11 +2765,78 @@ app.patch('/api/crm/accounts/:id', authenticateToken, checkCRMView, async (req, 
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
-app.delete('/api/crm/accounts/:id', authenticateToken, checkCRMView, async (req, res) => {
+app.delete('/api/crm/accounts/:id', authenticateToken, checkCRMManage, async (req, res) => {
   try {
     await pool.query('DELETE FROM crm_accounts WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
   } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Account contacts
+app.post('/api/crm/accounts/:id/contacts', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { name, title, phone, email, is_primary } = req.body;
+    const r = await pool.query(
+      `INSERT INTO crm_account_contacts (account_id, name, title, phone, email, is_primary, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,(SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_account_contacts WHERE account_id=$1))
+       RETURNING *`,
+      [req.params.id, name, title||null, phone||null, email||null, !!is_primary]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/crm/accounts/:id/contacts/:cid', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    const { name, title, phone, email, is_primary } = req.body;
+    const r = await pool.query(
+      `UPDATE crm_account_contacts SET name=$1, title=$2, phone=$3, email=$4, is_primary=$5 WHERE id=$6 AND account_id=$7 RETURNING *`,
+      [name, title||null, phone||null, email||null, !!is_primary, req.params.cid, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/crm/accounts/:id/contacts/:cid', authenticateToken, checkCRMView, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM crm_account_contacts WHERE id=$1 AND account_id=$2', [req.params.cid, req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Merge account: absorb source_id into :id
+app.post('/api/crm/accounts/:id/merge', authenticateToken, checkCRMManage, async (req, res) => {
+  const { source_id } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const [targetRow, sourceRow] = await Promise.all([
+      client.query('SELECT notes FROM crm_accounts WHERE id=$1', [req.params.id]),
+      client.query('SELECT name, notes FROM crm_accounts WHERE id=$1', [source_id]),
+    ]);
+    const sourceName = sourceRow.rows[0]?.name || '';
+    const sourceNotes = sourceRow.rows[0]?.notes || '';
+    const targetNotes = targetRow.rows[0]?.notes || '';
+    await client.query('UPDATE crm_activities SET account_id=$1 WHERE account_id=$2', [req.params.id, source_id]);
+    await client.query('UPDATE crm_account_contacts SET account_id=$1 WHERE account_id=$2', [req.params.id, source_id]);
+    await client.query(
+      `INSERT INTO crm_account_products (account_id, product_line_id)
+       SELECT $1, product_line_id FROM crm_account_products WHERE account_id=$2 ON CONFLICT DO NOTHING`,
+      [req.params.id, source_id]
+    );
+    if (sourceNotes) {
+      const merged = targetNotes ? `${targetNotes}\n\n[Merged from ${sourceName}]\n${sourceNotes}` : sourceNotes;
+      await client.query('UPDATE crm_accounts SET notes=$1 WHERE id=$2', [merged, req.params.id]);
+    }
+    await client.query('DELETE FROM crm_accounts WHERE id=$1', [source_id]);
+    await client.query('COMMIT');
+    res.json({ message: 'Merged' });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    client.release();
+  }
 });
 
 // Account product lines (replace-all)
@@ -2983,11 +3047,11 @@ app.get('/api/crm/accounts/:id/activities', authenticateToken, checkCRMView, asy
 
 app.post('/api/crm/accounts/:id/activities', authenticateToken, checkCRMView, async (req, res) => {
   try {
-    const { activity_type_id, activity_date, notes, is_scheduled } = req.body;
+    const { activity_type_id, activity_date, notes, contact_name, contact_title, samples } = req.body;
     const r = await pool.query(
-      `INSERT INTO crm_activities (account_id, activity_type_id, activity_date, notes, is_scheduled, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [req.params.id, activity_type_id || null, activity_date, notes || null, !!is_scheduled, req.user.id, req.user.name]
+      `INSERT INTO crm_activities (account_id, activity_type_id, activity_date, notes, contact_name, contact_title, samples, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [req.params.id, activity_type_id || null, activity_date, notes || null, contact_name || null, contact_title || null, samples || null, req.user.id, req.user.name]
     );
     const withType = await pool.query(
       `SELECT a.*, at.name AS activity_type_name FROM crm_activities a
@@ -3000,12 +3064,12 @@ app.post('/api/crm/accounts/:id/activities', authenticateToken, checkCRMView, as
 
 app.patch('/api/crm/accounts/:id/activities/:actId', authenticateToken, checkCRMView, async (req, res) => {
   try {
-    const { activity_type_id, activity_date, notes, is_scheduled } = req.body;
+    const { activity_type_id, activity_date, notes, contact_name, contact_title, samples } = req.body;
     const r = await pool.query(
       `UPDATE crm_activities SET activity_type_id=$1, activity_date=$2, notes=$3,
-       is_scheduled=COALESCE($4, is_scheduled), updated_at=NOW()
-       WHERE id=$5 RETURNING *`,
-      [activity_type_id || null, activity_date, notes || null, is_scheduled ?? null, req.params.actId]
+       contact_name=$4, contact_title=$5, samples=$6, updated_at=NOW()
+       WHERE id=$7 RETURNING *`,
+      [activity_type_id || null, activity_date, notes || null, contact_name || null, contact_title || null, samples || null, req.params.actId]
     );
     const withType = await pool.query(
       `SELECT a.*, at.name AS activity_type_name FROM crm_activities a
