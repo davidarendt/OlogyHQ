@@ -562,6 +562,19 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   const [locError, setLocError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const findDistributorForCity = (city) => {
+    if (!city.trim()) return null;
+    const normalized = city.trim().toLowerCase();
+    return distributors.find(d =>
+      d.territory && d.territory.split(',').some(t => t.trim().toLowerCase() === normalized)
+    ) || null;
+  };
+
+  const setCity = (city) => {
+    const match = findDistributorForCity(city);
+    setForm(f => ({ ...f, city, ...(match ? { distributor_id: match.id } : {}) }));
+  };
+
   const toggleProduct = (id) => setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const findNearby = () => {
@@ -592,14 +605,17 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
   };
 
   const selectPlace = (place) => {
+    const city = place.city || '';
+    const match = findDistributorForCity(city);
     setForm(f => ({
       ...f,
       name:    place.name    || f.name,
       address: place.address || f.address,
-      city:    place.city    || f.city,
+      city:    city          || f.city,
       state:   place.state   || f.state,
       phone:   place.phone   || f.phone,
       type:    place.type    || f.type,
+      ...(match ? { distributor_id: match.id } : {}),
     }));
     setNearbyPlaces(null);
   };
@@ -671,7 +687,7 @@ function AccountModal({ account, distributors, productLines, onClose, onSaved })
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="col-span-2"><Field label="Address"><input className={inputCls} value={form.address} onChange={e => set('address', e.target.value)} /></Field></div>
-          <Field label="City"><input className={inputCls} value={form.city} onChange={e => set('city', e.target.value)} /></Field>
+          <Field label="City"><input className={inputCls} value={form.city} onChange={e => setCity(e.target.value)} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Contact Name"><input className={inputCls} value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></Field>
