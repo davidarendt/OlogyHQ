@@ -72,6 +72,13 @@ function Field({ label, children }) {
 const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
 const selectCls = `${inputCls} cursor-pointer`;
 
+const formatPhone = (val) => {
+  const d = val.replace(/\D/g, '').slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+};
+
 // ── Follow-up prompt ───────────────────────────────────────────────────────
 
 function FollowUpPrompt({ accountId, accountName, activityTypes, onDone }) {
@@ -563,7 +570,7 @@ function AccountContactsSection({ accountId, contacts, onRefresh }) {
           <div className="grid grid-cols-2 gap-2">
             <Field label="Name *"><input className={inputCls} value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} autoFocus /></Field>
             <Field label="Title"><input className={inputCls} value={contactForm.title} onChange={e => setContactForm(f => ({ ...f, title: e.target.value }))} /></Field>
-            <Field label="Phone"><input className={inputCls} value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></Field>
+            <Field label="Phone"><input className={inputCls} value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: formatPhone(e.target.value) }))} /></Field>
             <Field label="Email"><input className={inputCls} type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></Field>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
@@ -866,7 +873,7 @@ function DistributorContactsSection({ distributorId, contacts, contactRoles, onR
                 {contactRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </Field>
-            <Field label="Phone"><input className={inputCls} type="tel" value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></Field>
+            <Field label="Phone"><input className={inputCls} value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: formatPhone(e.target.value) }))} /></Field>
             <Field label="Email"><input className={inputCls} type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></Field>
             <div className="col-span-2"><Field label="Title"><input className={inputCls} value={contactForm.title} onChange={e => setContactForm(f => ({ ...f, title: e.target.value }))} /></Field></div>
           </div>
