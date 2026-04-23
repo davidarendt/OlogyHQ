@@ -908,6 +908,8 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
   const [section, setSection] = useState('products');
   const [plForm, setPlForm] = useState({ name: '', type: 'beer' });
   const [editingPl, setEditingPl] = useState(null);
+  const [draggedPlId, setDraggedPlId] = useState(null);
+  const [overPlId, setOverPlId] = useState(null);
   const [atForm, setAtForm] = useState('');
   const [editingAt, setEditingAt] = useState(null);
   const [etForm, setEtForm] = useState('');
@@ -929,6 +931,20 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
   const deletePl = async (id) => {
     if (!window.confirm('Delete this product line?')) return;
     await jsonFetch(`/api/crm/product-lines/${id}`, 'DELETE');
+    onRefreshProductLines();
+  };
+
+  const handlePlDrop = async (targetId) => {
+    if (!draggedPlId || draggedPlId === targetId) { setDraggedPlId(null); setOverPlId(null); return; }
+    const from = productLines.findIndex(p => p.id === draggedPlId);
+    const to = productLines.findIndex(p => p.id === targetId);
+    if (from === -1 || to === -1) return;
+    const reordered = [...productLines];
+    const [item] = reordered.splice(from, 1);
+    reordered.splice(to, 0, item);
+    setDraggedPlId(null);
+    setOverPlId(null);
+    await jsonFetch('/api/crm/product-lines/reorder', 'PATCH', { ids: reordered.map(p => p.id) });
     onRefreshProductLines();
   };
 
@@ -1017,7 +1033,17 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
           </div>
           {productLines.length === 0 && <p className="text-gray-600 text-sm">No product lines yet.</p>}
           {productLines.map(pl => (
-            <div key={pl.id} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+            <div
+              key={pl.id}
+              draggable
+              onDragStart={() => setDraggedPlId(pl.id)}
+              onDragOver={e => { e.preventDefault(); setOverPlId(pl.id); }}
+              onDragLeave={() => setOverPlId(null)}
+              onDrop={() => handlePlDrop(pl.id)}
+              onDragEnd={() => { setDraggedPlId(null); setOverPlId(null); }}
+              className={`flex items-center gap-2 bg-gray-800 border rounded-lg px-3 py-2 transition-colors ${overPlId === pl.id && draggedPlId !== pl.id ? 'border-orange-500' : 'border-gray-700'} ${draggedPlId === pl.id ? 'opacity-40' : ''}`}
+            >
+              <span className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing select-none text-base leading-none">⠿</span>
               {editingPl?.id === pl.id ? (
                 <>
                   <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none" value={editingPl.name} onChange={e => setEditingPl(f => ({ ...f, name: e.target.value }))} autoFocus />

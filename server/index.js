@@ -2504,6 +2504,16 @@ app.post('/api/crm/product-lines', authenticateToken, checkCRMManage, async (req
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+app.patch('/api/crm/product-lines/reorder', authenticateToken, checkCRMManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    await Promise.all(ids.map((id, i) =>
+      pool.query('UPDATE crm_product_lines SET sort_order=$1 WHERE id=$2', [i, id])
+    ));
+    res.json({ message: 'Reordered' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 app.patch('/api/crm/product-lines/:id', authenticateToken, checkCRMManage, async (req, res) => {
   try {
     const { name, type } = req.body;
@@ -2519,16 +2529,6 @@ app.delete('/api/crm/product-lines/:id', authenticateToken, checkCRMManage, asyn
   try {
     await pool.query('DELETE FROM crm_product_lines WHERE id=$1', [req.params.id]);
     res.json({ message: 'Deleted' });
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.patch('/api/crm/product-lines/reorder', authenticateToken, checkCRMManage, async (req, res) => {
-  try {
-    const { ids } = req.body;
-    await Promise.all(ids.map((id, i) =>
-      pool.query('UPDATE crm_product_lines SET sort_order=$1 WHERE id=$2', [i, id])
-    ));
-    res.json({ message: 'Reordered' });
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
