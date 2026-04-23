@@ -152,66 +152,9 @@ function ActivityRow({ act, onEdit, onDelete }) {
   );
 }
 
-// ── Event Modal ────────────────────────────────────────────────────────────
-
-function EventModal({ event, eventTypes, onClose, onSaved }) {
-  const isNew = !event;
-  const [form, setForm] = useState({
-    event_type_id: event?.event_type_id || '',
-    title: event?.title || '',
-    event_date: event?.event_date?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-    location: event?.location || '',
-    notes: event?.notes || '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    if (!form.title.trim() || !form.event_date) return;
-    setSaving(true);
-    const method = isNew ? 'POST' : 'PATCH';
-    const url = isNew ? '/api/crm/events' : `/api/crm/events/${event.id}`;
-    await jsonFetch(url, method, { ...form, event_type_id: form.event_type_id || null });
-    onSaved();
-  };
-
-  return (
-    <Modal title={isNew ? 'Log Event' : 'Edit Event'} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Title *">
-            <input className={inputCls} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-          </Field>
-          <Field label="Type">
-            <select className={selectCls} value={form.event_type_id} onChange={e => setForm(f => ({ ...f, event_type_id: e.target.value }))}>
-              <option value="">— select —</option>
-              {eventTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Date *">
-            <input type="date" className={inputCls} value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} />
-          </Field>
-          <Field label="Location">
-            <input className={inputCls} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-          </Field>
-        </div>
-        <Field label="Notes">
-          <textarea className={`${inputCls} resize-none`} rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-        </Field>
-        <div className="flex gap-3 justify-end pt-2">
-          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">Cancel</button>
-          <button onClick={save} disabled={saving || !form.title.trim() || !form.event_date}
-            className="text-sm px-4 py-2 rounded-lg font-medium text-white disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
-            {saving ? 'Saving…' : isNew ? 'Log Event' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 // ── Dashboard Tab ──────────────────────────────────────────────────────────
 
-function buildChartData(activityByDay, eventsByDay, days) {
+function buildChartData(activityByDay, days) {
   const dateArr = [];
   const today = new Date();
   for (let i = days - 1; i >= 0; i--) {
@@ -219,18 +162,14 @@ function buildChartData(activityByDay, eventsByDay, days) {
     d.setDate(d.getDate() - i);
     dateArr.push(d.toISOString().slice(0, 10));
   }
-
   const repNames = [...new Set(activityByDay.map(r => r.created_by_name))];
-
   return dateArr.map(date => {
-    const label = date.slice(5); // MM-DD
+    const label = date.slice(5);
     const entry = { date: label };
     repNames.forEach(rep => {
       const row = activityByDay.find(r => r.date === date && r.created_by_name === rep);
       entry[rep] = row ? row.count : 0;
     });
-    const evRow = eventsByDay.filter(r => r.date === date);
-    entry._events = evRow.reduce((s, r) => s + r.count, 0);
     return entry;
   });
 }
@@ -260,16 +199,11 @@ function DashboardTab() {
 
   const stats          = data.stats           || {};
   const activity_by_day= data.activity_by_day || [];
-  const events_by_day  = data.events_by_day   || [];
   const scheduled_visits= data.scheduled_visits|| [];
-  const upcoming_events= data.upcoming_events  || [];
   const rep_summary    = data.rep_summary      || [];
   const repNames = [...new Set(activity_by_day.map(r => r.created_by_name))];
-  const chartData = buildChartData(activity_by_day, events_by_day, days);
-  const upcoming = [
-    ...scheduled_visits.map(v => ({ ...v, _kind: 'visit' })),
-    ...upcoming_events.map(e => ({ ...e, _kind: 'event' })),
-  ].sort((a, b) => (a.date || a.event_date) > (b.date || b.event_date) ? 1 : -1);
+  const chartData = buildChartData(activity_by_day, days);
+  const upcoming = scheduled_visits.map(v => ({ ...v, _kind: 'visit' })).sort((a, b) => a.date > b.date ? 1 : -1);
 
   return (
     <div className="space-y-6">
@@ -289,14 +223,13 @@ function DashboardTab() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Accounts Visited" value={stats.accounts_visited} sub={`${days}-day window`} />
         <StatCard label="Total Activities" value={stats.total_activities} />
-        <StatCard label="Events" value={stats.events_count} />
         <StatCard label="New Accounts" value={stats.new_accounts} sub="added to CRM" />
       </div>
 
       {/* Chart */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-4">Activity by Day</h3>
-        {chartData.every(d => repNames.every(r => d[r] === 0) && d._events === 0)
+        {chartData.every(d => repNames.every(r => d[r] === 0))
           ? <p className="text-gray-500 text-sm text-center py-8">No activity in this period.</p>
           : (
             <ResponsiveContainer width="100%" height={220}>
@@ -309,7 +242,6 @@ function DashboardTab() {
                 {repNames.map((rep, i) => (
                   <Bar key={rep} dataKey={rep} stackId="a" fill={REP_COLORS[i % REP_COLORS.length]} radius={i === repNames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
                 ))}
-                <Bar dataKey="_events" name="Events" stackId="b" fill="#6b7280" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )
@@ -339,16 +271,15 @@ function DashboardTab() {
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
             <h3 className="text-white font-semibold mb-4">Upcoming</h3>
             <div className="space-y-2">
-              {upcoming.slice(0, 8).map((item, i) => (
-                <div key={`${item._kind}-${item.id}`} className="flex items-start gap-3">
-                  <div className={`text-xs px-2 py-0.5 rounded-full shrink-0 mt-0.5 font-medium ${item._kind === 'visit' ? 'bg-orange-900/40 text-orange-300' : 'bg-blue-900/40 text-blue-300'}`}>
-                    {item._kind === 'visit' ? (item.activity_type_name || 'Visit') : (item.event_type_name || 'Event')}
+              {upcoming.slice(0, 8).map((item) => (
+                <div key={item.id} className="flex items-start gap-3">
+                  <div className="text-xs px-2 py-0.5 rounded-full shrink-0 mt-0.5 font-medium bg-orange-900/40 text-orange-300">
+                    {item.activity_type_name || 'Visit'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm truncate">{item._kind === 'visit' ? item.account_name : item.title}</p>
-                    {item.location && <p className="text-gray-500 text-xs">{item.location}</p>}
+                    <p className="text-white text-sm truncate">{item.account_name}</p>
                   </div>
-                  <span className="text-gray-500 text-xs shrink-0">{(item.date || item.event_date)?.slice(5)}</span>
+                  <span className="text-gray-500 text-xs shrink-0">{item.date?.slice(5)}</span>
                 </div>
               ))}
             </div>
@@ -1042,7 +973,7 @@ function DistributorModal({ distributor, productLines, onClose, onSaved }) {
 
 // ── Manage Tab ─────────────────────────────────────────────────────────────
 
-function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRefreshProductLines, onRefreshActivityTypes, onRefreshEventTypes, onRefreshContactRoles }) {
+function ManageTab({ productLines, activityTypes, contactRoles, onRefreshProductLines, onRefreshActivityTypes, onRefreshContactRoles }) {
   const [section, setSection] = useState('products');
   const [plForm, setPlForm] = useState({ name: '', type: 'beer' });
   const [editingPl, setEditingPl] = useState(null);
@@ -1050,8 +981,6 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
   const [overPlId, setOverPlId] = useState(null);
   const [atForm, setAtForm] = useState('');
   const [editingAt, setEditingAt] = useState(null);
-  const [etForm, setEtForm] = useState('');
-  const [editingEt, setEditingEt] = useState(null);
   const [crForm, setCrForm] = useState('');
   const [editingCr, setEditingCr] = useState(null);
 
@@ -1104,24 +1033,6 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
     onRefreshActivityTypes();
   };
 
-  const addEt = async () => {
-    if (!etForm.trim()) return;
-    await jsonFetch('/api/crm/event-types', 'POST', { name: etForm });
-    setEtForm('');
-    onRefreshEventTypes();
-  };
-  const saveEt = async () => {
-    if (!editingEt?.name?.trim()) return;
-    await jsonFetch(`/api/crm/event-types/${editingEt.id}`, 'PATCH', { name: editingEt.name });
-    setEditingEt(null);
-    onRefreshEventTypes();
-  };
-  const deleteEt = async (id) => {
-    if (!window.confirm('Delete this event type?')) return;
-    await jsonFetch(`/api/crm/event-types/${id}`, 'DELETE');
-    onRefreshEventTypes();
-  };
-
   const addCr = async () => {
     if (!crForm.trim()) return;
     await jsonFetch('/api/crm/contact-roles', 'POST', { name: crForm });
@@ -1143,7 +1054,6 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
   const sections = [
     { id: 'products', label: 'Product Lines' },
     { id: 'activity-types', label: 'Activity Types' },
-    { id: 'event-types', label: 'Event Types' },
     { id: 'contact-roles', label: 'Contact Roles' },
   ];
 
@@ -1231,33 +1141,6 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
         </div>
       )}
 
-      {section === 'event-types' && (
-        <div className="max-w-xs space-y-3">
-          <div className="flex gap-2">
-            <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
-              placeholder="Event type name…" value={etForm} onChange={e => setEtForm(e.target.value)} onKeyDown={e => e.key === 'Enter' && addEt()} />
-            <button onClick={addEt} disabled={!etForm.trim()} className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 shrink-0" style={{ backgroundColor: '#F05A28' }}>Add</button>
-          </div>
-          {eventTypes.map(et => (
-            <div key={et.id} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
-              {editingEt?.id === et.id ? (
-                <>
-                  <input className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none" value={editingEt.name} onChange={e => setEditingEt(f => ({ ...f, name: e.target.value }))} autoFocus />
-                  <button onClick={saveEt} className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: '#F05A28' }}>Save</button>
-                  <button onClick={() => setEditingEt(null)} className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">Cancel</button>
-                </>
-              ) : (
-                <>
-                  <span className="text-white text-sm flex-1">{et.name}</span>
-                  <button onClick={() => setEditingEt({ id: et.id, name: et.name })} className="text-gray-500 hover:text-gray-300 text-xs">Edit</button>
-                  <button onClick={() => deleteEt(et.id)} className="text-gray-500 hover:text-red-400 text-xs">×</button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       {section === 'contact-roles' && (
         <div className="max-w-xs space-y-3">
           <p className="text-gray-500 text-xs">These roles appear as labels on distributor contacts (Sales Staff, Warehouse, etc.).</p>
@@ -1289,94 +1172,6 @@ function ManageTab({ productLines, activityTypes, eventTypes, contactRoles, onRe
   );
 }
 
-// ── Events Tab ─────────────────────────────────────────────────────────────
-
-function EventsTab({ eventTypes }) {
-  const [events, setEvents] = useState([]);
-  const [editingEvent, setEditingEvent] = useState(null); // null=closed, false=new, obj=edit
-
-  const load = async () => {
-    const res = await apiFetch('/api/crm/events');
-    setEvents(await res.json());
-  };
-
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const del = async (id) => {
-    if (!window.confirm('Delete this event?')) return;
-    await jsonFetch(`/api/crm/events/${id}`, 'DELETE');
-    load();
-  };
-
-  const upcoming = events.filter(e => e.event_date >= new Date().toISOString().slice(0, 10));
-  const past = events.filter(e => e.event_date < new Date().toISOString().slice(0, 10));
-
-  return (
-    <div>
-      <div className="flex justify-end mb-5">
-        <button onClick={() => setEditingEvent(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#F05A28' }}>
-          + Log Event
-        </button>
-      </div>
-
-      {events.length === 0 && <p className="text-center text-gray-500 py-16">No events logged yet.</p>}
-
-      {upcoming.length > 0 && (
-        <div className="mb-6">
-          <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Upcoming</p>
-          <div className="space-y-2">
-            {upcoming.map(e => <EventRow key={e.id} event={e} onEdit={() => setEditingEvent(e)} onDelete={() => del(e.id)} />)}
-          </div>
-        </div>
-      )}
-
-      {past.length > 0 && (
-        <div>
-          <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Past</p>
-          <div className="space-y-2">
-            {past.map(e => <EventRow key={e.id} event={e} onEdit={() => setEditingEvent(e)} onDelete={() => del(e.id)} />)}
-          </div>
-        </div>
-      )}
-
-      {editingEvent !== null && (
-        <EventModal
-          event={editingEvent || null}
-          eventTypes={eventTypes}
-          onClose={() => setEditingEvent(null)}
-          onSaved={() => { setEditingEvent(null); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function EventRow({ event, onEdit, onDelete }) {
-  return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 flex items-start gap-4">
-      <div className="text-center shrink-0 w-12">
-        <div className="text-orange-400 text-xs font-medium">{event.event_date?.slice(5, 7)}/{event.event_date?.slice(8, 10)}</div>
-        <div className="text-gray-500 text-xs">{event.event_date?.slice(0, 4)}</div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <span className="text-white font-medium text-sm">{event.title}</span>
-          {event.event_type_name && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/40 text-blue-300">{event.event_type_name}</span>
-          )}
-        </div>
-        {event.location && <p className="text-gray-400 text-xs">{event.location}</p>}
-        {event.notes && <p className="text-gray-500 text-xs mt-0.5">{event.notes}</p>}
-        <p className="text-gray-600 text-xs mt-0.5">by {event.created_by_name}</p>
-      </div>
-      <div className="flex gap-1 shrink-0">
-        <button onClick={onEdit} className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1">Edit</button>
-        <button onClick={onDelete} className="text-gray-500 hover:text-red-400 text-xs px-2 py-1">×</button>
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 
 function SalesCRM({ user, canUpload, onBack }) {
@@ -1385,7 +1180,6 @@ function SalesCRM({ user, canUpload, onBack }) {
   const [distributors, setDistributors] = useState([]);
   const [productLines, setProductLines] = useState([]);
   const [activityTypes, setActivityTypes] = useState([]);
-  const [eventTypes, setEventTypes] = useState([]);
   const [contactRoles, setContactRoles] = useState([]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -1401,11 +1195,10 @@ function SalesCRM({ user, canUpload, onBack }) {
   const loadDistributors = async () => { const r = await apiFetch('/api/crm/distributors');   setDistributors(await r.json()); };
   const loadProductLines = async () => { const r = await apiFetch('/api/crm/product-lines');  setProductLines(await r.json()); };
   const loadActivityTypes= async () => { const r = await apiFetch('/api/crm/activity-types'); setActivityTypes(await r.json()); };
-  const loadEventTypes   = async () => { const r = await apiFetch('/api/crm/event-types');    setEventTypes(await r.json()); };
   const loadContactRoles = async () => { const r = await apiFetch('/api/crm/contact-roles');  setContactRoles(await r.json()); };
 
   useEffect(() => {
-    loadAccounts(); loadDistributors(); loadProductLines(); loadActivityTypes(); loadEventTypes(); loadContactRoles();
+    loadAccounts(); loadDistributors(); loadProductLines(); loadActivityTypes(); loadContactRoles();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const deleteAccount = async (id) => {
@@ -1435,7 +1228,6 @@ function SalesCRM({ user, canUpload, onBack }) {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'accounts', label: 'Accounts' },
     { id: 'distributors', label: 'Distributors' },
-    { id: 'events', label: 'Events' },
     ...(canUpload ? [{ id: 'manage', label: 'Manage' }] : []),
   ];
 
@@ -1558,13 +1350,11 @@ function SalesCRM({ user, canUpload, onBack }) {
           </div>
         )}
 
-        {tab === 'events' && <EventsTab eventTypes={eventTypes} />}
-
-        {tab === 'manage' && canUpload && (
+{tab === 'manage' && canUpload && (
           <ManageTab
-            productLines={productLines} activityTypes={activityTypes} eventTypes={eventTypes} contactRoles={contactRoles}
+            productLines={productLines} activityTypes={activityTypes} contactRoles={contactRoles}
             onRefreshProductLines={loadProductLines} onRefreshActivityTypes={loadActivityTypes}
-            onRefreshEventTypes={loadEventTypes} onRefreshContactRoles={loadContactRoles}
+            onRefreshContactRoles={loadContactRoles}
           />
         )}
       </main>

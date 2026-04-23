@@ -2858,12 +2858,11 @@ app.get('/api/crm/dashboard', authenticateToken, checkCRMView, async (req, res) 
   try {
     const days = parseInt(req.query.days) || 30;
 
-    const [statsRes, actByDayRes, eventsByDayRes, newAccountsRes, scheduledRes, upcomingEventsRes, repSummaryRes, eventTypesUsedRes] = await Promise.all([
+    const [statsRes, actByDayRes, newAccountsRes, scheduledRes, repSummaryRes] = await Promise.all([
       pool.query(
         `SELECT
            COUNT(DISTINCT account_id) FILTER (WHERE activity_date >= CURRENT_DATE - $1 AND NOT is_scheduled) AS accounts_visited,
-           COUNT(*)                   FILTER (WHERE activity_date >= CURRENT_DATE - $1 AND NOT is_scheduled) AS total_activities,
-           COUNT(*)                   FILTER (WHERE is_scheduled AND activity_date >= CURRENT_DATE)          AS scheduled_upcoming
+           COUNT(*)                   FILTER (WHERE activity_date >= CURRENT_DATE - $1 AND NOT is_scheduled) AS total_activities
          FROM crm_activities`,
         [days]
       ),
@@ -2873,14 +2872,6 @@ app.get('/api/crm/dashboard', authenticateToken, checkCRMView, async (req, res) 
          WHERE activity_date >= CURRENT_DATE - $1 AND NOT is_scheduled
          GROUP BY activity_date, created_by_name
          ORDER BY activity_date`,
-        [days]
-      ),
-      pool.query(
-        `SELECT e.event_date::text AS date, COALESCE(et.name, 'Other') AS type_name, COUNT(*)::int AS count
-         FROM crm_events e LEFT JOIN crm_event_types et ON et.id = e.event_type_id
-         WHERE e.event_date >= CURRENT_DATE - $1
-         GROUP BY e.event_date, et.name
-         ORDER BY e.event_date`,
         [days]
       ),
       pool.query(
@@ -2897,13 +2888,6 @@ app.get('/api/crm/dashboard', authenticateToken, checkCRMView, async (req, res) 
          ORDER BY a.activity_date LIMIT 15`
       ),
       pool.query(
-        `SELECT e.id, e.title, e.event_date::text AS date, e.location, e.notes,
-                COALESCE(et.name, 'Other') AS event_type_name, e.created_by_name
-         FROM crm_events e LEFT JOIN crm_event_types et ON et.id = e.event_type_id
-         WHERE e.event_date >= CURRENT_DATE
-         ORDER BY e.event_date LIMIT 15`
-      ),
-      pool.query(
         `SELECT created_by_name,
                 COUNT(*)::int FILTER (WHERE NOT is_scheduled) AS total_activities,
                 COUNT(DISTINCT account_id) FILTER (WHERE NOT is_scheduled) AS accounts_visited
@@ -2913,121 +2897,18 @@ app.get('/api/crm/dashboard', authenticateToken, checkCRMView, async (req, res) 
          ORDER BY total_activities DESC`,
         [days]
       ),
-      pool.query(
-        `SELECT COALESCE(et.name,'Other') AS type_name, COUNT(*)::int AS count
-         FROM crm_events e LEFT JOIN crm_event_types et ON et.id = e.event_type_id
-         WHERE e.event_date >= CURRENT_DATE - $1
-         GROUP BY et.name ORDER BY count DESC`,
-        [days]
-      ),
     ]);
 
     res.json({
-      stats: {
-        ...statsRes.rows[0],
-        new_accounts: newAccountsRes.rows[0].count,
-        events_count: eventsByDayRes.rows.reduce((s, r) => s + r.count, 0),
-      },
+      stats: { ...statsRes.rows[0], new_accounts: newAccountsRes.rows[0].count },
       activity_by_day: actByDayRes.rows,
-      events_by_day: eventsByDayRes.rows,
       scheduled_visits: scheduledRes.rows,
-      upcoming_events: upcomingEventsRes.rows,
       rep_summary: repSummaryRes.rows,
-      event_types_used: eventTypesUsedRes.rows,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
-});
-
-// Event types
-app.get('/api/crm/event-types', authenticateToken, checkCRMView, async (req, res) => {
-  try {
-    const r = await pool.query('SELECT * FROM crm_event_types ORDER BY sort_order, name');
-    res.json(r.rows);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.post('/api/crm/event-types', authenticateToken, checkCRMManage, async (req, res) => {
-  try {
-    const { name } = req.body;
-    const r = await pool.query(
-      `INSERT INTO crm_event_types (name, sort_order)
-       VALUES ($1, (SELECT COALESCE(MAX(sort_order),0)+1 FROM crm_event_types)) RETURNING *`,
-      [name]
-    );
-    res.json(r.rows[0]);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.patch('/api/crm/event-types/:id', authenticateToken, checkCRMManage, async (req, res) => {
-  try {
-    const r = await pool.query(
-      `UPDATE crm_event_types SET name=$1 WHERE id=$2 RETURNING *`,
-      [req.body.name, req.params.id]
-    );
-    res.json(r.rows[0]);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.delete('/api/crm/event-types/:id', authenticateToken, checkCRMManage, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM crm_event_types WHERE id=$1', [req.params.id]);
-    res.json({ message: 'Deleted' });
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-// Events
-app.get('/api/crm/events', authenticateToken, checkCRMView, async (req, res) => {
-  try {
-    const r = await pool.query(
-      `SELECT e.*, et.name AS event_type_name
-       FROM crm_events e LEFT JOIN crm_event_types et ON et.id = e.event_type_id
-       ORDER BY e.event_date DESC`
-    );
-    res.json(r.rows);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.post('/api/crm/events', authenticateToken, checkCRMView, async (req, res) => {
-  try {
-    const { event_type_id, title, event_date, location, notes } = req.body;
-    const r = await pool.query(
-      `INSERT INTO crm_events (event_type_id, title, event_date, location, notes, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [event_type_id || null, title, event_date, location || null, notes || null, req.user.id, req.user.name]
-    );
-    const withType = await pool.query(
-      `SELECT e.*, et.name AS event_type_name FROM crm_events e
-       LEFT JOIN crm_event_types et ON et.id = e.event_type_id WHERE e.id=$1`,
-      [r.rows[0].id]
-    );
-    res.json(withType.rows[0]);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.patch('/api/crm/events/:id', authenticateToken, checkCRMView, async (req, res) => {
-  try {
-    const { event_type_id, title, event_date, location, notes } = req.body;
-    await pool.query(
-      `UPDATE crm_events SET event_type_id=$1, title=$2, event_date=$3, location=$4, notes=$5 WHERE id=$6`,
-      [event_type_id || null, title, event_date, location || null, notes || null, req.params.id]
-    );
-    const withType = await pool.query(
-      `SELECT e.*, et.name AS event_type_name FROM crm_events e
-       LEFT JOIN crm_event_types et ON et.id = e.event_type_id WHERE e.id=$1`,
-      [req.params.id]
-    );
-    res.json(withType.rows[0]);
-  } catch { res.status(500).json({ message: 'Server error' }); }
-});
-
-app.delete('/api/crm/events/:id', authenticateToken, checkCRMView, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM crm_events WHERE id=$1', [req.params.id]);
-    res.json({ message: 'Deleted' });
-  } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
 // Account activities
