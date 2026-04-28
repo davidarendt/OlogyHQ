@@ -116,8 +116,9 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `crm_distributor_contacts` — id, distributor_id (→ crm_distributors, cascade), name, title, phone, email, role_id (→ crm_contact_roles, SET NULL), is_primary, sort_order
 - `crm_distributor_products` — distributor_id, product_line_id (PK: both)
 - `crm_accounts` — id, name, type ('bar'|'restaurant'|'retail'|'hotel'|'other'), address, city, state, phone, email, contact_name, contact_title, distributor_id (→ crm_distributors, SET NULL), notes, sort_order, created_at, updated_at
+- `crm_account_contacts` — id, account_id (→ crm_accounts, cascade), name, title, phone, email, is_primary, sort_order (multiple contacts per account)
 - `crm_account_products` — account_id, product_line_id (PK: both)
-- `crm_activities` — id, account_id (→ crm_accounts, cascade), activity_type_id (→ crm_activity_types, SET NULL), activity_date, notes, created_by_id, created_by_name, created_at, updated_at
+- `crm_activities` — id, account_id (→ crm_accounts, cascade), activity_type_id (→ crm_activity_types, SET NULL), activity_date, contact_name, contact_title, samples (text, comma-joined product line names), notes, created_by_id, created_by_name, created_at, updated_at
 
 - `prod_tanks` — id, name, capacity_bbl, active (bool), sort_order, created_at
 - `prod_beers` — id, name, style (text, legacy), style_id (→ prod_beer_styles, nullable), color, status ('active'|'archived'), notes, created_at. No `sort_order` column — order by name.
@@ -211,21 +212,29 @@ Nodemailer with Gmail SMTP (`smtp.gmail.com`, port 465). Credentials in `server/
 
 **Tabs**: Accounts | Distributors | Manage (`upload` only)
 
-**Accounts** (full CRUD for `view` users): name, type (bar/restaurant/retail/hotel/other), contact info, linked distributor, products carried, notes. Activity log is per-account (log visits, calls, tastings, etc.) — opens in a separate modal with full history.
+**Accounts** (full CRUD for `view` users): name, type, contact info, linked distributor, products carried, notes. Clicking an account opens `AccountDetail` — a single modal that shows contacts, account info, and the full activity history in one view (most recent activity first). No separate activity modal.
 
-**Distributors** (browse for all; add/edit/delete for `upload` users): name, territory, notes, contacts (multiple per distributor with role category and is_primary flag), brands carried. The distributor detail view uses a `distDetailId` state (stores just the ID) — the full object is derived from the live `distributors` array so the detail modal auto-refreshes after contact changes. All phone numbers render as `tel:` links.
+**Account contacts**: `AccountContactsSection` component within `AccountDetail`. Multiple contacts per account via `crm_account_contacts`. Both `view` and `upload` users can add/edit/delete account contacts.
 
-**Distributor contacts**: `DistributorContactsSection` component handles the contact list within the distributor detail view. Both `view` and `upload` users can add/edit/delete contacts. Each contact has a `role_id` referencing `crm_contact_roles` (e.g. Sales Staff, Sales Manager, Warehouse, Billing, Driver).
+**Account merge** (`upload` only): `MergeAccountModal` lets you pick a source account to merge into the current one. All activities, contacts, and product lines are moved; notes are appended; source account is deleted — all in a single transaction (`POST /api/crm/accounts/:id/merge`).
 
-**Manage tab** (`upload` only): Product Lines (name + type beer/spirit/other), Activity Types, and Contact Roles — all fully editable reference lists.
+**Distributor auto-populate**: When typing a city into the account address field, `findDistributorForCity` checks each distributor's comma-separated `territory` field (case-insensitive) and pre-fills the distributor if there's a match.
+
+**Activity logging**: Form captures activity type, date, who you talked to (`contact_name`), their position (`contact_title`), products tried/samples delivered (`samples`), and notes. The `samples` field is driven by toggle pill buttons — one per product line from `crm_product_lines` — and stored as a comma-joined string. Deleting an account requires `upload` permission; editing does not.
+
+**Distributors** (browse for all; add/edit/delete for `upload` users): name, territory, notes, contacts (multiple per distributor with role category and is_primary flag), brands carried. The distributor detail view uses a `distDetailId` state (stores just the ID) — the full object is derived from the live `distributors` array so the detail modal auto-refreshes after contact changes. All phone numbers render as `tel:` links and are auto-formatted as `(XXX) XXX-XXXX` via the `formatPhone` helper.
+
+**Distributor contacts**: `DistributorContactsSection` component. Both `view` and `upload` users can add/edit/delete contacts. Each contact has a `role_id` referencing `crm_contact_roles` (e.g. Sales Staff, Sales Manager, Warehouse, Billing, Driver).
+
+**Manage tab** (`upload` only): Product Lines (name + type beer/spirit/other, drag-to-reorder), Activity Types, and Contact Roles — all fully editable reference lists.
 
 **Location lookup**: "Find Locations Near Me" button uses the Overpass API to find nearby bars/restaurants. POST to `https://overpass-api.de/api/interpreter` with `Content-Type: application/x-www-form-urlencoded` and body `data=<encoded query>` (not raw body).
 
 **Permission levels**:
-- `view` — full CRUD on accounts, activities, and distributor contacts
-- `upload` — additionally: add/edit/delete distributors and access the Manage tab (product lines, activity types, contact roles)
+- `view` — full CRUD on accounts, activities, account contacts, and distributor contacts
+- `upload` — additionally: delete accounts, merge accounts, add/edit/delete distributors, access the Manage tab
 
-**Route ordering** in `server/index.js`: all CRM routes follow the same middleware pattern — `checkCRMView` for account/activity/contact endpoints, `checkCRMManage` for distributor/product-line/activity-type/contact-role management.
+**Route ordering** in `server/index.js`: all CRM routes follow the same middleware pattern — `checkCRMView` for account/activity/contact endpoints, `checkCRMManage` for distributor/product-line/activity-type/contact-role management. `POST /api/crm/accounts/:id/merge` uses `checkCRMManage`.
 
 ### Taproom Inspections — Real-Time Architecture
 `TaproomInspections.js` is a multi-user bar inspection checklist. It uses a **split data pattern**:
