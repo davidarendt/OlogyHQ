@@ -69,11 +69,18 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
           <div className="flex items-start justify-between gap-4 mb-6">
             <div className="flex-1 min-w-0">
               <h2 className="text-cream text-3xl font-bold leading-tight">{cocktail.name}</h2>
-              {serviceInfo && (
-                <p className="text-gray-400 text-sm mt-2 tracking-wide">{serviceInfo}</p>
-              )}
-              {(cocktail.tags || []).length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
+              {(cocktail.price || cocktail.last_special_on || (cocktail.tags || []).length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  {cocktail.price && (
+                    <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ backgroundColor: '#F05A2820', color: '#F05A28', border: '1px solid #F05A2845' }}>
+                      ${parseFloat(cocktail.price).toFixed(2)}
+                    </span>
+                  )}
+                  {cocktail.last_special_on && (
+                    <span className="text-xs font-medium bg-pink-900/30 text-pink-300 border border-pink-700/40 px-3 py-1 rounded-full">
+                      Last Special · {new Date(cocktail.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  )}
                   {(cocktail.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
                 </div>
               )}
@@ -106,27 +113,16 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
             </div>
           </div>
 
-          {/* Price + Special — visually distinct from flavor tags */}
-          {(cocktail.price || cocktail.last_special_on) && (
-            <div className="flex flex-wrap gap-2 mb-6">
-              {cocktail.price && (
-                <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ backgroundColor: '#F05A2820', color: '#F05A28', border: '1px solid #F05A2845' }}>
-                  ${parseFloat(cocktail.price).toFixed(2)}
-                </span>
-              )}
-              {cocktail.last_special_on && (
-                <span className="text-xs font-medium bg-pink-900/30 text-pink-300 border border-pink-700/40 px-3 py-1 rounded-full">
-                  Last Special · {new Date(cocktail.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-              )}
-            </div>
-          )}
-
           {/* Creator banner */}
           {showCreator && cocktail.suggested_by_name && (
             <div className="mb-6 px-3 py-2 rounded-lg bg-gray-600/40 border border-gray-500/30 text-sm text-gray-400">
               Created by <span className="text-gray-200 font-medium">{formatCreatorName(cocktail.suggested_by_name)}</span>
             </div>
+          )}
+
+          {/* Service info — right above ingredients */}
+          {serviceInfo && (
+            <p className="text-gray-400 text-sm mb-4 tracking-wide">{serviceInfo}</p>
           )}
 
           {/* Divider */}
@@ -493,7 +489,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
 
             {isSuggestion ? (
               <div className="bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-gray-400 text-sm">
-                Category: <span className="text-yellow-400 font-medium">Work-In-Progress</span>
+                Category: <span className="text-yellow-400 font-medium">In Progress</span>
               </div>
             ) : (
               <>
@@ -503,7 +499,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
                     <select className={selectCls} value={form.status} onChange={e => set('status', e.target.value)}>
                       <option value="menu">Menu Item</option>
                       <option value="special">Special</option>
-                      <option value="wip">Work-In-Progress</option>
+                      <option value="wip">In Progress</option>
                     </select>
                   </div>
                   <div>
@@ -1059,7 +1055,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                 { key: 'all', label: 'All' },
                 { key: 'menu', label: 'Menu Items' },
                 { key: 'special', label: 'Specials' },
-                { key: 'wip', label: 'Work-In-Progress' },
+                { key: 'wip', label: 'In Progress' },
               ].map(cat => (
                 <button
                   key={cat.key}
@@ -1235,7 +1231,7 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                             c.status === 'special' ? 'bg-pink-900/50 text-pink-400' :
                             'bg-yellow-900/50 text-yellow-400'
                           }`}>
-                            {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'WIP'}
+                            {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'In Progress'}
                           </span>
                           {c.suggested_by_name && (
                             <span className="text-xs text-gray-500">by {formatCreatorName(c.suggested_by_name)}</span>
