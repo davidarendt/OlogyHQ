@@ -29,15 +29,33 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function uploadDirectToSupabase(signedUrl, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', signedUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(file);
+  });
+}
+
 // ── Upload / Edit Modal ───────────────────────────────────────────────────────
 function DocModal({ doc, onClose, onSaved }) {
   const isEdit = !!doc;
-  const [name, setName]       = useState(doc?.name || '');
-  const [roles, setRoles]     = useState(doc?.roles || []);
-  const [file, setFile]       = useState(null);
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState('');
-  const inputRef              = useRef();
+  const [name, setName]         = useState(doc?.name || '');
+  const [roles, setRoles]       = useState(doc?.roles || []);
+  const [file, setFile]         = useState(null);
+  const [saving, setSaving]     = useState(false);
+  const [uploadPct, setUploadPct] = useState(null);
+  const [error, setError]       = useState('');
+  const inputRef                = useRef();
 
   const toggleRole = (role) =>
     setRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
@@ -46,24 +64,56 @@ function DocModal({ doc, onClose, onSaved }) {
   const toggleAll   = () => setRoles(allSelected ? [] : [...ROLES]);
 
   const handleSave = async () => {
-    if (!name.trim())        { setError('Display name is required.'); return; }
-    if (!isEdit && !file)    { setError('Please select a file.'); return; }
-    if (!roles.length)       { setError('Select at least one role.'); return; }
+    if (!name.trim())     { setError('Display name is required.'); return; }
+    if (!isEdit && !file) { setError('Please select a file.'); return; }
+    if (!roles.length)    { setError('Select at least one role.'); return; }
     setSaving(true);
     setError('');
+    setUploadPct(null);
 
-    const fd = new FormData();
-    fd.append('name', name.trim());
-    fd.append('roles', JSON.stringify(roles));
-    if (file) fd.append('file', file);
+    try {
+      if (!isEdit && file) {
+        // Step 1: get a presigned URL (no file data sent through Lambda)
+        const presignRes = await fetch(`${API}/api/sop-documents/presign`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name }),
+        });
+        if (!presignRes.ok) {
+          const d = await presignRes.json().catch(() => ({}));
+          setError(d.message || 'Could not initiate upload.'); setSaving(false); return;
+        }
+        const { signedUrl, path } = await presignRes.json();
 
-    const url    = isEdit ? `${API}/api/sop-documents/${doc.id}` : `${API}/api/sop-documents`;
-    const method = isEdit ? 'PATCH' : 'POST';
-    const res    = await fetch(url, { method, credentials: 'include', body: fd });
-    const data   = await res.json();
-    if (!res.ok) { setError(data.message); setSaving(false); return; }
-    onSaved();
-    onClose();
+        // Step 2: upload file directly to Supabase (bypasses Lambda — no size limit)
+        setUploadPct(0);
+        await uploadDirectToSupabase(signedUrl, file, setUploadPct);
+
+        // Step 3: save metadata
+        const commitRes = await fetch(`${API}/api/sop-documents/commit`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), roles, filename: path, mimetype: file.type, size: file.size }),
+        });
+        if (!commitRes.ok) {
+          const d = await commitRes.json().catch(() => ({}));
+          setError(d.message || 'File uploaded but failed to save record.'); setSaving(false); return;
+        }
+      } else {
+        // Edit: name/roles only, no file re-upload
+        const fd = new FormData();
+        fd.append('name', name.trim());
+        fd.append('roles', JSON.stringify(roles));
+        const res = await fetch(`${API}/api/sop-documents/${doc.id}`, { method: 'PATCH', credentials: 'include', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { setError(data.message || 'Save failed.'); setSaving(false); return; }
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError('Upload failed. Please check your connection and try again.');
+      setSaving(false);
+    }
   };
 
   return (
@@ -116,7 +166,9 @@ function DocModal({ doc, onClose, onSaved }) {
           <button onClick={handleSave} disabled={saving}
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition disabled:opacity-50"
             style={{ backgroundColor: '#F05A28' }}>
-            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Upload'}
+            {saving
+              ? (uploadPct !== null ? `Uploading… ${uploadPct}%` : 'Saving…')
+              : isEdit ? 'Save Changes' : 'Upload'}
           </button>
         </div>
       </div>
