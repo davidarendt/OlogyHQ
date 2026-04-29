@@ -752,7 +752,42 @@ app.get('/api/sop-documents', authenticateToken, async (req, res) => {
   }
 });
 
-// Upload SOP
+// Presign SOP upload URL — file goes directly from browser to Supabase, bypassing Lambda
+app.post('/api/sop-documents/presign', authenticateToken, checkSOPPermission, async (req, res) => {
+  try {
+    const { filename } = req.body;
+    const ext = (filename || 'file').split('.').pop().toLowerCase() || 'bin';
+    const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { data, error } = await supabase.storage.from('sop-documents').createSignedUploadUrl(uniqueName);
+    if (error) return res.status(500).json({ message: error.message });
+    res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// Commit SOP record after client-side direct upload
+app.post('/api/sop-documents/commit', authenticateToken, checkSOPPermission, async (req, res) => {
+  try {
+    const { name, roles, filename, mimetype, size } = req.body;
+    if (!name || !filename) return res.status(400).json({ message: 'Missing required fields.' });
+    const parsedRoles = Array.isArray(roles) ? roles : JSON.parse(roles || '[]');
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM sop_documents');
+    const doc = await pool.query(
+      `INSERT INTO sop_documents (name, filename, mimetype, size, uploaded_by_id, uploaded_by_name, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [name, filename, mimetype, size, req.user.id, req.user.name, maxSort.rows[0].m + 1]
+    );
+    for (const role of parsedRoles) {
+      await pool.query('INSERT INTO sop_document_roles (document_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [doc.rows[0].id, role]);
+    }
+    res.json({ ...doc.rows[0], roles: parsedRoles });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// Upload SOP (legacy — still works for local dev / small files)
 app.post('/api/sop-documents', authenticateToken, checkSOPPermission, sopUpload.single('file'), async (req, res) => {
   try {
     const { name, roles } = req.body;
