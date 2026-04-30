@@ -45,7 +45,11 @@ function TagBadge({ name, color }) {
 function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload, user, showCreator }) {
   const hasPhoto = !!cocktail.photo_filename;
   const linkedBatched = (cocktail.linked_batched_items || []).filter(b => b.name);
-  const serviceInfo = [cocktail.method, cocktail.glass, cocktail.ice].filter(Boolean).join(' · ');
+  const serviceFields = [
+    cocktail.method && { label: 'Method', value: cocktail.method },
+    cocktail.glass  && { label: 'Glass',  value: cocktail.glass  },
+    cocktail.ice    && { label: 'Ice',    value: cocktail.ice    },
+  ].filter(Boolean);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 sm:p-8" onClick={onClose}>
@@ -121,8 +125,15 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
           )}
 
           {/* Service info — right above ingredients */}
-          {serviceInfo && (
-            <p className="text-gray-400 text-sm mb-4 tracking-wide">{serviceInfo}</p>
+          {serviceFields.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {serviceFields.map(({ label, value }) => (
+                <div key={label} className="px-3 py-1.5 rounded-lg bg-gray-800/70 border border-gray-600">
+                  <span className="block text-gray-500 text-xs leading-none mb-0.5">{label}</span>
+                  <span className="text-gray-100 text-sm font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Divider */}
