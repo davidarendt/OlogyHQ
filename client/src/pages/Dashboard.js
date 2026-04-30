@@ -7,7 +7,7 @@ const TOOL_META = {
   'production-photos':   { icon: '📸', description: 'View and upload outgoing distro order photos',        page: 'production-photos' },
   'label-inventory':     { image: '/icons/label.png', description: 'Track label stock and usage',          page: 'label-inventory' },
   'hr-documents':        { icon: '🗂️', description: 'Access forms and employee documents',                 page: 'hr-documents' },
-  'sops':                { icon: '📋', description: 'Standard operating procedures',                       page: 'sops' },
+  'sops':                { icon: '📋', description: 'Standard operating procedures and reference documents', page: 'sops' },
   'checklists':          { icon: '✔️', description: 'Run and track operational checklists',                 page: 'checklists' },
   'cocktail-keeper':     { icon: '🍹', description: 'Browse and manage cocktail recipes',                  page: 'cocktail-keeper' },
   'recipes':             { image: '/icons/recipes.svg', description: 'Browse and search kitchen recipes',   page: 'recipes' },

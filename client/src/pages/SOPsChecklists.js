@@ -298,8 +298,8 @@ export default function SOPsChecklists({ user, canUpload, onBack }) {
         {/* Header */}
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h2 className="text-cream text-4xl font-bold">SOPs</h2>
-            <p className="text-gray-400 mt-2">Standard operating procedures</p>
+            <h2 className="text-cream text-4xl font-bold">SOP & Procedures</h2>
+            <p className="text-gray-400 mt-2">Standard operating procedures and reference documents</p>
           </div>
           {canUpload && (
             <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700">

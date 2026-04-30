@@ -1551,8 +1551,9 @@ app.get('/api/taproom-inventory/latest/:location', authenticateToken, async (req
     );
     if (!session.rows[0]) return res.json(null);
     const counts = await pool.query(
-      `SELECT c.beer_id, c.four_pack, c.sixth_bbl, c.half_bbl
-       FROM taproom_inventory_counts c WHERE c.session_id = $1`,
+      `SELECT c.beer_id, SUM(c.four_pack) AS four_pack, SUM(c.sixth_bbl) AS sixth_bbl, SUM(c.half_bbl) AS half_bbl
+       FROM taproom_inventory_counts c WHERE c.session_id = $1
+       GROUP BY c.beer_id`,
       [session.rows[0].id]
     );
     const countMap = {};
@@ -1572,10 +1573,12 @@ app.get('/api/taproom-inventory/:id', authenticateToken, async (req, res) => {
     );
     if (!session.rows[0]) return res.status(404).json({ message: 'Not found' });
     const counts = await pool.query(
-      `SELECT c.beer_id, b.name, c.four_pack, c.sixth_bbl, c.half_bbl
+      `SELECT c.beer_id, b.name, SUM(c.four_pack) AS four_pack, SUM(c.sixth_bbl) AS sixth_bbl, SUM(c.half_bbl) AS half_bbl
        FROM taproom_inventory_counts c
        JOIN taproom_beers b ON b.id = c.beer_id
-       WHERE c.session_id = $1 ORDER BY b.name`,
+       WHERE c.session_id = $1
+       GROUP BY c.beer_id, b.name
+       ORDER BY b.name`,
       [req.params.id]
     );
     res.json({ ...session.rows[0], counts: counts.rows });
@@ -1597,9 +1600,9 @@ app.post('/api/taproom-inventory', authenticateToken, async (req, res) => {
     for (const c of counts) {
       if (c.four_pack > 0 || c.sixth_bbl > 0 || c.half_bbl > 0) {
         await pool.query(
-          `INSERT INTO taproom_inventory_counts (session_id, beer_id, four_pack, sixth_bbl, half_bbl)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [sessionId, c.beer_id, c.four_pack || 0, c.sixth_bbl || 0, c.half_bbl || 0]
+          `INSERT INTO taproom_inventory_counts (session_id, beer_id, storage_area, four_pack, sixth_bbl, half_bbl)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [sessionId, c.beer_id, c.storage_area || null, c.four_pack || 0, c.sixth_bbl || 0, c.half_bbl || 0]
         );
       }
     }

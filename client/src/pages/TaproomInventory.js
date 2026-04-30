@@ -7,6 +7,13 @@ const LOCATIONS = [
   { id: 'tampa',      label: 'Tampa' },
 ];
 
+const STORAGE_AREAS = {
+  midtown:    { cans: ['Can Cooler', 'Walk-in'],                              kegs: ['Walk-in'] },
+  northside:  { cans: ['Can Cooler', 'Walk-in'],                              kegs: ['Walk-in'] },
+  power_mill: { cans: ['Can Cooler', 'Storage Refrigerator', 'Walk-in'],     kegs: ['Kegerator', 'Restock Fridge', 'Walk-in'] },
+  tampa:      { cans: ['Can Cooler', 'Walk-in'],                              kegs: ['Walk-in'] },
+};
+
 const today = () => new Date().toISOString().slice(0, 10);
 const DEFAULT_THRESHOLDS = { four_pack_threshold: 8, sixth_bbl_threshold: 2, half_bbl_threshold: 1 };
 
@@ -40,8 +47,12 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
   const searchRef = useRef();
 
   // Dirty = on the form step with at least one count entered
-  const isDirty = step === 'form' && Object.values(counts).some(c =>
-    Object.values(c).some(v => v !== '' && v !== undefined)
+  const isDirty = step === 'form' && Object.values(counts).some(d =>
+    Object.values(d.cans || {}).some(v => v !== '' && v !== undefined) ||
+    Object.values(d.kegs || {}).some(v =>
+      (v.sixth_bbl !== '' && v.sixth_bbl !== undefined) ||
+      (v.half_bbl  !== '' && v.half_bbl  !== undefined)
+    )
   );
   const isDirtyRef = useRef(isDirty);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
@@ -88,14 +99,34 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     setDelivered(deliveredTotals);
     setDeliveryCount(numDeliveries);
 
+    const locAreas = STORAGE_AREAS[loc.id] || { cans: [], kegs: [] };
     const init = {};
-    beerList.forEach(b => { init[b.id] = { four_pack: '', sixth_bbl: '', half_bbl: '' }; });
+    beerList.forEach(b => {
+      const cans = {};
+      locAreas.cans.forEach(a => { cans[a] = ''; });
+      const kegs = {};
+      locAreas.kegs.forEach(a => { kegs[a] = { sixth_bbl: '', half_bbl: '' }; });
+      init[b.id] = { cans, kegs };
+    });
     setCounts(init);
     setStep('form');
   }, []);
 
-  const setCount = (beerId, field, value) => {
-    setCounts(prev => ({ ...prev, [beerId]: { ...prev[beerId], [field]: value } }));
+  const setCanCount = (beerId, area, value) =>
+    setCounts(prev => ({ ...prev, [beerId]: { ...prev[beerId], cans: { ...prev[beerId].cans, [area]: value } } }));
+
+  const setKegCount = (beerId, area, field, value) =>
+    setCounts(prev => ({ ...prev, [beerId]: { ...prev[beerId], kegs: {
+      ...prev[beerId].kegs, [area]: { ...prev[beerId].kegs[area], [field]: value },
+    }}}));
+
+  const getTotals = (beerId) => {
+    const d = counts[beerId] || {};
+    return {
+      four_pack: Object.values(d.cans || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0),
+      sixth_bbl: Object.values(d.kegs || {}).reduce((s, v) => s + (parseFloat(v.sixth_bbl) || 0), 0),
+      half_bbl:  Object.values(d.kegs || {}).reduce((s, v) => s + (parseFloat(v.half_bbl)  || 0), 0),
+    };
   };
 
   const FIELD_THRESH = {
@@ -114,18 +145,14 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     return p + d;
   };
 
-  // Returns 'yellow' | 'orange' | 'red' | 'default' for a cell
+  // Returns 'yellow' | 'orange' | 'red' | 'default' based on total across all areas
   const cellState = (beerId, field) => {
     const expected = expectedBaseline(beerId, field);
     if (expected === 0) return 'default';
-    const raw = counts[beerId]?.[field];
-    const c = parseFloat(raw) || 0;
-    // Not yet entered or explicitly 0 — something expected but nothing counted
-    if (raw === '' || raw === undefined || raw === null || c === 0) return 'yellow';
-    // Above expected
-    if (c > expected) return 'red';
-    // Dropped more than threshold
-    const drop = expected - c;
+    const total = getTotals(beerId)[field];
+    if (total === 0) return 'yellow';
+    if (total > expected) return 'red';
+    const drop = expected - total;
     const thresh = thresholds[FIELD_THRESH[field]] ?? DEFAULT_THRESHOLDS[FIELD_THRESH[field]];
     if (drop > thresh) return 'orange';
     return 'default';
@@ -140,7 +167,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
         const state = cellState(b.id, key);
         if (state !== 'orange' && state !== 'red') return [];
         const labels = { four_pack: '4-Packs', sixth_bbl: '1/6 BBL', half_bbl: '1/2 BBL' };
-        const c   = parseFloat(counts[b.id]?.[key]) || 0;
+        const c   = getTotals(b.id)[key];
         const exp = expectedBaseline(b.id, key);
         return [{ beer: b.name, label: labels[key], expected: exp, curr: c, drop: exp - c, state }];
       })
@@ -149,12 +176,20 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    const payload = beers.map(b => ({
-      beer_id:   b.id,
-      four_pack: parseFloat(counts[b.id]?.four_pack) || 0,
-      sixth_bbl: parseFloat(counts[b.id]?.sixth_bbl) || 0,
-      half_bbl:  parseFloat(counts[b.id]?.half_bbl)  || 0,
-    }));
+    const locAreas = STORAGE_AREAS[location.id] || { cans: [], kegs: [] };
+    const payload = [];
+    for (const b of beers) {
+      const d = counts[b.id] || {};
+      for (const area of locAreas.cans) {
+        const fp = parseFloat(d.cans?.[area]) || 0;
+        if (fp > 0) payload.push({ beer_id: b.id, storage_area: `cans:${area}`, four_pack: fp, sixth_bbl: 0, half_bbl: 0 });
+      }
+      for (const area of locAreas.kegs) {
+        const sixth = parseFloat(d.kegs?.[area]?.sixth_bbl) || 0;
+        const half  = parseFloat(d.kegs?.[area]?.half_bbl)  || 0;
+        if (sixth > 0 || half > 0) payload.push({ beer_id: b.id, storage_area: `kegs:${area}`, four_pack: 0, sixth_bbl: sixth, half_bbl: half });
+      }
+    }
     try {
       await fetch(`${process.env.REACT_APP_API_URL || ''}/api/taproom-inventory`, {
         method: 'POST',
@@ -275,60 +310,102 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
           </div>
         )}
 
-        <div className="space-y-3 mb-4">
-          {beers.filter(b =>
-            (!previous || ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => expectedBaseline(b.id, f) > 0)) &&
-            (!beerSearch || b.name.toLowerCase().includes(beerSearch.toLowerCase()))
-          ).map(b => {
-            const rowFlagged = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'orange');
-            const rowRed     = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'red');
-            const rowTracked = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => isTracked(b.id, f));
-            const cardBorder = rowFlagged ? 'border-orange-500/40' : rowRed ? 'border-red-500/40' : 'border-gray-700';
+        {(() => {
+          const locAreas = STORAGE_AREAS[location.id] || { cans: [], kegs: [] };
+          const STATE_COLOR = { yellow: 'text-yellow-400', orange: 'text-orange-400', red: 'text-red-400', default: 'text-gray-400' };
+          const inputCls = 'w-20 text-center text-sm font-medium rounded-lg px-2 py-2 border border-gray-600 bg-gray-700 text-white focus:outline-none focus:border-orange-500';
+          return (
+            <div className="space-y-3 mb-4">
+              {beers.filter(b =>
+                (!previous || ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => expectedBaseline(b.id, f) > 0)) &&
+                (!beerSearch || b.name.toLowerCase().includes(beerSearch.toLowerCase()))
+              ).map(b => {
+                const rowFlagged = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'orange');
+                const rowRed     = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'red');
+                const rowTracked = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => isTracked(b.id, f));
+                const cardBorder = rowFlagged ? 'border-orange-500/40' : rowRed ? 'border-red-500/40' : 'border-gray-700';
+                const totals = getTotals(b.id);
 
-            return (
-              <div key={b.id} className={`bg-gray-800 rounded-xl border ${cardBorder} px-4 pt-3 pb-4`}>
-                <div className="mb-3">
-                  <div className="text-white font-medium">{b.name}</div>
-                  {canUpload && rowTracked && (
-                    <div className="text-gray-500 text-xs mt-0.5">
-                      Expected: {expectedBaseline(b.id, 'four_pack')} / {expectedBaseline(b.id, 'sixth_bbl')} / {expectedBaseline(b.id, 'half_bbl')}
+                return (
+                  <div key={b.id} className={`bg-gray-800 rounded-xl border ${cardBorder} px-4 pt-3 pb-4`}>
+                    <div className="mb-3">
+                      <div className="text-white font-medium">{b.name}</div>
+                      {canUpload && rowTracked && (
+                        <div className="text-gray-500 text-xs mt-0.5">
+                          Expected: {expectedBaseline(b.id, 'four_pack')} 4-pks · {expectedBaseline(b.id, 'sixth_bbl')}/⅙ · {expectedBaseline(b.id, 'half_bbl')}/½
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { field: 'four_pack', label: '4-Packs' },
-                    { field: 'sixth_bbl', label: '1/6 BBL' },
-                    { field: 'half_bbl',  label: '1/2 BBL' },
-                  ].map(({ field, label }) => {
-                    const state = cellState(b.id, field);
-                    const cellCls = {
-                      yellow:  'bg-yellow-500/10 text-yellow-200 border-yellow-500/40 focus:border-yellow-400',
-                      orange:  'bg-orange-500/10 text-orange-300 border-orange-500/60 focus:border-orange-400',
-                      red:     'bg-red-500/10 text-red-300 border-red-500/60 focus:border-red-400',
-                      default: 'bg-gray-700 text-white border-gray-600 focus:border-orange-500',
-                    }[state];
-                    return (
-                      <div key={field} className="flex flex-col items-center gap-1">
-                        <span className="text-gray-400 text-xs">{label}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          inputMode="decimal"
-                          value={counts[b.id]?.[field] ?? ''}
-                          onChange={e => setCount(b.id, field, e.target.value)}
-                          placeholder="0"
-                          className={`w-full text-center text-lg font-medium rounded-lg px-2 py-3 border focus:outline-none ${cellCls}`}
-                        />
+
+                    <div className="flex flex-col sm:flex-row gap-5">
+                      {/* ── Cans ── */}
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Cans (4-packs)</div>
+                        <div className="space-y-1.5">
+                          {locAreas.cans.map(area => (
+                            <div key={area} className="flex items-center gap-2">
+                              <span className="text-gray-400 text-xs w-36 flex-shrink-0">{area}</span>
+                              <input
+                                type="number" min="0" step="0.5" inputMode="decimal"
+                                value={counts[b.id]?.cans?.[area] ?? ''}
+                                onChange={e => setCanCount(b.id, area, e.target.value)}
+                                placeholder="0"
+                                className={inputCls}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {locAreas.cans.length > 1 && (
+                          <div className={`mt-2 text-xs ${STATE_COLOR[cellState(b.id, 'four_pack')]}`}>
+                            Total: <span className="font-semibold">{totals.four_pack}</span> 4-packs
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
+                      {/* ── Kegs ── */}
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Kegs</div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-36 flex-shrink-0" />
+                          <span className="text-gray-500 text-xs w-20 text-center">1/6 bbl</span>
+                          <span className="text-gray-500 text-xs w-20 text-center">1/2 bbl</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {locAreas.kegs.map(area => (
+                            <div key={area} className="flex items-center gap-2">
+                              <span className="text-gray-400 text-xs w-36 flex-shrink-0">{area}</span>
+                              <input
+                                type="number" min="0" step="0.5" inputMode="decimal"
+                                value={counts[b.id]?.kegs?.[area]?.sixth_bbl ?? ''}
+                                onChange={e => setKegCount(b.id, area, 'sixth_bbl', e.target.value)}
+                                placeholder="0"
+                                className={inputCls}
+                              />
+                              <input
+                                type="number" min="0" step="0.5" inputMode="decimal"
+                                value={counts[b.id]?.kegs?.[area]?.half_bbl ?? ''}
+                                onChange={e => setKegCount(b.id, area, 'half_bbl', e.target.value)}
+                                placeholder="0"
+                                className={inputCls}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {locAreas.kegs.length > 1 && (
+                          <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
+                            Total:
+                            <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'sixth_bbl')]}`}>{totals.sixth_bbl}</span> 1/6
+                            · <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'half_bbl')]}`}>{totals.half_bbl}</span> 1/2
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <textarea
           value={notes}
@@ -355,8 +432,8 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
   if (step === 'review') {
     const discrepancies = getDiscrepancies();
     const nonZero = beers.filter(b => {
-      const c = counts[b.id] || {};
-      return (parseFloat(c.four_pack) || 0) > 0 || (parseFloat(c.sixth_bbl) || 0) > 0 || (parseFloat(c.half_bbl) || 0) > 0;
+      const t = getTotals(b.id);
+      return t.four_pack > 0 || t.sixth_bbl > 0 || t.half_bbl > 0;
     });
 
     return (
@@ -401,13 +478,13 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
             </thead>
             <tbody>
               {nonZero.map(b => {
-                const c = counts[b.id] || {};
+                const t = getTotals(b.id);
                 return (
                   <tr key={b.id} className="border-b border-gray-700/50">
                     <td className="px-4 py-2 text-white text-sm">{b.name}</td>
-                    <td className="px-3 py-2 text-center text-white text-sm">{parseFloat(c.four_pack) || 0}</td>
-                    <td className="px-3 py-2 text-center text-white text-sm">{parseFloat(c.sixth_bbl) || 0}</td>
-                    <td className="px-3 py-2 text-center text-white text-sm">{parseFloat(c.half_bbl) || 0}</td>
+                    <td className="px-3 py-2 text-center text-white text-sm">{t.four_pack}</td>
+                    <td className="px-3 py-2 text-center text-white text-sm">{t.sixth_bbl}</td>
+                    <td className="px-3 py-2 text-center text-white text-sm">{t.half_bbl}</td>
                   </tr>
                 );
               })}
