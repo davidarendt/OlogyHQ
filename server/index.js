@@ -717,7 +717,7 @@ const sopUpload = multer({ storage: memoryStorage });
 function checkSOPPermission(req, res, next) {
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'sops-checklists' AND p.permission_level = 'upload'`,
+     WHERE p.role = $1 AND t.slug = 'sops' AND p.permission_level = 'upload'`,
     [req.user.role]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
@@ -728,7 +728,7 @@ app.get('/api/sop-documents', authenticateToken, async (req, res) => {
   try {
     const isPrivileged = req.user.role === 'admin' || await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'sops-checklists' AND p.permission_level = 'upload'`,
+       WHERE p.role = $1 AND t.slug = 'sops' AND p.permission_level = 'upload'`,
       [req.user.role]
     ).then(r => r.rows.length > 0);
 
@@ -881,6 +881,155 @@ app.delete('/api/sop-documents/:id', authenticateToken, checkSOPPermission, asyn
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
+});
+
+// ── Checklists ─────────────────────────────────────────────────────────────────
+
+function checkChecklistView(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level IN ('view','upload')`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkChecklistManage(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const isPrivileged = req.user.role === 'admin' || await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
+      [req.user.role]
+    ).then(r => r.rows.length > 0);
+
+    const cls   = await pool.query('SELECT * FROM checklists ORDER BY sort_order ASC, created_at ASC');
+    const roles = await pool.query('SELECT * FROM checklist_roles');
+    const items = await pool.query('SELECT * FROM checklist_items ORDER BY sort_order ASC');
+
+    const roleMap = {};
+    roles.rows.forEach(r => {
+      if (!roleMap[r.checklist_id]) roleMap[r.checklist_id] = [];
+      roleMap[r.checklist_id].push(r.role);
+    });
+    const itemMap = {};
+    items.rows.forEach(i => {
+      if (!itemMap[i.checklist_id]) itemMap[i.checklist_id] = [];
+      itemMap[i.checklist_id].push(i);
+    });
+
+    let result = cls.rows.map(c => ({ ...c, roles: roleMap[c.id] || [], items: itemMap[c.id] || [] }));
+    if (!isPrivileged) result = result.filter(c => c.roles.includes(req.user.role));
+    res.json(result);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Run history — must be before /:id patterns
+app.get('/api/checklists/runs', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const runs = await pool.query('SELECT * FROM checklist_runs ORDER BY created_at DESC LIMIT 200');
+    res.json(runs.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/checklists', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { name, category, description, roles, items } = req.body;
+    if (!name?.trim()) return res.status(400).json({ message: 'Name required' });
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM checklists');
+    const cl = await pool.query(
+      `INSERT INTO checklists (name, category, description, sort_order, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name.trim(), category || 'other', description || '', maxSort.rows[0].m + 1, req.user.id, req.user.name]
+    );
+    const id = cl.rows[0].id;
+    for (const role of (roles || [])) {
+      await pool.query('INSERT INTO checklist_roles (checklist_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, role]);
+    }
+    for (let i = 0; i < (items || []).length; i++) {
+      if (items[i]?.text?.trim()) await pool.query(
+        'INSERT INTO checklist_items (checklist_id, text, sort_order) VALUES ($1,$2,$3)',
+        [id, items[i].text.trim(), i]
+      );
+    }
+    res.json({ ...cl.rows[0], roles: roles || [], items: items || [] });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Reorder — must be before /:id
+app.patch('/api/checklists/reorder', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE checklists SET sort_order=$1 WHERE id=$2', [i, orderedIds[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { name, category, description, roles, items } = req.body;
+    const id = parseInt(req.params.id);
+    await pool.query(
+      'UPDATE checklists SET name=$1, category=$2, description=$3, updated_at=NOW() WHERE id=$4',
+      [name.trim(), category || 'other', description || '', id]
+    );
+    await pool.query('DELETE FROM checklist_roles WHERE checklist_id=$1', [id]);
+    for (const role of (roles || [])) {
+      await pool.query('INSERT INTO checklist_roles (checklist_id, role) VALUES ($1,$2)', [id, role]);
+    }
+    await pool.query('DELETE FROM checklist_items WHERE checklist_id=$1', [id]);
+    for (let i = 0; i < (items || []).length; i++) {
+      if (items[i]?.text?.trim()) await pool.query(
+        'INSERT INTO checklist_items (checklist_id, text, sort_order) VALUES ($1,$2,$3)',
+        [id, items[i].text.trim(), i]
+      );
+    }
+    const updated = await pool.query('SELECT * FROM checklists WHERE id=$1', [id]);
+    res.json({ ...updated.rows[0], roles: roles || [], items: items || [] });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/checklists/:id/runs', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { notes, checkedItemIds, itemsTotal } = req.body;
+    const cl = await pool.query('SELECT name FROM checklists WHERE id=$1', [id]);
+    if (!cl.rows.length) return res.status(404).json({ message: 'Not found' });
+    const run = await pool.query(
+      `INSERT INTO checklist_runs
+         (checklist_id, checklist_name, run_by_id, run_by_name, notes, checked_item_ids, items_total, items_completed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [id, cl.rows[0].name, req.user.id, req.user.name, notes || '',
+       checkedItemIds || [], itemsTotal || 0, (checkedItemIds || []).length]
+    );
+    res.json(run.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/checklists/runs/:id', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM checklist_runs WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM checklists WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
 // ── Label Inventory ───────────────────────────────────────────────────────────

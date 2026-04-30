@@ -7,6 +7,7 @@ import HRDocuments from './pages/HRDocuments';
 import ProductionPhotos from './pages/ProductionPhotos';
 import DistroTaproomOrders from './pages/DistroTaproomOrders';
 import SOPsChecklists from './pages/SOPsChecklists';
+import Checklists from './pages/Checklists';
 import LabelInventory from './pages/LabelInventory';
 import TaproomInventory from './pages/TaproomInventory';
 import TaproomInspections from './pages/TaproomInspections';
@@ -74,7 +75,8 @@ function App() {
   if (page === 'hr-documents') return <HRDocuments user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'production-photos') return <ProductionPhotos user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'distro-taproom-orders') return <DistroTaproomOrders user={user} onBack={() => handleNavigate('dashboard')} />;
-  if (page === 'sops-checklists') return <SOPsChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'sops') return <SOPsChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'checklists') return <Checklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'label-inventory') return <LabelInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'taproom-inventory') return <TaproomInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'taproom-inspections') return <TaproomInspections user={user} onBack={() => handleNavigate('dashboard')} />;
