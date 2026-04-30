@@ -327,10 +327,11 @@ function fuzzyMatch(query, target) {
   return qi === q.length;
 }
 
-function IngredientInput({ value, allIngredients, onChange }) {
+function IngredientInput({ value, allIngredients, onChange, inputRef }) {
   const [open, setOpen] = useState(false);
   const [warn, setWarn] = useState(false);
   const justSelected = useRef(false);
+  const containerRef = useRef();
 
   const matches = value.length >= 1 ? allIngredients.filter(n => fuzzyMatch(value, n)) : [];
   const exactMatch = allIngredients.some(n => n.toLowerCase() === value.toLowerCase());
@@ -359,13 +360,18 @@ function IngredientInput({ value, allIngredients, onChange }) {
   };
 
   return (
-    <div className="relative flex-1 min-w-0">
+    <div ref={containerRef} className="relative flex-1 min-w-0">
       <input
+        ref={inputRef}
         className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
         placeholder="Ingredient"
         value={value}
         onChange={handleChange}
-        onFocus={() => { if (value.length >= 1) setOpen(true); }}
+        onFocus={() => {
+          if (value.length >= 1) setOpen(true);
+          // Scroll so the dropdown has clearance below the input
+          setTimeout(() => containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+        }}
         onBlur={handleBlur}
       />
       {open && matches.length > 0 && (
@@ -425,10 +431,26 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
   const [removePhoto, setRemovePhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
+  const ingredientRefs = useRef([]);
+  const justAddedIngredient = useRef(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const addIngredient = () => setIngredients(prev => [...prev, { ingredient_name: '', amount: '', unit: '' }]);
+  const addIngredient = () => {
+    justAddedIngredient.current = true;
+    setIngredients(prev => [...prev, { ingredient_name: '', amount: '', unit: '' }]);
+  };
+
+  useEffect(() => {
+    if (justAddedIngredient.current) {
+      justAddedIngredient.current = false;
+      const el = ingredientRefs.current[ingredients.length - 1];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.focus();
+      }
+    }
+  }, [ingredients.length]);
   const removeIngredient = (i) => setIngredients(prev => prev.filter((_, idx) => idx !== i));
   const setIng = (i, k, v) => setIngredients(prev => prev.map((ing, idx) => idx === i ? { ...ing, [k]: v } : ing));
   const moveIng = (i, dir) => {
@@ -548,6 +570,7 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
                       <button type="button" onClick={() => moveIng(i, 1)} disabled={i === ingredients.length - 1} className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
                     </div>
                     <IngredientInput
+                      inputRef={el => { ingredientRefs.current[i] = el; }}
                       value={ing.ingredient_name}
                       allIngredients={allIngredients}
                       onChange={v => setIng(i, 'ingredient_name', v)}
@@ -558,6 +581,12 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
                       placeholder="Amt"
                       value={ing.amount}
                       onChange={e => setIng(i, 'amount', e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && i === ingredients.length - 1) {
+                          e.preventDefault();
+                          addIngredient();
+                        }
+                      }}
                     />
                     <select
                       className="w-20 bg-gray-700 border border-gray-600 rounded px-1 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
