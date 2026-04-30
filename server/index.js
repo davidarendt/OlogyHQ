@@ -1127,42 +1127,39 @@ app.delete('/api/label-email-list/:id', authenticateToken, checkLabelManage, asy
 });
 
 // Shared helper — imported from labelEmail.js
-const { sendLabelOrderEmail } = require('./labelEmail');
+const { sendLabelOrderEmail, sendLabelReminder } = require('./labelEmail');
 
 // Send order email (manual — accepts optional quantity overrides)
 app.post('/api/label-inventory/send-order-email', authenticateToken, checkLabelManage, async (req, res) => {
   try {
     await sendLabelOrderEmail(req.body.overrides || {});
+    await pool.query(
+      `INSERT INTO label_order_settings (id, last_order_sent_at)
+       VALUES (1, NOW()) ON CONFLICT (id) DO UPDATE SET last_order_sent_at = NOW()`
+    );
     res.json({ message: 'Email sent.' });
   } catch (err) { console.error(err); res.status(500).json({ message: `Failed to send email: ${err.message}` }); }
 });
 
-// ── Scheduled label emails — local dev only (production uses Netlify Scheduled Functions) ──
+// ── Label reminder check — local dev only (production uses Netlify Scheduled Function) ──
 if (require.main === module) {
   const cron = require('node-cron');
-  // Thursday 2:00 PM ET
-  cron.schedule('0 14 * * 4', async () => {
-    console.log('[cron] Sending Thursday label order email');
-    try { await sendLabelOrderEmail(); } catch (err) { console.error('[cron] Email failed:', err.message); }
-  }, { timezone: 'America/New_York' });
-
-  // Friday 8:00 AM ET — only if inventory hasn't been updated since Thursday 2pm
-  cron.schedule('0 8 * * 5', async () => {
-    console.log('[cron] Friday check — verifying label inventory update');
+  // Daily at 8:00 AM ET — send reminder if no order email in 7+ days
+  cron.schedule('0 8 * * *', async () => {
+    console.log('[cron] Checking label order reminder');
     try {
-      const result = await pool.query('SELECT MAX(updated_at) AS last FROM label_inventory');
-      const lastUpdated = new Date(result.rows[0].last);
-      const now = new Date();
-      const thursday = new Date(now);
-      thursday.setDate(now.getDate() - 1);
-      thursday.setHours(14, 0, 0, 0);
-      if (lastUpdated < thursday) {
-        console.log('[cron] Inventory not updated since Thursday — sending reminder');
-        await sendLabelOrderEmail();
-      } else {
-        console.log('[cron] Inventory updated since Thursday — skipping reminder');
+      const r = await pool.query('SELECT last_order_sent_at, last_reminder_sent_at FROM label_order_settings WHERE id=1');
+      const { last_order_sent_at, last_reminder_sent_at } = r.rows[0] || {};
+      if (!last_order_sent_at) return;
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const overdue = new Date(last_order_sent_at) < sevenDaysAgo;
+      const notYetReminded = !last_reminder_sent_at || new Date(last_reminder_sent_at) < new Date(last_order_sent_at);
+      if (overdue && notYetReminded) {
+        await sendLabelReminder();
+        await pool.query('UPDATE label_order_settings SET last_reminder_sent_at=NOW() WHERE id=1');
+        console.log('[cron] Label reminder sent');
       }
-    } catch (err) { console.error('[cron] Friday check failed:', err.message); }
+    } catch (err) { console.error('[cron] Label reminder check failed:', err.message); }
   }, { timezone: 'America/New_York' });
 }
 

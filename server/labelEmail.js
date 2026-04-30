@@ -31,4 +31,17 @@ async function sendLabelOrderEmail(overrides = {}) {
   await mailer.sendMail({ from: process.env.EMAIL_USER, to, subject: 'Core Label Order', text: body });
 }
 
-module.exports = { sendLabelOrderEmail };
+async function sendLabelReminder() {
+  const mailer = nodemailer.createTransport({
+    host: 'smtp.gmail.com', port: 465, secure: true,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  });
+  await mailer.sendMail({
+    from: process.env.EMAIL_USER,
+    to: 'david@ologybrewing.com',
+    subject: 'Label Inventory — Needs Attention',
+    text: "Hey David,\n\nIt's been over 7 days since the last label order email was sent. Please review the label counts and send the order when you get a chance.\n\nOlogy HQ",
+  });
+}
+
+module.exports = { sendLabelOrderEmail, sendLabelReminder };
