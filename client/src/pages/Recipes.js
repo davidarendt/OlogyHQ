@@ -97,15 +97,18 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
       <div className="bg-gray-700 rounded-2xl border border-gray-600 shadow-2xl shadow-black/70 w-full max-w-5xl flex flex-col sm:flex-row overflow-hidden">
 
         {/* Photo — left column on desktop, bottom on mobile */}
-        {recipe.image_filename && (
-          <div className="order-last sm:order-first sm:w-64 flex-shrink-0 bg-gray-900">
-            <RecipeImg
-              recipeId={recipe.id}
-              bust={recipe.image_filename}
-              className="w-full h-auto sm:h-full object-cover"
-            />
-          </div>
-        )}
+        <div className="order-last sm:order-first sm:w-64 flex-shrink-0 bg-gray-900">
+          {recipe.image_filename
+            ? <RecipeImg
+                recipeId={recipe.id}
+                bust={recipe.image_filename}
+                className="w-full h-auto sm:h-full object-cover"
+              />
+            : <div className="w-full h-48 sm:h-full flex items-center justify-center text-5xl bg-gray-800">
+                {recipe.category === 'prep' ? '🔪' : '🍽️'}
+              </div>
+          }
+        </div>
 
         {/* Content — right column on desktop */}
         <div className="flex-1 min-w-0 flex flex-col">
