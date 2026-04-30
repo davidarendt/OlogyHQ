@@ -1152,9 +1152,11 @@ if (require.main === module) {
       const { last_order_sent_at, last_reminder_sent_at } = r.rows[0] || {};
       if (!last_order_sent_at) return;
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       const overdue = new Date(last_order_sent_at) < sevenDaysAgo;
       const notYetReminded = !last_reminder_sent_at || new Date(last_reminder_sent_at) < new Date(last_order_sent_at);
-      if (overdue && notYetReminded) {
+      const remindAgain = last_reminder_sent_at && new Date(last_reminder_sent_at) < threeDaysAgo;
+      if (overdue && (notYetReminded || remindAgain)) {
         await sendLabelReminder();
         await pool.query('UPDATE label_order_settings SET last_reminder_sent_at=NOW() WHERE id=1');
         console.log('[cron] Label reminder sent');

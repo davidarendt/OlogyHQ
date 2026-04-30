@@ -19,10 +19,12 @@ exports.handler = async () => {
     }
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const overdue      = new Date(last_order_sent_at) < sevenDaysAgo;
     const notReminded  = !last_reminder_sent_at || new Date(last_reminder_sent_at) < new Date(last_order_sent_at);
+    const remindAgain  = last_reminder_sent_at && new Date(last_reminder_sent_at) < threeDaysAgo;
 
-    if (overdue && notReminded) {
+    if (overdue && (notReminded || remindAgain)) {
       await sendLabelReminder();
       await pool.query('UPDATE label_order_settings SET last_reminder_sent_at=NOW() WHERE id=1');
       console.log('[scheduled] Reminder sent to david@ologybrewing.com');
