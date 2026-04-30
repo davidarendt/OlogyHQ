@@ -30,6 +30,25 @@ function NavBar({ onBack }) {
   );
 }
 
+// ── Count Stepper ──────────────────────────────────────────────────────────
+
+function CountStepper({ value, onChange, step = 1 }) {
+  const val = parseFloat(value) || 0;
+  const display = val === 0 ? '0' : val % 1 === 0 ? String(val) : val.toFixed(1);
+  const dec = () => onChange(String(Math.max(0, parseFloat((val - step).toFixed(1)))));
+  const inc = () => onChange(String(parseFloat((val + step).toFixed(1))));
+  const btnCls = 'w-9 h-10 flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-gray-200 text-xl font-bold border border-gray-600 select-none';
+  return (
+    <div className="flex items-center" style={{ touchAction: 'manipulation' }}>
+      <button type="button" onClick={dec} className={`${btnCls} rounded-l-lg border-r-0`}>−</button>
+      <div className="min-w-[2.75rem] h-10 bg-gray-800 border-y border-gray-600 text-white text-sm font-semibold flex items-center justify-center select-none px-1">
+        {display}
+      </div>
+      <button type="button" onClick={inc} className={`${btnCls} rounded-r-lg border-l-0`}>+</button>
+    </div>
+  );
+}
+
 // ── Count Tab ──────────────────────────────────────────────────────────────
 
 function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
@@ -313,7 +332,6 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
         {(() => {
           const locAreas = STORAGE_AREAS[location.id] || { cans: [], kegs: [] };
           const STATE_COLOR = { yellow: 'text-yellow-400', orange: 'text-orange-400', red: 'text-red-400', default: 'text-gray-400' };
-          const inputCls = 'w-20 text-center text-sm font-medium rounded-lg px-2 py-2 border border-gray-600 bg-gray-700 text-white focus:outline-none focus:border-orange-500';
           return (
             <div className="space-y-3 mb-4">
               {beers.filter(b =>
@@ -341,16 +359,14 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
                       {/* ── Cans ── */}
                       <div className="flex-1">
                         <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Cans (4-packs)</div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {locAreas.cans.map(area => (
-                            <div key={area} className="flex items-center gap-2">
-                              <span className="text-gray-400 text-xs w-36 flex-shrink-0">{area}</span>
-                              <input
-                                type="number" min="0" step="0.5" inputMode="decimal"
+                            <div key={area} className="flex items-center justify-between gap-2">
+                              <span className="text-gray-400 text-xs">{area}</span>
+                              <CountStepper
                                 value={counts[b.id]?.cans?.[area] ?? ''}
-                                onChange={e => setCanCount(b.id, area, e.target.value)}
-                                placeholder="0"
-                                className={inputCls}
+                                onChange={val => setCanCount(b.id, area, val)}
+                                step={1}
                               />
                             </div>
                           ))}
@@ -365,37 +381,36 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
                       {/* ── Kegs ── */}
                       <div className="flex-1">
                         <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Kegs</div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="w-36 flex-shrink-0" />
-                          <span className="text-gray-500 text-xs w-20 text-center">1/6 bbl</span>
-                          <span className="text-gray-500 text-xs w-20 text-center">1/2 bbl</span>
-                        </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-3">
                           {locAreas.kegs.map(area => (
-                            <div key={area} className="flex items-center gap-2">
-                              <span className="text-gray-400 text-xs w-36 flex-shrink-0">{area}</span>
-                              <input
-                                type="number" min="0" step="0.5" inputMode="decimal"
-                                value={counts[b.id]?.kegs?.[area]?.sixth_bbl ?? ''}
-                                onChange={e => setKegCount(b.id, area, 'sixth_bbl', e.target.value)}
-                                placeholder="0"
-                                className={inputCls}
-                              />
-                              <input
-                                type="number" min="0" step="0.5" inputMode="decimal"
-                                value={counts[b.id]?.kegs?.[area]?.half_bbl ?? ''}
-                                onChange={e => setKegCount(b.id, area, 'half_bbl', e.target.value)}
-                                placeholder="0"
-                                className={inputCls}
-                              />
+                            <div key={area}>
+                              <div className="text-gray-400 text-xs mb-1.5">{area}</div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-500 text-xs select-none w-10">⅙ bbl</span>
+                                  <CountStepper
+                                    value={counts[b.id]?.kegs?.[area]?.sixth_bbl ?? ''}
+                                    onChange={val => setKegCount(b.id, area, 'sixth_bbl', val)}
+                                    step={0.5}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-500 text-xs select-none w-10">½ bbl</span>
+                                  <CountStepper
+                                    value={counts[b.id]?.kegs?.[area]?.half_bbl ?? ''}
+                                    onChange={val => setKegCount(b.id, area, 'half_bbl', val)}
+                                    step={0.5}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
                         {locAreas.kegs.length > 1 && (
                           <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
                             Total:
-                            <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'sixth_bbl')]}`}>{totals.sixth_bbl}</span> 1/6
-                            · <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'half_bbl')]}`}>{totals.half_bbl}</span> 1/2
+                            <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'sixth_bbl')]}`}>{totals.sixth_bbl}</span> ⅙
+                            · <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'half_bbl')]}`}>{totals.half_bbl}</span> ½
                           </div>
                         )}
                       </div>
