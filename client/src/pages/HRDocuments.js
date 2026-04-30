@@ -290,37 +290,37 @@ function HRDocuments({ user, canUpload, onBack }) {
       <main className="max-w-5xl mx-auto px-6 py-10">
 
         {/* Page Header */}
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-cream text-4xl font-bold">HR Documents</h2>
             <p className="text-gray-400 mt-2">
               {mode === 'library' ? 'Company policies, handbooks, and employee forms' : 'Upload, edit, and manage documents'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {canUpload && mode === 'library' && (
               <button
                 onClick={() => { setMode('manage'); setError(''); setSuccess(''); }}
-                className="px-5 py-2.5 rounded-lg font-semibold text-white text-sm bg-gray-700 hover:bg-gray-600 transition"
+                className="px-4 py-2.5 rounded-lg font-semibold text-white text-sm bg-gray-700 hover:bg-gray-600 transition"
               >
-                Manage Documents
+                Manage
               </button>
             )}
             {canUpload && mode === 'manage' && (
               <>
                 <button
                   onClick={() => { setMode('library'); setError(''); setSuccess(''); }}
-                  className="px-5 py-2.5 rounded-lg font-semibold text-gray-400 text-sm bg-gray-700 hover:bg-gray-600 transition"
+                  className="px-4 py-2.5 rounded-lg font-semibold text-gray-400 text-sm bg-gray-700 hover:bg-gray-600 transition"
                 >
-                  ← Document Library
+                  ← Library
                 </button>
                 <button
                   onClick={() => fileInputRef.current.click()}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-white text-sm transition"
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg font-semibold text-white text-sm transition"
                   style={{ backgroundColor: '#F05A28' }}
                 >
-                  <span className="text-lg leading-none">↑</span>
-                  Upload Document
+                  <span className="text-base leading-none">↑</span>
+                  Upload
                 </button>
               </>
             )}
@@ -389,7 +389,7 @@ function HRDocuments({ user, canUpload, onBack }) {
             </div>
 
             {/* Document Table */}
-            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">
               {loading ? (
                 <div className="px-6 py-16 text-center text-gray-500 text-sm">Loading documents…</div>
               ) : documents.length === 0 ? (
@@ -453,11 +453,11 @@ function HRDocuments({ user, canUpload, onBack }) {
                           <td className="px-6 py-4 text-gray-400 text-sm hidden sm:table-cell">{doc.uploaded_by_name}</td>
                           <td className="px-6 py-4 text-gray-400 text-sm hidden md:table-cell whitespace-nowrap">{formatDate(doc.uploaded_at)}</td>
                           <td className="px-6 py-4 text-gray-400 text-sm hidden md:table-cell">{formatSize(doc.size)}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-3">
-                              <button onClick={() => handleDownload(doc)} className="text-sm text-gray-400 hover:text-white transition">Download</button>
-                              <button onClick={() => openEditModal(doc)} className="text-sm text-gray-400 hover:text-white transition">Edit</button>
-                              <button onClick={() => handleDelete(doc)} className="text-sm text-red-400 hover:text-red-300 transition">Delete</button>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+                              <button onClick={() => handleDownload(doc)} className="text-xs sm:text-sm text-gray-400 hover:text-white transition">Download</button>
+                              <button onClick={() => openEditModal(doc)} className="text-xs sm:text-sm text-gray-400 hover:text-white transition">Edit</button>
+                              <button onClick={() => handleDelete(doc)} className="text-xs sm:text-sm text-red-400 hover:text-red-300 transition">Delete</button>
                             </div>
                           </td>
                         </tr>
