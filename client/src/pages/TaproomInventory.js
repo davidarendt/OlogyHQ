@@ -30,43 +30,24 @@ function NavBar({ onBack }) {
   );
 }
 
-// ── Count Stepper ──────────────────────────────────────────────────────────
-
-function CountStepper({ value, onChange, step = 1 }) {
-  const val = parseFloat(value) || 0;
-  const display = val === 0 ? '0' : val % 1 === 0 ? String(val) : val.toFixed(1);
-  const dec = () => onChange(String(Math.max(0, parseFloat((val - step).toFixed(1)))));
-  const inc = () => onChange(String(parseFloat((val + step).toFixed(1))));
-  const btnCls = 'w-9 h-10 flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-gray-200 text-xl font-bold border border-gray-600 select-none';
-  return (
-    <div className="flex items-center" style={{ touchAction: 'manipulation' }}>
-      <button type="button" onClick={dec} className={`${btnCls} rounded-l-lg border-r-0`}>−</button>
-      <div className="min-w-[2.75rem] h-10 bg-gray-800 border-y border-gray-600 text-white text-sm font-semibold flex items-center justify-center select-none px-1">
-        {display}
-      </div>
-      <button type="button" onClick={inc} className={`${btnCls} rounded-r-lg border-l-0`}>+</button>
-    </div>
-  );
-}
-
 // ── Count Tab ──────────────────────────────────────────────────────────────
 
 function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
-  const [step, setStep] = useState('location'); // location | form | review | done
+  const [step, setStep] = useState('location'); // location | area | count | review | done
   const [location, setLocation] = useState(null);
   const [sessionDate, setSessionDate] = useState(today());
   const [beers, setBeers] = useState([]);
-  const [counts, setCounts] = useState({}); // { beer_id: { four_pack, sixth_bbl, half_bbl } }
+  const [counts, setCounts] = useState({});
   const [previous, setPrevious] = useState(null);
-  const [delivered, setDelivered] = useState({}); // { beer_id: { sixth_bbl, half_bbl } } since last session
+  const [delivered, setDelivered] = useState({});
   const [deliveryCount, setDeliveryCount] = useState(0);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [beerSearch, setBeerSearch] = useState('');
-  const searchRef = useRef();
+  const [currentArea, setCurrentArea] = useState(null); // { name, type: 'cans'|'kegs' }
+  const [expandedBeer, setExpandedBeer] = useState(null);
 
-  // Dirty = on the form step with at least one count entered
-  const isDirty = step === 'form' && Object.values(counts).some(d =>
+  // Dirty = in area/count steps with at least one count entered
+  const isDirty = (step === 'area' || step === 'count') && Object.values(counts).some(d =>
     Object.values(d.cans || {}).some(v => v !== '' && v !== undefined) ||
     Object.values(d.kegs || {}).some(v =>
       (v.sixth_bbl !== '' && v.sixth_bbl !== undefined) ||
@@ -128,7 +109,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
       init[b.id] = { cans, kegs };
     });
     setCounts(init);
-    setStep('form');
+    setStep('area');
   }, []);
 
   const setCanCount = (beerId, area, value) =>
@@ -176,9 +157,6 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     if (drop > thresh) return 'orange';
     return 'default';
   };
-
-  const isFlagged  = (beerId, field) => cellState(beerId, field) === 'orange'; // eslint-disable-line no-unused-vars
-  const isTracked  = (beerId, field) => cellState(beerId, field) !== 'default';
 
   const getDiscrepancies = () => {
     return beers.flatMap(b =>
@@ -233,9 +211,29 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     setCounts({});
     setPrevious(null);
     setNotes('');
-    setBeerSearch('');
+    setCurrentArea(null);
+    setExpandedBeer(null);
   };
 
+  // ── Shared helpers (available after location is set) ────────────────────
+  const locAreas = location ? (STORAGE_AREAS[location.id] || { cans: [], kegs: [] }) : { cans: [], kegs: [] };
+  const allAreas = [
+    ...locAreas.cans.map(name => ({ name, type: 'cans' })),
+    ...locAreas.kegs.map(name => ({ name, type: 'kegs' })),
+  ];
+  const areaDisplayName = (name, type) => {
+    const inBoth = locAreas.cans.includes(name) && locAreas.kegs.includes(name);
+    return inBoth ? `${name} (${type === 'cans' ? 'Cans' : 'Kegs'})` : name;
+  };
+  const areaCountedBeers = (name, type) => {
+    if (type === 'cans') return beers.filter(b => parseFloat(counts[b.id]?.cans?.[name]) > 0).length;
+    return beers.filter(b => {
+      const k = counts[b.id]?.kegs?.[name];
+      return (parseFloat(k?.sixth_bbl) || 0) > 0 || (parseFloat(k?.half_bbl) || 0) > 0;
+    }).length;
+  };
+
+  // ── Location step ────────────────────────────────────────────────────────
   if (step === 'location') {
     return (
       <div className="max-w-lg mx-auto mt-12">
@@ -255,190 +253,172 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
     );
   }
 
-  if (step === 'form') {
+  // ── Area selection step ──────────────────────────────────────────────────
+  if (step === 'area') {
+    const orangeCount = beers.reduce((n, b) => n + ['four_pack','sixth_bbl','half_bbl'].filter(f => cellState(b.id,f)==='orange').length, 0);
+    const redCount    = beers.reduce((n, b) => n + ['four_pack','sixth_bbl','half_bbl'].filter(f => cellState(b.id,f)==='red').length, 0);
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
+      <div className="max-w-lg mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div>
             <h3 className="text-white text-xl font-semibold">{location.label}</h3>
-            <button onClick={reset} className="text-sm text-gray-400 hover:text-white">← Change</button>
+            <div className="flex items-center gap-3 mt-1">
+              <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)}
+                className="bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600" />
+              {previous && <span className="text-gray-500 text-sm">Last: {previous.session_date}</span>}
+            </div>
           </div>
-          <div className="flex items-center gap-3 mt-2">
-            <input
-              type="date"
-              value={sessionDate}
-              onChange={e => setSessionDate(e.target.value)}
-              className="bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600"
-            />
-            {canUpload && previous && (
-              <span className="text-gray-500 text-sm">Last count: {previous.session_date}</span>
-            )}
-          </div>
+          <button onClick={reset} className="text-sm text-gray-400 hover:text-white">← Change</button>
         </div>
 
         {canUpload && deliveryCount > 0 && (
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-2 mb-3 text-blue-300 text-sm">
-            📦 {deliveryCount} deliver{deliveryCount === 1 ? 'y' : 'ies'} since last count factored into keg discrepancy thresholds
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-2 mb-4 text-blue-300 text-sm">
+            📦 {deliveryCount} deliver{deliveryCount === 1 ? 'y' : 'ies'} since last count factored into discrepancy thresholds
           </div>
         )}
 
-        {(() => {
-          const orangeCount = beers.reduce((n, b) => n + ['four_pack','sixth_bbl','half_bbl'].filter(f => cellState(b.id,f)==='orange').length, 0);
-          const redCount    = beers.reduce((n, b) => n + ['four_pack','sixth_bbl','half_bbl'].filter(f => cellState(b.id,f)==='red').length, 0);
-          return (orangeCount > 0 || redCount > 0) ? (
-            <div className="flex gap-2 mb-3">
-              {orangeCount > 0 && (
-                <div className="flex-1 bg-orange-500/10 border border-orange-500/30 rounded-lg px-4 py-2 text-orange-400 text-sm">
-                  ⚠ {orangeCount} {orangeCount === 1 ? 'count' : 'counts'} dropped significantly — recount before submitting
-                </div>
-              )}
-              {redCount > 0 && (
-                <div className="flex-1 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-red-400 text-sm">
-                  ↑ {redCount} {redCount === 1 ? 'count is' : 'counts are'} above expected — verify before submitting
-                </div>
-              )}
-            </div>
-          ) : null;
-        })()}
-
-        {beers.length === 0 && (
-          <p className="text-gray-500 text-sm text-center py-8">No beers set up for this location. Use Manage Beers to add them.</p>
-        )}
-
-        {beers.length > 0 && (
-          <div className="sticky top-0 z-10 pb-3 pt-1 -mx-6 px-6" style={{ backgroundColor: '#111827' }}>
-            <div className="relative">
-              <input
-                ref={searchRef}
-                type="text"
-                value={beerSearch}
-                onChange={e => setBeerSearch(e.target.value)}
-                placeholder="Search beers…"
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-8 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-orange-500"
-              />
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-              </svg>
-              {beerSearch && (
-                <button
-                  onClick={() => { setBeerSearch(''); searchRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-lg leading-none"
-                >×</button>
-              )}
-            </div>
+        {(orangeCount > 0 || redCount > 0) && (
+          <div className="flex gap-2 mb-4">
+            {orangeCount > 0 && <div className="flex-1 bg-orange-500/10 border border-orange-500/30 rounded-lg px-4 py-2 text-orange-400 text-sm">⚠ {orangeCount} {orangeCount === 1 ? 'count' : 'counts'} dropped significantly</div>}
+            {redCount > 0 && <div className="flex-1 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2 text-red-400 text-sm">↑ {redCount} {redCount === 1 ? 'count' : 'counts'} above expected</div>}
           </div>
         )}
 
-        {(() => {
-          const locAreas = STORAGE_AREAS[location.id] || { cans: [], kegs: [] };
-          const STATE_COLOR = { yellow: 'text-yellow-400', orange: 'text-orange-400', red: 'text-red-400', default: 'text-gray-400' };
-          return (
-            <div className="space-y-3 mb-4">
-              {beers.filter(b =>
-                (!previous || ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => expectedBaseline(b.id, f) > 0)) &&
-                (!beerSearch || b.name.toLowerCase().includes(beerSearch.toLowerCase()))
-              ).map(b => {
-                const rowFlagged = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'orange');
-                const rowRed     = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => cellState(b.id, f) === 'red');
-                const rowTracked = ['four_pack', 'sixth_bbl', 'half_bbl'].some(f => isTracked(b.id, f));
-                const cardBorder = rowFlagged ? 'border-orange-500/40' : rowRed ? 'border-red-500/40' : 'border-gray-700';
-                const totals = getTotals(b.id);
+        <p className="text-gray-500 text-xs mb-3 uppercase tracking-wider font-semibold">Choose area to count</p>
+        <div className="space-y-2 mb-6">
+          {allAreas.map(({ name, type }) => {
+            const counted = areaCountedBeers(name, type);
+            const done = counted === beers.length && beers.length > 0;
+            return (
+              <button key={`${type}-${name}`}
+                onClick={() => { setCurrentArea({ name, type }); setExpandedBeer(null); setStep('count'); }}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-5 py-4 flex items-center justify-between hover:border-orange-500/70 transition"
+              >
+                <div className="text-left">
+                  <div className="text-white font-medium">{areaDisplayName(name, type)}</div>
+                  <div className="text-gray-500 text-xs mt-0.5">{type === 'cans' ? '4-packs' : 'kegs'}</div>
+                </div>
+                <div className={`text-sm font-medium ${done ? 'text-green-400' : counted > 0 ? 'text-yellow-400' : 'text-gray-600'}`}>
+                  {done ? '✓ Done' : counted > 0 ? `${counted}/${beers.length}` : '—'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
-                return (
-                  <div key={b.id} className={`bg-gray-800 rounded-xl border ${cardBorder} px-4 pt-3 pb-4`}>
-                    <div className="mb-3">
-                      <div className="text-white font-medium">{b.name}</div>
-                      {canUpload && rowTracked && (
-                        <div className="text-gray-500 text-xs mt-0.5">
-                          Expected: {expectedBaseline(b.id, 'four_pack')} 4-pks · {expectedBaseline(b.id, 'sixth_bbl')}/⅙ · {expectedBaseline(b.id, 'half_bbl')}/½
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-5">
-                      {/* ── Cans ── */}
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Cans (4-packs)</div>
-                        <div className="space-y-2">
-                          {locAreas.cans.map(area => (
-                            <div key={area} className="flex items-center justify-between gap-2">
-                              <span className="text-gray-400 text-xs">{area}</span>
-                              <CountStepper
-                                value={counts[b.id]?.cans?.[area] ?? ''}
-                                onChange={val => setCanCount(b.id, area, val)}
-                                step={1}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        {locAreas.cans.length > 1 && (
-                          <div className={`mt-2 text-xs ${STATE_COLOR[cellState(b.id, 'four_pack')]}`}>
-                            Total: <span className="font-semibold">{totals.four_pack}</span> 4-packs
-                          </div>
-                        )}
-                      </div>
-
-                      {/* ── Kegs ── */}
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Kegs</div>
-                        <div className="space-y-3">
-                          {locAreas.kegs.map(area => (
-                            <div key={area}>
-                              <div className="text-gray-400 text-xs mb-1.5">{area}</div>
-                              <div className="flex items-center gap-3 flex-wrap">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-gray-500 text-xs select-none w-10">⅙ bbl</span>
-                                  <CountStepper
-                                    value={counts[b.id]?.kegs?.[area]?.sixth_bbl ?? ''}
-                                    onChange={val => setKegCount(b.id, area, 'sixth_bbl', val)}
-                                    step={0.5}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-gray-500 text-xs select-none w-10">½ bbl</span>
-                                  <CountStepper
-                                    value={counts[b.id]?.kegs?.[area]?.half_bbl ?? ''}
-                                    onChange={val => setKegCount(b.id, area, 'half_bbl', val)}
-                                    step={0.5}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        {locAreas.kegs.length > 1 && (
-                          <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
-                            Total:
-                            <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'sixth_bbl')]}`}>{totals.sixth_bbl}</span> ⅙
-                            · <span className={`font-semibold ${STATE_COLOR[cellState(b.id, 'half_bbl')]}`}>{totals.half_bbl}</span> ½
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-
-        <textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          placeholder="Notes (optional)"
-          rows={2}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm placeholder-gray-500 focus:border-orange-500 focus:outline-none resize-none mb-4"
-        />
-
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)" rows={2}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm placeholder-gray-500 focus:border-orange-500 focus:outline-none resize-none mb-4" />
         <div className="flex justify-end">
-          <button
-            onClick={() => setStep('review')}
-            disabled={beers.length === 0}
-            className="px-6 py-2 rounded-lg font-semibold text-white disabled:opacity-40"
-            style={{ background: '#F05A28' }}
-          >
+          <button onClick={() => setStep('review')} disabled={beers.length === 0}
+            className="px-6 py-2.5 rounded-lg font-semibold text-white disabled:opacity-40"
+            style={{ background: '#F05A28' }}>
             Review & Submit
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Count step ───────────────────────────────────────────────────────────
+  if (step === 'count' && currentArea) {
+    const isCans = currentArea.type === 'cans';
+    const areaName = currentArea.name;
+    const counted = areaCountedBeers(areaName, currentArea.type);
+    const pct = beers.length > 0 ? (counted / beers.length) * 100 : 0;
+
+    return (
+      <div className="max-w-lg mx-auto">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <button onClick={() => setStep('area')} className="text-orange-400 text-sm font-medium">← {location.label}</button>
+            <h3 className="text-white text-xl font-semibold mt-0.5">{areaDisplayName(areaName, currentArea.type)}</h3>
+          </div>
+          <div className="text-right flex-shrink-0 ml-4">
+            <div className={`text-sm font-semibold ${counted === beers.length && beers.length > 0 ? 'text-green-400' : counted > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+              {counted}/{beers.length} counted
+            </div>
+            <div className="w-24 h-1.5 bg-gray-700 rounded-full mt-1.5 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${counted === beers.length && beers.length > 0 ? 'bg-green-400' : 'bg-orange-500'}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {beers.length === 0 && (
+          <p className="text-gray-500 text-sm text-center py-12">No beers set up for this location.</p>
+        )}
+
+        {/* ── Cans list ── */}
+        {isCans && (
+          <div>
+            {beers.map(b => {
+              const val = counts[b.id]?.cans?.[areaName] ?? '';
+              const hasCnt = parseFloat(val) > 0;
+              return (
+                <div key={b.id} className="flex items-center justify-between py-3.5 border-b border-gray-800">
+                  <span className={`text-sm flex-1 mr-4 ${hasCnt ? 'text-white font-medium' : 'text-gray-400'}`}>{b.name}</span>
+                  <input
+                    type="number" inputMode="numeric" min="0"
+                    value={val}
+                    onChange={e => setCanCount(b.id, areaName, e.target.value)}
+                    placeholder="0"
+                    className={`w-20 text-center text-lg font-semibold rounded-xl px-2 py-2.5 border focus:outline-none focus:border-orange-500 bg-gray-800 ${hasCnt ? 'text-white border-gray-600' : 'text-gray-500 border-gray-700'}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Kegs list ── */}
+        {!isCans && (
+          <div>
+            {beers.map(b => {
+              const sixth = counts[b.id]?.kegs?.[areaName]?.sixth_bbl ?? '';
+              const half  = counts[b.id]?.kegs?.[areaName]?.half_bbl  ?? '';
+              const sixthVal = parseFloat(sixth) || 0;
+              const halfVal  = parseFloat(half)  || 0;
+              const hasCnts  = sixthVal > 0 || halfVal > 0;
+              const isOpen   = expandedBeer === b.id;
+              const summary  = hasCnts ? [sixthVal > 0 ? `${sixthVal} ⅙` : '', halfVal > 0 ? `${halfVal} ½` : ''].filter(Boolean).join(' · ') : null;
+              return (
+                <div key={b.id}>
+                  <button onClick={() => setExpandedBeer(isOpen ? null : b.id)}
+                    className="w-full flex items-center justify-between py-3.5 border-b border-gray-800">
+                    <span className={`text-sm text-left flex-1 ${hasCnts ? 'text-white font-medium' : 'text-gray-400'}`}>{b.name}</span>
+                    <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                      {summary ? <span className="text-xs text-gray-300">{summary}</span> : <span className="text-xs text-gray-600">tap to count</span>}
+                      <span className="text-gray-600 text-xs">{isOpen ? '▲' : '▼'}</span>
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <div className="py-4 px-1 flex items-end gap-3 bg-gray-800/50 border-b border-gray-800">
+                      <div className="flex-1">
+                        <div className="text-gray-400 text-xs mb-2 text-center">1/6 bbl</div>
+                        <input type="number" inputMode="decimal" step="0.5" min="0"
+                          value={sixth} onChange={e => setKegCount(b.id, areaName, 'sixth_bbl', e.target.value)}
+                          autoFocus placeholder="0"
+                          className="w-full text-center text-2xl font-bold bg-gray-700 border border-gray-600 rounded-xl py-3 text-white focus:outline-none focus:border-orange-500" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-gray-400 text-xs mb-2 text-center">1/2 bbl</div>
+                        <input type="number" inputMode="decimal" step="0.5" min="0"
+                          value={half} onChange={e => setKegCount(b.id, areaName, 'half_bbl', e.target.value)}
+                          placeholder="0"
+                          className="w-full text-center text-2xl font-bold bg-gray-700 border border-gray-600 rounded-xl py-3 text-white focus:outline-none focus:border-orange-500" />
+                      </div>
+                      <button onClick={() => setExpandedBeer(null)}
+                        className="self-center pb-0.5 text-orange-400 text-sm font-semibold px-2">Done</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="pt-6 pb-2 flex justify-between">
+          <button onClick={() => setStep('area')} className="text-sm text-gray-400 hover:text-white px-4 py-2 border border-gray-700 rounded-lg">← All Areas</button>
+          <button onClick={() => setStep('area')} className="px-5 py-2 rounded-lg font-semibold text-white text-sm" style={{ background: '#F05A28' }}>Done with this area</button>
         </div>
       </div>
     );
@@ -455,7 +435,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-white text-xl font-semibold">Review — {location.label}</h3>
-          <button onClick={() => setStep('form')} className="text-sm text-gray-400 hover:text-white">← Edit</button>
+          <button onClick={() => setStep('area')} className="text-sm text-gray-400 hover:text-white">← Edit</button>
         </div>
 
         {discrepancies.filter(d => d.state === 'orange').length > 0 && (
@@ -518,7 +498,7 @@ function CountTab({ user, thresholds, canUpload, onDirtyChange }) {
         )}
 
         <div className="flex justify-end gap-3">
-          <button onClick={() => setStep('form')} className="px-5 py-2 rounded-lg text-gray-300 border border-gray-600 hover:border-gray-400">
+          <button onClick={() => setStep('area')} className="px-5 py-2 rounded-lg text-gray-300 border border-gray-600 hover:border-gray-400">
             Edit
           </button>
           <button
