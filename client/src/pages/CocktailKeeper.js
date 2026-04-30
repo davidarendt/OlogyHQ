@@ -520,7 +520,15 @@ function CocktailModal({ cocktail, catalog, tagDefs, batchedItems, allIngredient
                 </div>
                 <div>
                   <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Last Featured as Special</label>
-                  <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
+                  <div className="flex items-center gap-2">
+                    <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
+                    {form.last_special_on && (
+                      <button type="button" onClick={() => set('last_special_on', '')}
+                        className="text-gray-500 hover:text-red-400 transition text-xs flex-shrink-0">
+                        ✕ Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Created By</label>
