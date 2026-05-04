@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Cropper from 'react-easy-crop';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -122,6 +123,93 @@ function DetailModal({ customer, canUpload, onClose, onEdit, onDelete, onToggleS
   );
 }
 
+function createImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.addEventListener('load', () => resolve(img));
+    img.addEventListener('error', reject);
+    img.src = url;
+  });
+}
+
+async function getCroppedBlob(imageSrc, pixelCrop) {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+}
+
+function CropModal({ imageSrc, onApply, onCancel }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+
+  const onCropComplete = useCallback((_, pixels) => {
+    setCroppedAreaPixels(pixels);
+  }, []);
+
+  const handleApply = async () => {
+    const blob = await getCroppedBlob(imageSrc, croppedAreaPixels);
+    onApply(blob);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/90 flex flex-col z-[60]">
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
+        <span className="text-white font-semibold">Crop Photo</span>
+        <button onClick={onCancel} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+      </div>
+
+      <div className="relative flex-1">
+        <Cropper
+          image={imageSrc}
+          crop={crop}
+          zoom={zoom}
+          aspect={1}
+          onCropChange={setCrop}
+          onZoomChange={setZoom}
+          onCropComplete={onCropComplete}
+        />
+      </div>
+
+      <div className="bg-gray-800 border-t border-gray-700 px-4 py-4 shrink-0 space-y-3">
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-xs w-10 shrink-0">Zoom</span>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.05}
+            value={zoom}
+            onChange={e => setZoom(+e.target.value)}
+            className="flex-1 accent-orange-500"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-600 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            className="flex-1 py-2 text-white text-sm rounded-lg transition"
+            style={{ backgroundColor: '#F05A28' }}
+          >
+            Apply Crop
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FormModal({ customer, onClose, onSave }) {
   const isEdit = !!customer;
   const [name, setName] = useState(customer?.name || '');
@@ -134,15 +222,23 @@ function FormModal({ customer, onClose, onSave }) {
   const [removePhoto, setRemovePhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [cropSrc, setCropSrc] = useState(null);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = ev => setCropSrc(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropApply = (blob) => {
+    const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
     setPhotoFile(file);
     setRemovePhoto(false);
-    const reader = new FileReader();
-    reader.onload = ev => setPhotoPreview(ev.target.result);
-    reader.readAsDataURL(file);
+    setPhotoPreview(URL.createObjectURL(blob));
+    setCropSrc(null);
   };
 
   const handleRemovePhoto = () => {
@@ -184,6 +280,14 @@ function FormModal({ customer, onClose, onSave }) {
   const hasExistingPhoto = isEdit && customer.photo_filename && !removePhoto;
 
   return (
+    <>
+    {cropSrc && (
+      <CropModal
+        imageSrc={cropSrc}
+        onApply={handleCropApply}
+        onCancel={() => setCropSrc(null)}
+      />
+    )}
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
         className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md max-h-[90vh] overflow-y-auto"
@@ -201,24 +305,36 @@ function FormModal({ customer, onClose, onSave }) {
             {photoPreview ? (
               <div className="relative">
                 <img src={photoPreview} alt="" className="w-full h-48 object-cover rounded-lg" />
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  className="absolute top-2 right-2 bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
-                >
-                  Remove
-                </button>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <label className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800 cursor-pointer">
+                    Recrop
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ) : hasExistingPhoto ? (
               <div className="relative rounded-lg overflow-hidden h-48">
                 <CustomerPhoto id={customer.id} filename={customer.photo_filename} className="w-full h-48" />
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  className="absolute top-2 right-2 bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
-                >
-                  Remove
-                </button>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <label className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800 cursor-pointer">
+                    Replace
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ) : (
               <label className="flex w-full h-32 border-2 border-dashed border-gray-600 rounded-lg items-center justify-center cursor-pointer hover:border-gray-500 transition">
@@ -313,6 +429,7 @@ function FormModal({ customer, onClose, onSave }) {
         </form>
       </div>
     </div>
+    </>
   );
 }
 
