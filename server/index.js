@@ -3598,6 +3598,130 @@ app.patch('/api/production-schedule/task-types/:key', authenticateToken, checkPr
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ==================== 86ed Customers ====================
+function check86edView(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = '86ed-customers' AND p.permission_level IN ('view','upload')`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function check86edManage(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = $1 AND t.slug = '86ed-customers' AND p.permission_level = 'upload'`,
+    [req.user.role]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+const eightySixedPhotoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.get('/api/86ed', authenticateToken, check86edView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM eighty_sixed_customers ORDER BY created_at DESC');
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/86ed/:id/photo', authenticateToken, check86edView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT photo_filename FROM eighty_sixed_customers WHERE id=$1', [req.params.id]);
+    if (!r.rows.length || !r.rows[0].photo_filename) return res.status(404).json({ message: 'Not found' });
+    const { data, error } = await supabase.storage.from('eightysixed-photos').download(r.rows[0].photo_filename);
+    if (error) return res.status(404).json({ message: 'Photo not found' });
+    const buf = Buffer.from(await data.arrayBuffer());
+    const ext = path.extname(r.rows[0].photo_filename).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.gif' ? 'image/gif' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(buf);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/86ed', authenticateToken, check86edManage, eightySixedPhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { name, description, incident_date, reason } = req.body;
+    if (!incident_date) return res.status(400).json({ message: 'incident_date is required' });
+    let photo_filename = null;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      const filename = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`;
+      await uploadToSupabase('eightysixed-photos', filename, req.file.buffer, req.file.mimetype);
+      photo_filename = filename;
+    }
+    const r = await pool.query(
+      `INSERT INTO eighty_sixed_customers (name, description, photo_filename, incident_date, reason, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [name || null, description || null, photo_filename, incident_date, reason || null, req.user.id, req.user.name]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/86ed/:id', authenticateToken, check86edManage, eightySixedPhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const cur = await pool.query('SELECT * FROM eighty_sixed_customers WHERE id=$1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ message: 'Not found' });
+    const existing = cur.rows[0];
+    const { name, description, incident_date, reason, status, remove_photo } = req.body;
+
+    let photo_filename = existing.photo_filename;
+    if (remove_photo === 'true' && existing.photo_filename) {
+      await supabase.storage.from('eightysixed-photos').remove([existing.photo_filename]);
+      photo_filename = null;
+    }
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      const filename = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`;
+      await uploadToSupabase('eightysixed-photos', filename, req.file.buffer, req.file.mimetype);
+      if (existing.photo_filename) {
+        await supabase.storage.from('eightysixed-photos').remove([existing.photo_filename]);
+      }
+      photo_filename = filename;
+    }
+
+    const newStatus = status || existing.status;
+    let lifted_at = existing.lifted_at;
+    if (newStatus !== existing.status) {
+      lifted_at = newStatus === 'lifted' ? new Date().toISOString() : null;
+    }
+
+    const r = await pool.query(
+      `UPDATE eighty_sixed_customers SET
+        name=$1, description=$2, photo_filename=$3, incident_date=$4, reason=$5, status=$6, lifted_at=$7
+       WHERE id=$8 RETURNING *`,
+      [
+        name !== undefined ? (name || null) : existing.name,
+        description !== undefined ? (description || null) : existing.description,
+        photo_filename,
+        incident_date || existing.incident_date,
+        reason !== undefined ? (reason || null) : existing.reason,
+        newStatus,
+        lifted_at,
+        req.params.id,
+      ]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/86ed/:id', authenticateToken, check86edManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT photo_filename FROM eighty_sixed_customers WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    if (r.rows[0].photo_filename) {
+      await supabase.storage.from('eightysixed-photos').remove([r.rows[0].photo_filename]);
+    }
+    await pool.query('DELETE FROM eighty_sixed_customers WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {

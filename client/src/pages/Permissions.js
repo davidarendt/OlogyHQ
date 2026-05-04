@@ -58,8 +58,9 @@ function Permissions({ onBack, onHome }) {
   const cocktailTool  = tools.find(t => t.slug === 'cocktail-keeper');
   const crmTool       = tools.find(t => t.slug === 'sales-crm');
   const labelTool     = tools.find(t => t.slug === 'label-inventory');
-  const prodSchedTool = tools.find(t => t.slug === 'production-schedule');
-  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule'];
+  const prodSchedTool  = tools.find(t => t.slug === 'production-schedule');
+  const eightySixedTool = tools.find(t => t.slug === '86ed-customers');
+  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule', '86ed-customers'];
   const otherTools    = tools.filter(t => !dualSlugs.includes(t.slug));
 
   return (
@@ -410,6 +411,39 @@ function Permissions({ onBack, onHome }) {
                         <Toggle
                           active={hasPermission(role, checklistTool.id, 'upload')}
                           onClick={() => togglePermission(role, checklistTool.id, 'upload')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              )}
+
+              {/* 86ed Customers — two rows: Access and Manage */}
+              {eightySixedTool && (
+                <>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="px-3 pt-3 pb-1 whitespace-nowrap">
+                      <div className="text-white text-sm font-medium">86ed Customers</div>
+                      <div className="text-gray-500 text-xs mt-0.5">Access</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-3 pb-1 text-center">
+                        <Toggle
+                          active={hasPermission(role, eightySixedTool.id, 'view')}
+                          onClick={() => togglePermission(role, eightySixedTool.id, 'view')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-gray-700">
+                    <td className="px-3 pt-1 pb-3 whitespace-nowrap">
+                      <div className="text-gray-500 text-xs">Manage</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-1 pb-3 text-center">
+                        <Toggle
+                          active={hasPermission(role, eightySixedTool.id, 'upload')}
+                          onClick={() => togglePermission(role, eightySixedTool.id, 'upload')}
                         />
                       </td>
                     ))}
