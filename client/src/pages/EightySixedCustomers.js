@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Cropper from 'react-easy-crop';
+import 'react-easy-crop/react-easy-crop.css';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -233,6 +234,14 @@ function FormModal({ customer, onClose, onSave }) {
     reader.readAsDataURL(file);
   };
 
+  const handleCropExisting = async () => {
+    const res = await fetch(`${API}/api/86ed/${customer.id}/photo`, { credentials: 'include' });
+    const blob = await res.blob();
+    const reader = new FileReader();
+    reader.onload = ev => setCropSrc(ev.target.result);
+    reader.readAsDataURL(blob);
+  };
+
   const handleCropApply = (blob) => {
     const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
     setPhotoFile(file);
@@ -323,6 +332,13 @@ function FormModal({ customer, onClose, onSave }) {
               <div className="relative rounded-lg overflow-hidden h-48">
                 <CustomerPhoto id={customer.id} filename={customer.photo_filename} className="w-full h-48" />
                 <div className="absolute top-2 right-2 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={handleCropExisting}
+                    className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
+                  >
+                    Crop
+                  </button>
                   <label className="bg-gray-900/80 text-white text-xs px-2 py-1 rounded hover:bg-gray-800 cursor-pointer">
                     Replace
                     <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
