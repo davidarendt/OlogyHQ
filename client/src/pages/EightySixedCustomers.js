@@ -304,7 +304,7 @@ function FormModal({ customer, onClose, onSave }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-          <h2 className="text-white font-semibold">{isEdit ? 'Edit Entry' : 'Add 86'ed Customer'}</h2>
+          <h2 className="text-white font-semibold">{isEdit ? 'Edit Entry' : "Add 86'ed Customer"}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
         </div>
 
@@ -502,10 +502,10 @@ export default function EightySixedCustomers({ canUpload, onBack }) {
   return (
     <div className="min-h-screen bg-gray-900">
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
           <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream font-semibold text-xl">HQ</span>
-        </div>
+        </button>
         <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
           ← Dashboard
         </button>
