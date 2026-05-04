@@ -25,12 +25,36 @@ function CustomerPhoto({ id, filename, className }) {
   return <img src={src} alt="" className={`${className} object-cover`} style={{ borderRadius: 'inherit' }} />;
 }
 
-function PhotoPlaceholder({ className }) {
+const AVATAR_COLORS = [
+  '#C0392B', '#E67E22', '#D4AC0D', '#27AE60', '#16A085',
+  '#2980B9', '#8E44AD', '#C0392B', '#2C3E50', '#6D4C41',
+];
+
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getAvatarColor(name) {
+  if (!name) return '#4A5568';
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function InitialsAvatar({ name, className }) {
   return (
-    <div className={`${className} bg-gray-700 flex items-center justify-center`} style={{ borderRadius: 'inherit' }}>
-      <svg className="w-12 h-12 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-      </svg>
+    <div
+      className={`${className} flex items-center justify-center`}
+      style={{ backgroundColor: getAvatarColor(name), borderRadius: 'inherit' }}
+    >
+      <span className="text-white font-bold select-none" style={{ fontSize: '2.5rem', lineHeight: 1 }}>
+        {getInitials(name)}
+      </span>
     </div>
   );
 }
@@ -57,7 +81,7 @@ function DetailModal({ customer, canUpload, onClose, onEdit, onDelete, onToggleS
           <div className="w-full h-64 rounded-lg overflow-hidden">
             {customer.photo_filename
               ? <CustomerPhoto id={customer.id} filename={customer.photo_filename} className="w-full h-64" />
-              : <PhotoPlaceholder className="w-full h-64 rounded-lg" />
+              : <InitialsAvatar name={customer.name} className="w-full h-64 rounded-lg" />
             }
           </div>
         </div>
@@ -553,7 +577,7 @@ export default function EightySixedCustomers({ canUpload, onBack }) {
                 <div className="w-full aspect-[3/2] overflow-hidden">
                   {c.photo_filename
                     ? <CustomerPhoto id={c.id} filename={c.photo_filename} className="w-full h-full" />
-                    : <PhotoPlaceholder className="w-full h-full" />
+                    : <InitialsAvatar name={c.name} className="w-full h-full" />
                   }
                 </div>
                 <div className="p-3">
