@@ -15,7 +15,7 @@ function CustomerPhoto({ id, filename, className }) {
   useEffect(() => {
     if (!filename) return;
     let objectUrl = null;
-    fetch(`${API}/api/86ed/${id}/photo`, { credentials: 'include' })
+    fetch(`${API}/api/86ed/${id}/photo?v=${encodeURIComponent(filename)}`, { credentials: 'include' })
       .then(r => r.blob())
       .then(blob => { objectUrl = URL.createObjectURL(blob); setSrc(objectUrl); })
       .catch(() => {});
