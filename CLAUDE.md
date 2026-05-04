@@ -30,7 +30,7 @@ The app is deployed as a **single Netlify site** (`ologyhq.netlify.app`):
 - **Frontend**: React build in `client/build`, published via Netlify
 - **Backend**: Express app wrapped by `netlify/functions/api.js` using `serverless-http`
 - **Database**: Supabase PostgreSQL via connection pooler (`aws-1-us-west-2.pooler.supabase.com:6543`, transaction mode, SSL required)
-- **File storage**: Supabase Storage (private buckets: `hr-documents`, `sop-documents`, `production-photos`)
+- **File storage**: Supabase Storage (private buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`, `eightysixed-photos`)
 
 All `/api/*` requests redirect to `/.netlify/functions/api/:splat` via `netlify.toml`.
 
@@ -72,7 +72,7 @@ For all other behavior, admin goes through the normal permission system — no b
 **Protected user**: `david@ologybrewing.com` cannot be deleted — the delete endpoint checks the target email before proceeding.
 
 ### Two-Level Permission Tools
-HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, and Cocktail Keeper use two permission levels:
+HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Sales CRM, Production Schedule, and 86ed Customers use two permission levels:
 - `view` — can see the tool card and access the tool
 - `upload` — can access manage/upload areas within the tool (Manage tab, Edit/Delete, Send Order Email, etc.)
 
@@ -127,6 +127,11 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `prod_tasks` — id, beer_id, tank_id, date (DATE), task_type (text key), custom_note, assigned_user_ids (INTEGER[]), completed (bool), completed_by_id, completed_at, created_by_id, created_at. No `assignment_id` — tasks link to assignments via tank_id + beer_id + date range.
 - `prod_style_task_presets` — id, style_id (→ prod_beer_styles), task_type, day_offset (INT)
 - `prod_task_type_overrides` — key (TEXT PK), label, short, color, bg — stores user-customized display names/colors for the 13 built-in task types
+- `checklists` — id, name, category ('opening'|'closing'|'cleaning'|'maintenance'|'weekly'|'monthly'|'other'), description, sort_order, created_by_id, created_by_name, updated_at
+- `checklist_roles` — checklist_id (→ checklists, cascade), role
+- `checklist_items` — id, checklist_id (→ checklists, cascade), text, sort_order
+- `checklist_runs` — id, checklist_id (→ checklists), checklist_name (denormalized), run_by_id, run_by_name, notes, items_completed, items_total, created_at
+- `eighty_sixed_customers` — id, name (nullable), description (nullable), photo_filename (nullable), incident_date (DATE), reason (nullable), status ('active'|'lifted'), lifted_at (TIMESTAMPTZ, nullable), created_by_id (→ users, SET NULL), created_by_name, created_at
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
@@ -143,9 +148,9 @@ Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundCo
 ### File Uploads (Supabase Storage)
 All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`.
 
-Recipe photos are served differently — the server downloads the file from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the `RecipeImg` authenticated fetch pattern.
+Recipe photos, cocktail photos, and 86ed customer photos are served differently — the server downloads from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the authenticated fetch pattern. Buckets using direct-stream: `recipe-photos`, `cocktail-photos`, `eightysixed-photos`.
 
-Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`.
+Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`. Similarly, `/api/86ed/:id/photo` must be before any catch-all on `/api/86ed/:id`.
 
 ### pg DATE Type Parsing
 `server/db.js` sets `types.setTypeParser(1082, val => val)` so PostgreSQL `DATE` columns come back as plain `'YYYY-MM-DD'` strings instead of JavaScript `Date` objects. Without this, dates JSON-serialize to ISO timestamps (`'2026-04-01T00:00:00.000Z'`) which break client date math that appends `'T12:00:00'`. This applies globally to all queries.
@@ -287,3 +292,33 @@ Both tables have RLS enabled with open policies and are published to `supabase_r
 **Route ordering** in `server/index.js` for production-schedule routes:
 - `GET /api/production-schedule/task-types` and all style/preset routes before `/:id` catch-alls
 - `POST /api/production-schedule/assignments/:id/shift` and `/apply-presets` before `PATCH /assignments/:id`
+
+### Checklists Tool
+`Checklists.js` manages operational checklists with run history. Permission middleware: `checkChecklistView` / `checkChecklistManage`.
+
+**Tabs**: Checklists | History | Manage (`canUpload` only)
+
+**Categories**: `opening`, `closing`, `cleaning`, `maintenance`, `weekly`, `monthly`, `other` — each has a fixed color defined in the `CATEGORIES` constant.
+
+**Running a checklist**: `RunModal` renders all items as checkboxes with a live progress bar. On submit, `POST /api/checklists/:id/runs` records which item IDs were checked and the total count. Run history is stored in `checklist_runs` with a denormalized `checklist_name` for display even after a checklist is renamed.
+
+**Manage tab**: Create/edit checklists (name, category, description, role visibility, ordered items). Drag-to-reorder via arrow buttons; `PATCH /api/checklists/reorder` takes `{ orderedIds }`. The `reorder` route must be registered **before** `PATCH /api/checklists/:id`.
+
+**Role visibility**: Each checklist has a `checklist_roles` join table. `GET /api/checklists` filters to checklists the user's role can see (admin and manage-permission users see all).
+
+**Permissions middleware**: `checkChecklistView` (`view` or `upload` on the `checklists` slug); `checkChecklistManage` (`upload` only).
+
+### 86ed Customers Tool
+`EightySixedCustomers.js` tracks customers banned from Ology locations. Permission middleware: `check86edView` / `check86edManage`.
+
+**Key rules**: Only manage-level users can add entries (keeping the list clean). Any user with view access can see the full list including photos and reason notes.
+
+**Status lifecycle**: `active` (default) → `lifted` (ban removed, `lifted_at` timestamp recorded) → can be reinstated back to `active`. Entries are never auto-expired; deletion is the only way to fully remove a record.
+
+**Photo serving**: `GET /api/86ed/:id/photo` streams buffer directly from the `eightysixed-photos` Supabase bucket (same direct-stream pattern as recipes/cocktails). Client uses the `CustomerPhoto` component with the auth-fetch → blob → `createObjectURL` pattern.
+
+**Form submission**: Both POST and PATCH use `multipart/form-data` (multer) since photo upload is optional on both add and edit. The `remove_photo=true` field signals the server to delete the existing photo from storage and set `photo_filename = null`.
+
+**Permission levels**:
+- `view` — see the list, search by name, view full detail including photo/reason
+- `upload` — add entries, edit, lift/reinstate ban, delete
