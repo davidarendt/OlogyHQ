@@ -304,7 +304,7 @@ function FormModal({ customer, onClose, onSave }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-          <h2 className="text-white font-semibold">{isEdit ? 'Edit Entry' : 'Add 86ed Customer'}</h2>
+          <h2 className="text-white font-semibold">{isEdit ? 'Edit Entry' : 'Add 86'ed Customer'}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
         </div>
 
