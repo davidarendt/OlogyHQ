@@ -173,6 +173,7 @@ function CropModal({ imageSrc, onApply, onCancel }) {
           onCropChange={setCrop}
           onZoomChange={setZoom}
           onCropComplete={onCropComplete}
+          maxZoom={6}
         />
       </div>
 
@@ -182,7 +183,7 @@ function CropModal({ imageSrc, onApply, onCancel }) {
           <input
             type="range"
             min={1}
-            max={3}
+            max={6}
             step={0.05}
             value={zoom}
             onChange={e => setZoom(+e.target.value)}
