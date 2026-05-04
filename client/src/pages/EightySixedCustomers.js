@@ -513,7 +513,7 @@ export default function EightySixedCustomers({ canUpload, onBack }) {
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-cream text-3xl font-bold mb-1">86ed Customers</h1>
+          <h1 className="text-cream text-3xl font-bold mb-1">86'ed Customers</h1>
           <p className="text-gray-400 text-sm">Customers who have been removed from our locations</p>
         </div>
 

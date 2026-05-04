@@ -83,7 +83,7 @@ function Permissions({ onBack, onHome }) {
 
         <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-gray-800">
               <tr className="border-b border-gray-700">
                 <th className="text-left text-gray-400 text-sm px-3 py-3 min-w-[140px]">Tool</th>
                 {ROLES.map((role) => (
@@ -418,12 +418,12 @@ function Permissions({ onBack, onHome }) {
                 </>
               )}
 
-              {/* 86ed Customers — two rows: Access and Manage */}
+              {/* 86'ed Customers — two rows: Access and Manage */}
               {eightySixedTool && (
                 <>
                   <tr className="border-b border-gray-700/50">
                     <td className="px-3 pt-3 pb-1 whitespace-nowrap">
-                      <div className="text-white text-sm font-medium">86ed Customers</div>
+                      <div className="text-white text-sm font-medium">86'ed Customers</div>
                       <div className="text-gray-500 text-xs mt-0.5">Access</div>
                     </td>
                     {ROLES.map((role) => (
