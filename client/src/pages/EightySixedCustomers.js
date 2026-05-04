@@ -169,7 +169,7 @@ function CropModal({ imageSrc, onApply, onCancel }) {
           image={imageSrc}
           crop={crop}
           zoom={zoom}
-          aspect={1}
+          aspect={3 / 2}
           onCropChange={setCrop}
           onZoomChange={setZoom}
           onCropComplete={onCropComplete}
@@ -549,10 +549,10 @@ export default function EightySixedCustomers({ canUpload, onBack }) {
                 onClick={() => setSelected(c)}
                 className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden text-left hover:border-gray-500 transition-colors"
               >
-                <div className="w-full h-40 overflow-hidden">
+                <div className="w-full aspect-[3/2] overflow-hidden">
                   {c.photo_filename
-                    ? <CustomerPhoto id={c.id} filename={c.photo_filename} className="w-full h-40" />
-                    : <PhotoPlaceholder className="w-full h-40" />
+                    ? <CustomerPhoto id={c.id} filename={c.photo_filename} className="w-full h-full" />
+                    : <PhotoPlaceholder className="w-full h-full" />
                   }
                 </div>
                 <div className="p-3">
