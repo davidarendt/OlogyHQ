@@ -127,10 +127,10 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `prod_tasks` — id, beer_id, tank_id, date (DATE), task_type (text key), custom_note, assigned_user_ids (INTEGER[]), completed (bool), completed_by_id, completed_at, created_by_id, created_at. No `assignment_id` — tasks link to assignments via tank_id + beer_id + date range.
 - `prod_style_task_presets` — id, style_id (→ prod_beer_styles), task_type, day_offset (INT)
 - `prod_task_type_overrides` — key (TEXT PK), label, short, color, bg — stores user-customized display names/colors for the 13 built-in task types
-- `checklists` — id, name, category ('opening'|'closing'|'cleaning'|'maintenance'|'weekly'|'monthly'|'other'), description, sort_order, created_by_id, created_by_name, updated_at
+- `checklists` — id, name, category ('opening'|'closing'|'cleaning'|'maintenance'|'weekly'|'monthly'|'other'), description, frequency ('daily'|'weekly'|'monthly'), location ('all'|'midtown'|'northside'|'power_mill'|'tampa'), sort_order, created_by_id, created_by_name, updated_at
 - `checklist_roles` — checklist_id (→ checklists, cascade), role
 - `checklist_items` — id, checklist_id (→ checklists, cascade), text, sort_order
-- `checklist_runs` — id, checklist_id (→ checklists), checklist_name (denormalized), run_by_id, run_by_name, notes, items_completed, items_total, created_at
+- `checklist_runs` — id, checklist_id (→ checklists), checklist_name (denormalized), run_by_id (nullable), run_by_name, notes, items_completed, items_total, run_date (DATE), auto_saved (bool, default false), created_at
 - `eighty_sixed_customers` — id, name (nullable), description (nullable), photo_filename (nullable), incident_date (DATE), reason (nullable), status ('active'|'lifted'), lifted_at (TIMESTAMPTZ, nullable), created_by_id (→ users, SET NULL), created_by_name, created_at
 
 ### Roles
@@ -300,9 +300,17 @@ Both tables have RLS enabled with open policies and are published to `supabase_r
 
 **Categories**: `opening`, `closing`, `cleaning`, `maintenance`, `weekly`, `monthly`, `other` — each has a fixed color defined in the `CATEGORIES` constant.
 
-**Running a checklist**: `RunModal` renders all items as checkboxes with a live progress bar. On submit, `POST /api/checklists/:id/runs` records which item IDs were checked and the total count. Run history is stored in `checklist_runs` with a denormalized `checklist_name` for display even after a checklist is renamed.
+**Navigation**: The Checklists tool opens a **location landing page** showing 4 location cards (Midtown, Northside, Power Mill, Tampa). Clicking a location enters that location's view with title "[Location] Checklists". Tabs (Checklists | History | Manage) are only shown after selecting a location. Back button returns to the landing page.
 
-**Manage tab**: Create/edit checklists (name, category, description, role visibility, ordered items). Drag-to-reorder via arrow buttons; `PATCH /api/checklists/reorder` takes `{ orderedIds }`. The `reorder` route must be registered **before** `PATCH /api/checklists/:id`.
+**Location filtering**: Each checklist has a `location` column. The Checklists tab shows checklists where `location === selectedLocation || location === 'all'`. History and Manage tabs show all records regardless of location.
+
+**Running a checklist**: `RunModal` renders all items as checkboxes with a live progress bar. Every checkbox toggle immediately persists to `checklist_daily_state` via POST/DELETE. No explicit submit — closing the modal (Done button or ×) calls `fetchAll()` to refresh card progress bars.
+
+**Auto-archive**: `autoArchiveChecklists()` runs in the background on every `GET /api/checklists` call. It finds stale `checklist_daily_state` rows (before the current period), groups them by period according to the checklist's `frequency`, creates one `checklist_runs` record per period (`auto_saved=true`, `run_by_id=null`, `run_by_name='Auto-saved'`), then deletes the state rows. Period grouping: daily=each day, weekly=ISO week starting Monday, monthly=calendar month.
+
+**Frequency field**: `checklists.frequency` ('daily'|'weekly'|'monthly') controls how often `autoArchiveChecklists()` creates a history record. Defaults to 'daily'. Set per-checklist in the Manage tab.
+
+**Manage tab**: Create/edit checklists (name, category, location, frequency, description, role visibility, ordered items). Drag-to-reorder via arrow buttons; `PATCH /api/checklists/reorder` takes `{ orderedIds }`. The `reorder` route must be registered **before** `PATCH /api/checklists/:id`.
 
 **Role visibility**: Each checklist has a `checklist_roles` join table. `GET /api/checklists` filters to checklists the user's role can see (admin and manage-permission users see all).
 

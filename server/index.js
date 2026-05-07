@@ -905,8 +905,76 @@ function checkChecklistManage(req, res, next) {
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
+async function autoArchiveChecklists() {
+  try {
+    const clRows = await pool.query('SELECT id, name, frequency FROM checklists');
+    for (const cl of clRows.rows) {
+      const now = new Date();
+      let cutoff;
+      if (cl.frequency === 'weekly') {
+        const day = now.getDay();
+        const diff = day === 0 ? -6 : 1 - day; // days back to Monday
+        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+      } else if (cl.frequency === 'monthly') {
+        cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else {
+        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      }
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+
+      const stale = await pool.query(
+        `SELECT DISTINCT run_date FROM checklist_daily_state WHERE checklist_id=$1 AND run_date < $2::date ORDER BY run_date`,
+        [cl.id, cutoffStr]
+      );
+      if (!stale.rows.length) continue;
+
+      const periodMap = new Map();
+      for (const row of stale.rows) {
+        const rd = new Date(row.run_date + 'T12:00:00');
+        let key;
+        if (cl.frequency === 'weekly') {
+          const d2 = rd.getDay();
+          const diff2 = d2 === 0 ? -6 : 1 - d2;
+          const mon = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate() + diff2);
+          key = mon.toISOString().split('T')[0];
+        } else if (cl.frequency === 'monthly') {
+          key = `${rd.getFullYear()}-${String(rd.getMonth()+1).padStart(2,'0')}-01`;
+        } else {
+          key = row.run_date;
+        }
+        if (!periodMap.has(key)) periodMap.set(key, []);
+        periodMap.get(key).push(row.run_date);
+      }
+
+      for (const [periodKey, dates] of periodMap.entries()) {
+        const exists = await pool.query(
+          'SELECT 1 FROM checklist_runs WHERE checklist_id=$1 AND run_date=$2 AND auto_saved=true',
+          [cl.id, periodKey]
+        );
+        if (!exists.rows.length) {
+          const state = await pool.query(
+            `SELECT DISTINCT item_id FROM checklist_daily_state WHERE checklist_id=$1 AND run_date = ANY($2::date[])`,
+            [cl.id, dates]
+          );
+          const items = await pool.query('SELECT COUNT(*)::int AS cnt FROM checklist_items WHERE checklist_id=$1', [cl.id]);
+          await pool.query(
+            `INSERT INTO checklist_runs (checklist_id, checklist_name, run_by_name, notes, items_completed, items_total, run_date, auto_saved)
+             VALUES ($1,$2,'Auto-saved','',  $3,$4,$5,true)`,
+            [cl.id, cl.name, state.rows.length, items.rows[0].cnt, periodKey]
+          );
+        }
+        await pool.query(
+          'DELETE FROM checklist_daily_state WHERE checklist_id=$1 AND run_date = ANY($2::date[])',
+          [cl.id, dates]
+        );
+      }
+    }
+  } catch (err) { console.error('autoArchiveChecklists error:', err); }
+}
+
 app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, res) => {
   try {
+    autoArchiveChecklists(); // background, no await
     const isPrivileged = req.user.role === 'admin' || await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
        WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
@@ -947,20 +1015,24 @@ app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, re
 // Run history — must be before /:id patterns
 app.get('/api/checklists/runs', authenticateToken, checkChecklistView, async (req, res) => {
   try {
-    const runs = await pool.query('SELECT * FROM checklist_runs ORDER BY created_at DESC LIMIT 200');
+    const runs = await pool.query(
+      `SELECT r.*, c.frequency FROM checklist_runs r
+       LEFT JOIN checklists c ON c.id = r.checklist_id
+       ORDER BY r.run_date DESC NULLS LAST, r.created_at DESC LIMIT 200`
+    );
     res.json(runs.rows);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.post('/api/checklists', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
-    const { name, category, description, roles, items } = req.body;
+    const { name, category, description, roles, items, frequency, location } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Name required' });
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM checklists');
     const cl = await pool.query(
-      `INSERT INTO checklists (name, category, description, sort_order, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [name.trim(), category || 'other', description || '', maxSort.rows[0].m + 1, req.user.id, req.user.name]
+      `INSERT INTO checklists (name, category, description, frequency, location, sort_order, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [name.trim(), category || 'other', description || '', frequency || 'daily', location || 'all', maxSort.rows[0].m + 1, req.user.id, req.user.name]
     );
     const id = cl.rows[0].id;
     for (const role of (roles || [])) {
@@ -989,11 +1061,11 @@ app.patch('/api/checklists/reorder', authenticateToken, checkChecklistManage, as
 
 app.patch('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
-    const { name, category, description, roles, items } = req.body;
+    const { name, category, description, roles, items, frequency, location } = req.body;
     const id = parseInt(req.params.id);
     await pool.query(
-      'UPDATE checklists SET name=$1, category=$2, description=$3, updated_at=NOW() WHERE id=$4',
-      [name.trim(), category || 'other', description || '', id]
+      'UPDATE checklists SET name=$1, category=$2, description=$3, frequency=$4, location=$5, updated_at=NOW() WHERE id=$6',
+      [name.trim(), category || 'other', description || '', frequency || 'daily', location || 'all', id]
     );
     await pool.query('DELETE FROM checklist_roles WHERE checklist_id=$1', [id]);
     for (const role of (roles || [])) {
