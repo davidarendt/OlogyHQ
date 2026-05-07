@@ -46,10 +46,6 @@ function fmtRunDate(runDate, frequency) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function locationLabel(key) {
-  return LOCATIONS.find(l => l.key === key)?.label || key;
-}
-
 // ── Run Modal ─────────────────────────────────────────────────────────────────
 function RunModal({ checklist, onClose }) {
   const [checked, setChecked] = useState({});
