@@ -916,6 +916,9 @@ app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, re
     const cls   = await pool.query('SELECT * FROM checklists ORDER BY sort_order ASC, created_at ASC');
     const roles = await pool.query('SELECT * FROM checklist_roles');
     const items = await pool.query('SELECT * FROM checklist_items ORDER BY sort_order ASC');
+    const todayCounts = await pool.query(
+      `SELECT checklist_id, COUNT(*)::int AS count FROM checklist_daily_state WHERE run_date = CURRENT_DATE GROUP BY checklist_id`
+    );
 
     const roleMap = {};
     roles.rows.forEach(r => {
@@ -927,8 +930,15 @@ app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, re
       if (!itemMap[i.checklist_id]) itemMap[i.checklist_id] = [];
       itemMap[i.checklist_id].push(i);
     });
+    const todayCountMap = {};
+    todayCounts.rows.forEach(r => { todayCountMap[r.checklist_id] = r.count; });
 
-    let result = cls.rows.map(c => ({ ...c, roles: roleMap[c.id] || [], items: itemMap[c.id] || [] }));
+    let result = cls.rows.map(c => ({
+      ...c,
+      roles: roleMap[c.id] || [],
+      items: itemMap[c.id] || [],
+      today_checked_count: todayCountMap[c.id] || 0,
+    }));
     if (!isPrivileged) result = result.filter(c => c.roles.includes(req.user.role));
     res.json(result);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
@@ -1023,6 +1033,40 @@ app.delete('/api/checklists/runs/:id', authenticateToken, checkChecklistManage, 
     await pool.query('DELETE FROM checklist_runs WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Daily state — must be before /:id
+app.get('/api/checklists/:id/today', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT item_id FROM checklist_daily_state WHERE checklist_id=$1 AND run_date=CURRENT_DATE',
+      [req.params.id]
+    );
+    const checked = {};
+    r.rows.forEach(row => { checked[row.item_id] = true; });
+    res.json(checked);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/checklists/:id/items/:itemId/check', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    await pool.query(
+      `INSERT INTO checklist_daily_state (checklist_id, run_date, item_id, checked_by_name)
+       VALUES ($1, CURRENT_DATE, $2, $3) ON CONFLICT DO NOTHING`,
+      [req.params.id, req.params.itemId, req.user.name]
+    );
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/checklists/:id/items/:itemId/check', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM checklist_daily_state WHERE checklist_id=$1 AND run_date=CURRENT_DATE AND item_id=$2',
+      [req.params.id, req.params.itemId]
+    );
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {

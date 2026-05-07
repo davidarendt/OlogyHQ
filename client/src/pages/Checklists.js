@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../supabaseClient';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -36,17 +37,58 @@ function fmtDate(iso) {
 
 // ── Run Modal ─────────────────────────────────────────────────────────────────
 function RunModal({ checklist, onClose, onSaved }) {
-  const [checked, setChecked]   = useState({});
-  const [notes, setNotes]       = useState('');
-  const [submitting, setSub]    = useState(false);
-  const [done, setDone]         = useState(false);
+  const [checked, setChecked] = useState({});
+  const [notes, setNotes]     = useState('');
+  const [submitting, setSub]  = useState(false);
+  const [done, setDone]       = useState(false);
+  const [loading, setLoading] = useState(true);
+  const pendingRef = useRef(new Set());
 
   const items = checklist.items || [];
   const completedCount = items.filter(i => checked[i.id]).length;
   const progress = items.length > 0 ? (completedCount / items.length) * 100 : 0;
   const cat = CATEGORIES[checklist.category] || CATEGORIES.other;
 
-  const toggle = id => setChecked(p => ({ ...p, [id]: !p[id] }));
+  // Load today's state
+  useEffect(() => {
+    fetch(`${API}/api/checklists/${checklist.id}/today`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => { setChecked(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [checklist.id]);
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel(`checklist-daily-${checklist.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'checklist_daily_state',
+        filter: `checklist_id=eq.${checklist.id}`,
+      }, payload => {
+        const itemId = payload.eventType === 'DELETE' ? payload.old?.item_id : payload.new?.item_id;
+        if (!itemId || pendingRef.current.has(itemId)) return;
+        if (payload.eventType === 'INSERT') {
+          setChecked(p => ({ ...p, [itemId]: true }));
+        } else if (payload.eventType === 'DELETE') {
+          setChecked(p => { const n = { ...p }; delete n[itemId]; return n; });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [checklist.id]);
+
+  const toggle = (id) => {
+    const wasChecked = !!checked[id];
+    // Optimistic update
+    setChecked(p => wasChecked ? (({ [id]: _, ...rest }) => rest)(p) : { ...p, [id]: true });
+    // Suppress our own realtime echo
+    pendingRef.current.add(id);
+    const method = wasChecked ? 'DELETE' : 'POST';
+    fetch(`${API}/api/checklists/${checklist.id}/items/${id}/check`, { method, credentials: 'include' })
+      .finally(() => pendingRef.current.delete(id));
+  };
 
   const handleSubmit = async () => {
     setSub(true);
@@ -89,8 +131,8 @@ function RunModal({ checklist, onClose, onSaved }) {
           </div>
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
-              <span>{completedCount} of {items.length} complete</span>
-              <span>{Math.round(progress)}%</span>
+              <span>{loading ? '…' : `${completedCount} of ${items.length} complete`}</span>
+              <span>{loading ? '' : `${Math.round(progress)}%`}</span>
             </div>
             <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
               <div className="h-full rounded-full transition-all duration-200"
@@ -101,7 +143,9 @@ function RunModal({ checklist, onClose, onSaved }) {
 
         {/* Items */}
         <div className="flex-1 overflow-y-auto px-6 space-y-2 py-2">
-          {items.length === 0 ? (
+          {loading ? (
+            <div className="text-gray-500 text-sm text-center py-8">Loading…</div>
+          ) : items.length === 0 ? (
             <p className="text-gray-500 text-sm text-center py-4">No items in this checklist.</p>
           ) : items.map(item => (
             <label key={item.id}
@@ -127,7 +171,7 @@ function RunModal({ checklist, onClose, onSaved }) {
           <div className="flex gap-3">
             <button onClick={onClose}
               className="flex-1 py-2.5 rounded-xl border border-gray-600 text-gray-300 text-sm hover:bg-gray-700 transition">
-              Cancel
+              Close
             </button>
             <button onClick={handleSubmit} disabled={submitting}
               className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition disabled:opacity-50"
@@ -145,6 +189,10 @@ function RunModal({ checklist, onClose, onSaved }) {
 function ChecklistCard({ checklist, onRun }) {
   const cat = CATEGORIES[checklist.category] || CATEGORIES.other;
   const itemCount = (checklist.items || []).length;
+  const todayChecked = checklist.today_checked_count || 0;
+  const todayProgress = itemCount > 0 ? (todayChecked / itemCount) * 100 : 0;
+  const complete = itemCount > 0 && todayChecked >= itemCount;
+
   return (
     <button onClick={onRun}
       className="group bg-gray-800 rounded-2xl border border-gray-700 hover:border-orange-500 transition-all duration-200 text-left overflow-hidden flex flex-col hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5">
@@ -161,6 +209,23 @@ function ChecklistCard({ checklist, onRun }) {
         {checklist.description && (
           <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">{checklist.description}</p>
         )}
+
+        {/* Today's progress bar */}
+        {itemCount > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className={complete ? 'text-green-400 font-semibold' : 'text-gray-500'}>
+                {complete ? '✓ Complete' : `${todayChecked}/${itemCount} today`}
+              </span>
+              <span className="text-gray-600">{Math.round(todayProgress)}%</span>
+            </div>
+            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${todayProgress}%`, backgroundColor: complete ? '#22c55e' : '#F05A28' }} />
+            </div>
+          </div>
+        )}
+
         <div className="mt-auto pt-2 border-t border-gray-700/50 flex items-center justify-between">
           <div className="flex flex-wrap gap-1">
             {(checklist.roles || []).slice(0, 3).map(r => (
