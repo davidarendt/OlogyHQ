@@ -17,6 +17,7 @@ const ROLE_LABELS = {
 
 const CATEGORIES = {
   opening:     { label: 'Opening',     color: '#22c55e' },
+  midshift:    { label: 'Midshift',    color: '#06b6d4' },
   closing:     { label: 'Closing',     color: '#a855f7' },
   cleaning:    { label: 'Cleaning',    color: '#3b82f6' },
   maintenance: { label: 'Maintenance', color: '#eab308' },
