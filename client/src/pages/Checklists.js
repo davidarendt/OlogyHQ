@@ -57,6 +57,7 @@ function RunModal({ checklist, onClose }) {
   const completedCount = items.filter(i => checked[i.id]).length;
   const progress = items.length > 0 ? (completedCount / items.length) * 100 : 0;
   const cat = CATEGORIES[checklist.category] || CATEGORIES.other;
+  const displayName = checklist.display_name || checklist.name;
 
   useEffect(() => {
     fetch(`${API}/api/checklists/${checklist.id}/today`, { credentials: 'include' })
@@ -104,7 +105,7 @@ function RunModal({ checklist, onClose }) {
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <span className="text-xs font-bold px-2 py-0.5 rounded text-white flex-shrink-0"
                 style={{ backgroundColor: cat.color }}>{cat.label}</span>
-              <h3 className="text-white font-semibold text-lg truncate">{checklist.name}</h3>
+              <h3 className="text-white font-semibold text-lg truncate">{displayName}</h3>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none ml-4 flex-shrink-0">×</button>
           </div>
@@ -173,7 +174,7 @@ function ChecklistCard({ checklist, onRun }) {
           <span className="text-gray-600 text-xs">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
         </div>
         <p className="text-white font-semibold text-sm leading-snug group-hover:text-orange-400 transition-colors">
-          {checklist.name}
+          {checklist.display_name || checklist.name}
         </p>
         {checklist.description && (
           <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">{checklist.description}</p>
@@ -219,11 +220,12 @@ function ChecklistCard({ checklist, onRun }) {
 // ── Checklist Modal (create / edit) ───────────────────────────────────────────
 function ChecklistModal({ checklist, onClose, onSaved }) {
   const isEdit = !!checklist;
-  const [name, setName]         = useState(checklist?.name || '');
-  const [category, setCategory] = useState(checklist?.category || 'other');
-  const [description, setDesc]  = useState(checklist?.description || '');
-  const [frequency, setFreq]    = useState(checklist?.frequency || 'daily');
-  const [loc, setLoc]           = useState(checklist?.location || 'all');
+  const [name, setName]           = useState(checklist?.name || '');
+  const [displayName, setDispName]= useState(checklist?.display_name || '');
+  const [category, setCategory]   = useState(checklist?.category || 'other');
+  const [description, setDesc]    = useState(checklist?.description || '');
+  const [frequency, setFreq]      = useState(checklist?.frequency || 'daily');
+  const [loc, setLoc]             = useState(checklist?.location || 'all');
   const [roles, setRoles]       = useState(checklist?.roles || []);
   const [items, setItems]       = useState((checklist?.items || []).map(i => ({ text: i.text })));
   const [saving, setSaving]     = useState(false);
@@ -248,7 +250,7 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
     if (!roles.length) { setError('Select at least one role.'); return; }
     setSaving(true); setError('');
     const validItems = items.filter(i => i.text.trim());
-    const body = { name: name.trim(), category, description: description.trim(), frequency, location: loc, roles, items: validItems };
+    const body = { name: name.trim(), display_name: displayName.trim() || null, category, description: description.trim(), frequency, location: loc, roles, items: validItems };
     const url = isEdit ? `${API}/api/checklists/${checklist.id}` : `${API}/api/checklists`;
     const res = await fetch(url, {
       method: isEdit ? 'PATCH' : 'POST', credentials: 'include',
@@ -274,10 +276,17 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
             <div className="px-3 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-sm">{error}</div>
           )}
 
-          <div>
-            <label className="block text-gray-400 text-sm mb-1.5">Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Morning Bar Opening"
-              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-400 text-sm mb-1.5">Internal Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Opening – Bar Staff"
+                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            </div>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1.5">Display Name <span className="text-gray-600">(staff sees)</span></label>
+              <input value={displayName} onChange={e => setDispName(e.target.value)} placeholder="e.g. Opening"
+                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -604,7 +613,12 @@ export default function Checklists({ user, canUpload, onBack }) {
                                 className="text-gray-500 hover:text-white disabled:opacity-20 transition text-xs leading-none">▼</button>
                             </div>
                           </td>
-                          <td className="px-6 py-3.5 text-white text-sm font-medium">{cl.name}</td>
+                          <td className="px-6 py-3.5">
+                            <div className="text-white text-sm font-medium">{cl.name}</div>
+                            {cl.display_name && (
+                              <div className="text-gray-500 text-xs mt-0.5">Shows as: {cl.display_name}</div>
+                            )}
+                          </td>
                           <td className="px-4 py-3.5 hidden sm:table-cell">
                             <span className="text-xs font-bold px-2 py-0.5 rounded text-white"
                               style={{ backgroundColor: cat.color }}>{cat.label}</span>
