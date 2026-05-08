@@ -49,8 +49,8 @@ const checkHRPermission = async (req, res, next) => {
     const result = await pool.query(
       `SELECT 1 FROM permissions p
        INNER JOIN tools t ON p.tool_id = t.id
-       WHERE p.role = $1 AND t.slug = $2 AND p.permission_level = 'upload'`,
-      [req.user.role, 'hr-documents']
+       WHERE p.role = ANY($1::text[]) AND t.slug = $2 AND p.permission_level = 'upload'`,
+      [req.user.roles, 'hr-documents']
     );
     if (result.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
     next();
@@ -61,13 +61,13 @@ const checkHRPermission = async (req, res, next) => {
 
 // Middleware to check HR Documents view permission
 const checkHRView = async (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   try {
     const result = await pool.query(
       `SELECT 1 FROM permissions p
        INNER JOIN tools t ON p.tool_id = t.id
-       WHERE p.role = $1 AND t.slug = $2 AND p.permission_level = 'view'`,
-      [req.user.role, 'hr-documents']
+       WHERE p.role = ANY($1::text[]) AND t.slug = $2 AND p.permission_level = 'view'`,
+      [req.user.roles, 'hr-documents']
     );
     if (result.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
     next();
@@ -91,6 +91,8 @@ const authenticateToken = (req, res, next) => {
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ message: 'Invalid token' });
     req.user = user;
+    // Ensure roles array always exists (handles tokens issued before multi-role support)
+    if (!req.user.roles) req.user.roles = [req.user.role].filter(Boolean);
     next();
   });
 };
@@ -105,8 +107,11 @@ app.post('/api/login', async (req, res) => {
     if (!user.password) return res.status(401).json({ message: 'Account setup is incomplete. Check your email for a setup link.' });
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(401).json({ message: 'Invalid credentials' });
+    const rolesResult = await pool.query('SELECT role FROM user_roles WHERE user_id=$1 ORDER BY role', [user.id]);
+    const roles = rolesResult.rows.map(r => r.role);
+    if (!roles.length) roles.push(user.role); // fallback
     const token = jwt.sign(
-      { id: user.id, name: user.name, role: user.role },
+      { id: user.id, name: user.name, role: user.role, roles },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -116,7 +121,7 @@ app.post('/api/login', async (req, res) => {
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.json({ user: { id: user.id, name: user.name, role: user.role } });
+    res.json({ user: { id: user.id, name: user.name, role: user.role, roles } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -125,7 +130,7 @@ app.post('/api/login', async (req, res) => {
 
 // Get current user from cookie
 app.get('/api/me', authenticateToken, (req, res) => {
-  res.json({ id: req.user.id, name: req.user.name, role: req.user.role });
+  res.json({ id: req.user.id, name: req.user.name, role: req.user.role, roles: req.user.roles });
 });
 
 // Logout
@@ -197,7 +202,12 @@ app.post('/api/reset-password', async (req, res) => {
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, role, created_at, (password IS NULL) AS invite_pending FROM users ORDER BY name'
+      `SELECT u.id, u.name, u.email, u.role, u.created_at,
+              (u.password IS NULL) AS invite_pending,
+              COALESCE(NULLIF(array_agg(ur.role ORDER BY ur.role) FILTER (WHERE ur.role IS NOT NULL), '{}'), ARRAY[u.role]) AS roles
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       GROUP BY u.id ORDER BY u.name`
     );
     res.json(result.rows);
   } catch (err) {
@@ -208,7 +218,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 
 // Add a new user
 app.post('/api/users', authenticateToken, async (req, res) => {
-  const { name, email, role } = req.body;
+  const { name, email, role, roles } = req.body;
   try {
     // Check for duplicate email
     const existing = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
@@ -217,11 +227,17 @@ app.post('/api/users', authenticateToken, async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days for invite
 
+    const primaryRole = (roles && roles.length) ? roles[0] : (role || 'bartender');
     const result = await pool.query(
       `INSERT INTO users (name, email, password, role, reset_token, reset_token_expires)
        VALUES ($1, $2, NULL, $3, $4, $5) RETURNING id, name, email, role`,
-      [name, email, role, token, expires]
+      [name, email, primaryRole, token, expires]
     );
+    const userId = result.rows[0].id;
+    const allRoles = [...new Set([primaryRole, ...(roles || [])])].filter(Boolean);
+    for (const r of allRoles) {
+      await pool.query('INSERT INTO user_roles (user_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [userId, r]);
+    }
 
     const setupUrl = `${process.env.CLIENT_URL || 'https://ologyhq.netlify.app'}/?reset=${token}`;
     const transporter = nodemailer.createTransport({
@@ -278,28 +294,50 @@ app.post('/api/users/:id/resend-invite', authenticateToken, async (req, res) => 
   }
 });
 
-// Update a user's role
+// Update a user
 app.put('/api/users/:id', authenticateToken, async (req, res) => {
-  const { role, name, email } = req.body;
+  const { role, roles, name, email } = req.body;
   try {
     // Build dynamic update — only set fields that were provided
     const fields = [];
     const values = [];
-    if (role  !== undefined) { fields.push(`role = $${fields.length + 1}`);  values.push(role); }
     if (name  !== undefined) { fields.push(`name = $${fields.length + 1}`);  values.push(name.trim()); }
     if (email !== undefined) {
-      // Check for duplicate email (exclude current user)
       const dup = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2', [email.trim(), req.params.id]);
       if (dup.rows.length > 0) return res.status(400).json({ message: 'Email already in use.' });
       fields.push(`email = $${fields.length + 1}`);
       values.push(email.trim().toLowerCase());
     }
-    if (fields.length === 0) return res.status(400).json({ message: 'Nothing to update.' });
-    values.push(req.params.id);
-    const result = await pool.query(
-      `UPDATE users SET ${fields.join(', ')} WHERE id = $${values.length} RETURNING id, name, email, role`,
-      values
-    );
+
+    // Determine primary role from roles array or explicit role field
+    const newRoles = roles && roles.length ? roles : (role ? [role] : null);
+    const primaryRole = newRoles ? newRoles[0] : undefined;
+    if (primaryRole !== undefined) {
+      fields.push(`role = $${fields.length + 1}`);
+      values.push(primaryRole);
+    }
+
+    if (fields.length === 0 && !newRoles) return res.status(400).json({ message: 'Nothing to update.' });
+    let result;
+    if (fields.length > 0) {
+      values.push(req.params.id);
+      result = await pool.query(
+        `UPDATE users SET ${fields.join(', ')} WHERE id = $${values.length} RETURNING id, name, email, role`,
+        values
+      );
+    } else {
+      result = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.params.id]);
+    }
+
+    // Replace user_roles entries
+    if (newRoles) {
+      await pool.query('DELETE FROM user_roles WHERE user_id = $1', [req.params.id]);
+      const allRoles = [...new Set(newRoles)].filter(Boolean);
+      for (const r of allRoles) {
+        await pool.query('INSERT INTO user_roles (user_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, r]);
+      }
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -329,17 +367,17 @@ app.get('/api/my-tools', authenticateToken, async (req, res) => {
       `SELECT DISTINCT t.*,
         (EXISTS (
           SELECT 1 FROM permissions p
-          WHERE p.tool_id = t.id AND p.role = $1 AND p.permission_level = 'upload'
+          WHERE p.tool_id = t.id AND p.role = ANY($1::text[]) AND p.permission_level = 'upload'
         )) AS has_upload_permission
        FROM tools t
-       WHERE $1 = 'admin'
+       WHERE 'admin' = ANY($1::text[])
           OR t.visible_to_all = true
           OR EXISTS (
             SELECT 1 FROM permissions p
-            WHERE p.tool_id = t.id AND p.role = $1 AND p.permission_level = 'view'
+            WHERE p.tool_id = t.id AND p.role = ANY($1::text[]) AND p.permission_level = 'view'
           )
        ORDER BY t.name`,
-      [req.user.role]
+      [req.user.roles]
     );
     res.json(result.rows);
   } catch (err) {
@@ -405,11 +443,11 @@ app.delete('/api/permissions', authenticateToken, async (req, res) => {
 // List documents — admins and uploaders see all; viewers only see docs their role is granted
 app.get('/api/hr-documents', authenticateToken, checkHRView, async (req, res) => {
   try {
-    const isPrivileged = req.user.role === 'admin' || await (async () => {
+    const isPrivileged = req.user.roles.includes('admin') || await (async () => {
       const r = await pool.query(
         `SELECT 1 FROM permissions p INNER JOIN tools t ON p.tool_id = t.id
-         WHERE p.role = $1 AND t.slug = 'hr-documents' AND p.permission_level = 'upload'`,
-        [req.user.role]
+         WHERE p.role = ANY($1::text[]) AND t.slug = 'hr-documents' AND p.permission_level = 'upload'`,
+        [req.user.roles]
       );
       return r.rows.length > 0;
     })();
@@ -428,9 +466,13 @@ app.get('/api/hr-documents', authenticateToken, checkHRView, async (req, res) =>
         `SELECT d.id, d.name, d.filename, d.mimetype, d.size, d.uploaded_by_name, d.uploaded_at,
                 COALESCE(array_agg(dr.role) FILTER (WHERE dr.role IS NOT NULL), '{}') AS roles
          FROM hr_documents d
-         INNER JOIN hr_document_roles dr ON dr.document_id = d.id AND dr.role = $1
+         LEFT JOIN hr_document_roles dr ON dr.document_id = d.id
+         WHERE EXISTS (
+           SELECT 1 FROM hr_document_roles dr2
+           WHERE dr2.document_id = d.id AND dr2.role = ANY($1::text[])
+         )
          GROUP BY d.id ORDER BY d.sort_order ASC NULLS LAST, d.uploaded_at DESC`,
-        [req.user.role]
+        [req.user.roles]
       );
     }
     res.json(result.rows);
@@ -695,7 +737,7 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
 
 // Delete a submission (admin only)
 app.delete('/api/production/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Forbidden' });
   try {
     const photos = await pool.query('SELECT filename FROM production_photos WHERE submission_id = $1', [req.params.id]);
     const filenames = photos.rows.map(p => p.filename);
@@ -717,8 +759,8 @@ const sopUpload = multer({ storage: memoryStorage });
 function checkSOPPermission(req, res, next) {
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'sops' AND p.permission_level = 'upload'`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'sops' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
@@ -726,10 +768,10 @@ function checkSOPPermission(req, res, next) {
 // List SOPs (role-filtered for viewers, all for uploaders)
 app.get('/api/sop-documents', authenticateToken, async (req, res) => {
   try {
-    const isPrivileged = req.user.role === 'admin' || await pool.query(
+    const isPrivileged = req.user.roles.includes('admin') || await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'sops' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'sops' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     ).then(r => r.rows.length > 0);
 
     const docs = await pool.query('SELECT * FROM sop_documents ORDER BY sort_order ASC, uploaded_at ASC');
@@ -743,7 +785,7 @@ app.get('/api/sop-documents', authenticateToken, async (req, res) => {
 
     let result = docs.rows.map(d => ({ ...d, roles: roleMap[d.id] || [] }));
     if (!isPrivileged) {
-      result = result.filter(d => d.roles.includes(req.user.role));
+      result = result.filter(d => d.roles.some(r => req.user.roles.includes(r)));
     }
     res.json(result);
   } catch (err) {
@@ -886,21 +928,21 @@ app.delete('/api/sop-documents/:id', authenticateToken, checkSOPPermission, asyn
 // ── Checklists ─────────────────────────────────────────────────────────────────
 
 function checkChecklistView(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level IN ('view','upload')`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'checklists' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
 function checkChecklistManage(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
@@ -975,10 +1017,10 @@ async function autoArchiveChecklists() {
 app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, res) => {
   try {
     autoArchiveChecklists(); // background, no await
-    const isPrivileged = req.user.role === 'admin' || await pool.query(
+    const isPrivileged = req.user.roles.includes('admin') || await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'checklists' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     ).then(r => r.rows.length > 0);
 
     const cls   = await pool.query('SELECT * FROM checklists ORDER BY sort_order ASC, created_at ASC');
@@ -1007,7 +1049,7 @@ app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, re
       items: itemMap[c.id] || [],
       today_checked_count: todayCountMap[c.id] || 0,
     }));
-    if (!isPrivileged) result = result.filter(c => c.roles.includes(req.user.role));
+    if (!isPrivileged) result = result.filter(c => c.roles.some(r => req.user.roles.includes(r)));
     res.json(result);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
@@ -1150,13 +1192,13 @@ app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async
 
 // ── Packaging Log ─────────────────────────────────────────────────────────────
 const checkPackagingView = (req, res, next) =>
-  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=$1 AND t.slug='packaging-log' AND p.permission_level IN ('view','upload')`, [req.user.role])
-    .then(r => (r.rows.length || req.user.role === 'admin') ? next() : res.status(403).json({ message: 'Forbidden' }))
+  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=ANY($1::text[]) AND t.slug='packaging-log' AND p.permission_level IN ('view','upload')`, [req.user.roles])
+    .then(r => (r.rows.length || req.user.roles.includes('admin')) ? next() : res.status(403).json({ message: 'Forbidden' }))
     .catch(() => res.status(500).json({ message: 'Server error' }));
 
 const checkPackagingManage = (req, res, next) =>
-  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=$1 AND t.slug='packaging-log' AND p.permission_level='upload'`, [req.user.role])
-    .then(r => (r.rows.length || req.user.role === 'admin') ? next() : res.status(403).json({ message: 'Forbidden' }))
+  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=ANY($1::text[]) AND t.slug='packaging-log' AND p.permission_level='upload'`, [req.user.roles])
+    .then(r => (r.rows.length || req.user.roles.includes('admin')) ? next() : res.status(403).json({ message: 'Forbidden' }))
     .catch(() => res.status(500).json({ message: 'Server error' }));
 
 // Must be before /:id
@@ -1230,12 +1272,12 @@ const mailer = nodemailer.createTransport({
 });
 
 const checkLabelManage = async (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   try {
     const r = await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'label-inventory' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'label-inventory' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     );
     if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
     next();
@@ -1543,7 +1585,7 @@ app.get('/api/taproom-beers', authenticateToken, async (req, res) => {
 
 // POST add beer manually
 app.post('/api/taproom-beers', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   const { name, locations = [] } = req.body;
   try {
     const result = await pool.query(
@@ -1565,7 +1607,7 @@ app.post('/api/taproom-beers', authenticateToken, async (req, res) => {
 
 // PATCH update beer name
 app.patch('/api/taproom-beers/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   const { name } = req.body;
   try {
     const result = await pool.query(
@@ -1580,7 +1622,7 @@ app.patch('/api/taproom-beers/:id', authenticateToken, async (req, res) => {
 
 // DELETE beer
 app.delete('/api/taproom-beers/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   try {
     await pool.query('DELETE FROM taproom_beers WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -1591,7 +1633,7 @@ app.delete('/api/taproom-beers/:id', authenticateToken, async (req, res) => {
 
 // PUT toggle a beer's presence at a location
 app.put('/api/taproom-beer-locations', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   const { beer_id, location, active } = req.body;
   try {
     if (active) {
@@ -1613,7 +1655,7 @@ app.put('/api/taproom-beer-locations', authenticateToken, async (req, res) => {
 
 // POST import from per-location tabs — creates beers, location associations, and baseline sessions
 app.post('/api/taproom-beers/import-sheet', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   try {
     let beersAdded = 0, locationsAdded = 0, sessionsCreated = 0;
     const snapshotDates = {};
@@ -1695,7 +1737,7 @@ app.get('/api/taproom-settings', authenticateToken, async (req, res) => {
 
 // PUT update discrepancy thresholds (admin only)
 app.put('/api/taproom-settings', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   const { four_pack_threshold, sixth_bbl_threshold, half_bbl_threshold } = req.body;
   try {
     const result = await pool.query(
@@ -1804,7 +1846,7 @@ app.post('/api/taproom-inventory', authenticateToken, async (req, res) => {
 
 // DELETE inventory session (admin only)
 app.delete('/api/taproom-inventory/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   try {
     await pool.query('DELETE FROM taproom_inventory_sessions WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -2099,7 +2141,7 @@ app.get('/api/taproom-deliveries', authenticateToken, async (req, res) => {
 
 // DELETE delivery (admin only)
 app.delete('/api/taproom-deliveries/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin only' });
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Admin only' });
   try {
     await pool.query('DELETE FROM taproom_deliveries WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -2201,11 +2243,11 @@ app.post('/api/inspections/:id/ratings', authenticateToken, async (req, res) => 
 const recipePhotoUpload = multer({ storage: memoryStorage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 function checkRecipesManage(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'recipes' AND p.permission_level = 'upload'`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'recipes' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
@@ -2339,21 +2381,21 @@ app.delete('/api/recipes/:id', authenticateToken, checkRecipesManage, async (req
 // ── Cocktail Keeper ──────────────────────────────────────────────────────────
 
 function checkCocktailsView(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level IN ('view','upload')`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'cocktail-keeper' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
 function checkCocktailsManage(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
@@ -2491,10 +2533,10 @@ app.patch('/api/cocktails/reorder', authenticateToken, checkCocktailsManage, asy
 app.post('/api/cocktails', authenticateToken, checkCocktailsView, cocktailPhotoUpload.single('photo'), async (req, res) => {
   try {
     // Determine if user has manage permission; view-only users get WIP + attribution
-    const manageCheck = req.user.role === 'admin' ? { rows: [1] } : await pool.query(
+    const manageCheck = req.user.roles.includes('admin') ? { rows: [1] } : await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     );
     const canManage = manageCheck.rows.length > 0;
 
@@ -2558,10 +2600,10 @@ app.patch('/api/cocktails/:id', authenticateToken, checkCocktailsView, cocktailP
     // Non-managers can only edit cocktails they submitted
     const canManage = await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'cocktail-keeper' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     );
-    const isManager = req.user.role === 'admin' || canManage.rows.length > 0;
+    const isManager = req.user.roles.includes('admin') || canManage.rows.length > 0;
     if (!isManager && existing.rows[0].suggested_by_id !== req.user.id) {
       return res.status(403).json({ message: 'You can only edit cocktails you submitted.' });
     }
@@ -2833,12 +2875,12 @@ app.delete('/api/cocktails/submissions/:id', authenticateToken, checkCocktailsMa
 
 
 const checkCRMView = async (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   try {
     const r = await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'sales-crm' AND p.permission_level = 'view'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'sales-crm' AND p.permission_level = 'view'`,
+      [req.user.roles]
     );
     if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
     next();
@@ -2846,12 +2888,12 @@ const checkCRMView = async (req, res, next) => {
 };
 
 const checkCRMManage = async (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   try {
     const r = await pool.query(
       `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-       WHERE p.role = $1 AND t.slug = 'sales-crm' AND p.permission_level = 'upload'`,
-      [req.user.role]
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'sales-crm' AND p.permission_level = 'upload'`,
+      [req.user.roles]
     );
     if (r.rows.length === 0) return res.status(403).json({ message: 'Permission denied' });
     next();
@@ -3346,19 +3388,19 @@ app.delete('/api/crm/accounts/:id/activities/:actId', authenticateToken, checkCR
 // ── Production Schedule ──────────────────────────────────────────────────────
 
 const checkProdView = (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
-    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = $1 AND t.slug = 'production-schedule' AND p.permission_level IN ('view','upload')`,
-    [req.user.role]
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = ANY($1::text[]) AND t.slug = 'production-schedule' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'No access' }))
   .catch(() => res.status(500).json({ message: 'Server error' }));
 };
 
 const checkProdManage = (req, res, next) => {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
-    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = $1 AND t.slug = 'production-schedule' AND p.permission_level = 'upload'`,
-    [req.user.role]
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id WHERE p.role = ANY($1::text[]) AND t.slug = 'production-schedule' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'No manage access' }))
   .catch(() => res.status(500).json({ message: 'Server error' }));
 };
@@ -3789,21 +3831,21 @@ app.patch('/api/production-schedule/task-types/:key', authenticateToken, checkPr
 
 // ==================== 86ed Customers ====================
 function check86edView(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = '86ed-customers' AND p.permission_level IN ('view','upload')`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = '86ed-customers' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
 function check86edManage(req, res, next) {
-  if (req.user.role === 'admin') return next();
+  if (req.user.roles.includes('admin')) return next();
   pool.query(
     `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
-     WHERE p.role = $1 AND t.slug = '86ed-customers' AND p.permission_level = 'upload'`,
-    [req.user.role]
+     WHERE p.role = ANY($1::text[]) AND t.slug = '86ed-customers' AND p.permission_level = 'upload'`,
+    [req.user.roles]
   ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }

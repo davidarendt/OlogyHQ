@@ -21,21 +21,29 @@ const labelCls = 'block text-gray-400 text-sm mb-1.5';
 
 // ── Edit Modal ────────────────────────────────────────────────────────────────
 function EditUserModal({ u, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: u.name, email: u.email, role: u.role });
+  const [form, setForm] = useState({ name: u.name, email: u.email });
+  const [selectedRoles, setSelectedRoles] = useState(u.roles || [u.role]);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  const toggleRole = (roleValue) => {
+    setSelectedRoles(prev =>
+      prev.includes(roleValue) ? prev.filter(r => r !== roleValue) : [...prev, roleValue]
+    );
+  };
+
   const handleSave = async () => {
     if (!form.name.trim())  { setError('Name is required.'); return; }
     if (!form.email.trim()) { setError('Email is required.'); return; }
+    if (selectedRoles.length === 0) { setError('At least one role is required.'); return; }
     setSaving(true); setError('');
     try {
       const res = await fetch(`${API}/api/users/${u.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: form.name.trim(), email: form.email.trim(), role: form.role }),
+        body: JSON.stringify({ name: form.name.trim(), email: form.email.trim(), roles: selectedRoles }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || 'Save failed.'); setSaving(false); return; }
@@ -68,10 +76,24 @@ function EditUserModal({ u, onClose, onSaved }) {
           <input type="email" className={inputCls} value={form.email} onChange={set('email')} />
         </div>
         <div>
-          <label className={labelCls}>Role</label>
-          <select className={inputCls} value={form.role} onChange={set('role')}>
-            {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
+          <label className={labelCls}>Roles</label>
+          <div className="flex flex-wrap gap-2">
+            {ROLES.map(r => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => toggleRole(r.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                  selectedRoles.includes(r.value)
+                    ? 'text-white border-orange-500'
+                    : 'text-gray-400 border-gray-600 hover:border-gray-500'
+                }`}
+                style={selectedRoles.includes(r.value) ? { backgroundColor: '#F05A28' } : {}}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex gap-3 pt-1">
@@ -94,7 +116,7 @@ function EditUserModal({ u, onClose, onSaved }) {
 function UserManagement({ user, onBack, onNavigate }) {
   const [users, setUsers]         = useState([]);
   const [showAddForm, setShowAdd] = useState(false);
-  const [newUser, setNewUser]     = useState({ name: '', email: '', role: 'bartender' });
+  const [newUser, setNewUser]     = useState({ name: '', email: '', roles: ['bartender'] });
   const [editingUser, setEditing] = useState(null);
   const [resending, setResending] = useState(null);
   const [error, setError]         = useState('');
@@ -123,7 +145,7 @@ function UserManagement({ user, onBack, onNavigate }) {
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
       setSuccess(`Invite sent to ${data.name}!`);
-      setNewUser({ name: '', email: '', role: 'bartender' });
+      setNewUser({ name: '', email: '', roles: ['bartender'] });
       setShowAdd(false);
       fetchUsers();
     } catch { setError('Could not connect to server'); }
@@ -191,7 +213,7 @@ function UserManagement({ user, onBack, onNavigate }) {
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
             <h3 className="text-white font-semibold text-lg mb-1">Invite New User</h3>
             <p className="text-gray-400 text-sm mb-4">They'll receive an email to set their own password.</p>
-            <form onSubmit={handleAddUser} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <form onSubmit={handleAddUser} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Name</label>
                 <input className={inputCls} value={newUser.name}
@@ -202,14 +224,30 @@ function UserManagement({ user, onBack, onNavigate }) {
                 <input type="email" className={inputCls} value={newUser.email}
                   onChange={e => setNewUser({ ...newUser, email: e.target.value })} required />
               </div>
-              <div>
-                <label className={labelCls}>Role</label>
-                <select className={inputCls} value={newUser.role}
-                  onChange={e => setNewUser({ ...newUser, role: e.target.value })}>
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Roles</label>
+                <div className="flex flex-wrap gap-2">
+                  {ROLES.map(r => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setNewUser(u => ({
+                        ...u,
+                        roles: u.roles.includes(r.value) ? u.roles.filter(x => x !== r.value) : [...u.roles, r.value]
+                      }))}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                        newUser.roles.includes(r.value)
+                          ? 'text-white border-orange-500'
+                          : 'text-gray-400 border-gray-600 hover:border-gray-500'
+                      }`}
+                      style={newUser.roles.includes(r.value) ? { backgroundColor: '#F05A28' } : {}}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-2">
                 <button type="submit" className="px-6 py-2.5 rounded-lg font-semibold text-white transition"
                   style={{ backgroundColor: '#F05A28' }}>
                   Send Invite
@@ -283,7 +321,13 @@ function UserManagement({ user, onBack, onNavigate }) {
                   </td>
                   <td className="px-6 py-4 text-gray-400 text-sm hidden sm:table-cell">{u.email}</td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-gray-300">{ROLE_LABEL[u.role] || u.role}</span>
+                    <div className="flex flex-wrap gap-1">
+                      {(u.roles || [u.role]).map(r => (
+                        <span key={r} className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 border border-gray-600">
+                          {ROLE_LABEL[r] || r}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3 justify-end">
