@@ -1195,16 +1195,32 @@ app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async
 const PACKAGING_SHEET_ID = '1t_jz1Jr0x9hEmsekmGifotuS4lroqS1bARzTZ7hudQs';
 const PACKAGING_TAB      = 'Schedule / Distro';
 
-function getPackagingSheetsClient() {
-  const { google } = require('googleapis');
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    },
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+// Get a short-lived Google OAuth access token using the service account JWT flow.
+// Uses jsonwebtoken (already a dependency) — no googleapis package needed.
+async function getGoogleAccessToken() {
+  const privateKey  = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  if (!privateKey || !clientEmail) throw new Error('Google service account credentials not configured');
+
+  const now = Math.floor(Date.now() / 1000);
+  const jwtToken = jwt.sign(
+    { iss: clientEmail, scope: 'https://www.googleapis.com/auth/spreadsheets',
+      aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now },
+    privateKey,
+    { algorithm: 'RS256' }
+  );
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwtToken,
+    }),
   });
-  return google.sheets({ version: 'v4', auth });
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+  return data.access_token;
 }
 
 // Google Sheets serial date (days since Dec 30 1899) → 'YYYY-MM-DD'
@@ -1217,25 +1233,29 @@ function sheetSerialToYMD(serial) {
 // Write packaging numbers (and actual date) back to the sheet row
 async function writePackagingRow(rowIndex, actualDate, halfBbl, sixthBbl, cases) {
   if (!rowIndex) return;
-  const sheets = getPackagingSheetsClient();
+  const token = await getGoogleAccessToken();
   const [y, m, d] = actualDate.split('-');
   const dateStr = `${parseInt(m)}/${parseInt(d)}/${y}`;
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: PACKAGING_SHEET_ID,
-    range: `'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[dateStr, halfBbl || 0, sixthBbl || 0, cases || 0]] },
-  });
+  const range = encodeURIComponent(`'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`);
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${PACKAGING_SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[dateStr, halfBbl || 0, sixthBbl || 0, cases || 0]] }),
+    }
+  );
 }
 
-// Clear packaging numbers from the sheet row (on delete or zero-out)
+// Clear packaging numbers from the sheet row (on delete)
 async function clearPackagingRow(rowIndex) {
   if (!rowIndex) return;
-  const sheets = getPackagingSheetsClient();
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId: PACKAGING_SHEET_ID,
-    range: `'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`,
-  });
+  const token = await getGoogleAccessToken();
+  const range = encodeURIComponent(`'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`);
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${PACKAGING_SHEET_ID}/values/${range}:clear`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+  );
 }
 
 const checkPackagingView = (req, res, next) =>
@@ -1251,14 +1271,14 @@ const checkPackagingManage = (req, res, next) =>
 // Read upcoming beers from the sheet — must be before /:id
 app.get('/api/packaging-log/sheet-beers', authenticateToken, checkPackagingView, async (req, res) => {
   try {
-    const sheets = getPackagingSheetsClient();
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: PACKAGING_SHEET_ID,
-      range: `'${PACKAGING_TAB}'!A:AC`,
-      valueRenderOption: 'UNFORMATTED_VALUE',
-    });
-
-    const rows = response.data.values || [];
+    const token = await getGoogleAccessToken();
+    const range = encodeURIComponent(`'${PACKAGING_TAB}'!A:AC`);
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${PACKAGING_SHEET_ID}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const json = await response.json();
+    const rows = json.values || [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
