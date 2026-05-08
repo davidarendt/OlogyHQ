@@ -255,8 +255,10 @@ export default function PackagingLog({ user, canUpload, onBack }) {
 
   const handleDelete = async (id, name) => {
     if (!window.confirm(`Delete packaging run for ${name}? This will also clear the numbers in the schedule sheet.`)) return;
-    await fetch(`${API}/api/packaging-log/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await fetch(`${API}/api/packaging-log/${id}`, { method: 'DELETE', credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
     setEntries(p => p.filter(e => e.id !== id));
+    if (data._sheetError) alert(`Deleted from log, but sheet clear failed: ${data._sheetError}`);
   };
 
   const q = search.trim().toLowerCase();

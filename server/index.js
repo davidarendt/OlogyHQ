@@ -1395,10 +1395,15 @@ app.delete('/api/packaging-log/:id', authenticateToken, checkPackagingManage, as
 
     await pool.query('DELETE FROM packaging_logs WHERE id=$1', [req.params.id]);
 
-    clearPackagingRow(rowIndex)
-      .catch(err => console.error('Sheet clear error (delete):', err));
+    let sheetError = null;
+    try {
+      await clearPackagingRow(rowIndex);
+    } catch (e) {
+      sheetError = e.message;
+      console.error('Sheet clear error (delete):', e.message);
+    }
 
-    res.json({ ok: true });
+    res.json({ ok: true, _sheetError: sheetError || undefined });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
