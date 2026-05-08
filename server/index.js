@@ -1148,6 +1148,79 @@ app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Packaging Log ─────────────────────────────────────────────────────────────
+const checkPackagingView = (req, res, next) =>
+  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=$1 AND t.slug='packaging-log' AND p.permission_level IN ('view','upload')`, [req.user.role])
+    .then(r => (r.rows.length || req.user.role === 'admin') ? next() : res.status(403).json({ message: 'Forbidden' }))
+    .catch(() => res.status(500).json({ message: 'Server error' }));
+
+const checkPackagingManage = (req, res, next) =>
+  pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=$1 AND t.slug='packaging-log' AND p.permission_level='upload'`, [req.user.role])
+    .then(r => (r.rows.length || req.user.role === 'admin') ? next() : res.status(403).json({ message: 'Forbidden' }))
+    .catch(() => res.status(500).json({ message: 'Server error' }));
+
+// Must be before /:id
+app.get('/api/packaging-log/beers', authenticateToken, checkPackagingView, async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT id, name FROM prod_beers WHERE status='active' ORDER BY name`);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/packaging-log', authenticateToken, checkPackagingView, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM packaging_logs ORDER BY package_date DESC, created_at DESC LIMIT 500`
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/packaging-log', authenticateToken, checkPackagingManage, async (req, res) => {
+  try {
+    const { beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
+            cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes } = req.body;
+    if (!beer_name?.trim()) return res.status(400).json({ message: 'Beer is required' });
+    if (!package_date)      return res.status(400).json({ message: 'Date is required' });
+    const r = await pool.query(
+      `INSERT INTO packaging_logs
+         (beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
+          cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes, submitted_by_id, submitted_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [beer_id || null, beer_name.trim(), package_date,
+       half_bbl || 0, quarter_bbl || 0, sixth_bbl || 0,
+       cans_16oz_4pk || 0, cans_12oz_6pk || 0, cans_12oz_4pk || 0,
+       notes || null, req.user.id, req.user.name]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/packaging-log/:id', authenticateToken, checkPackagingManage, async (req, res) => {
+  try {
+    const { beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
+            cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes } = req.body;
+    const r = await pool.query(
+      `UPDATE packaging_logs SET
+         beer_id=$1, beer_name=$2, package_date=$3, half_bbl=$4, quarter_bbl=$5, sixth_bbl=$6,
+         cans_16oz_4pk=$7, cans_12oz_6pk=$8, cans_12oz_4pk=$9, notes=$10
+       WHERE id=$11 RETURNING *`,
+      [beer_id || null, beer_name.trim(), package_date,
+       half_bbl || 0, quarter_bbl || 0, sixth_bbl || 0,
+       cans_16oz_4pk || 0, cans_12oz_6pk || 0, cans_12oz_4pk || 0,
+       notes || null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/packaging-log/:id', authenticateToken, checkPackagingManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM packaging_logs WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 // ── Label Inventory ───────────────────────────────────────────────────────────
 const mailer = nodemailer.createTransport({
   host: 'smtp.gmail.com',

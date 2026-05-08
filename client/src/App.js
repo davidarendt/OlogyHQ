@@ -16,6 +16,7 @@ import CocktailKeeper from './pages/CocktailKeeper';
 import SalesCRM from './pages/SalesCRM';
 import ProductionSchedule from './pages/ProductionSchedule';
 import EightySixedCustomers from './pages/EightySixedCustomers';
+import PackagingLog from './pages/PackagingLog';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -86,6 +87,7 @@ function App() {
   if (page === 'sales-crm') return <SalesCRM user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'production-schedule') return <ProductionSchedule user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === '86ed-customers') return <EightySixedCustomers user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'packaging-log') return <PackagingLog user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }
