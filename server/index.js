@@ -1232,12 +1232,12 @@ function sheetSerialToYMD(serial) {
 
 // Write packaging numbers (and actual date) back to the sheet row
 async function writePackagingRow(rowIndex, actualDate, halfBbl, sixthBbl, cases) {
-  if (!rowIndex) return;
+  if (!rowIndex) return { skipped: true };
   const token = await getGoogleAccessToken();
   const [y, m, d] = actualDate.split('-');
   const dateStr = `${parseInt(m)}/${parseInt(d)}/${y}`;
   const range = encodeURIComponent(`'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`);
-  await fetch(
+  const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${PACKAGING_SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
@@ -1245,6 +1245,9 @@ async function writePackagingRow(rowIndex, actualDate, halfBbl, sixthBbl, cases)
       body: JSON.stringify({ values: [[dateStr, halfBbl || 0, sixthBbl || 0, cases || 0]] }),
     }
   );
+  const body = await res.json();
+  if (!res.ok) throw new Error(`Sheets API ${res.status}: ${JSON.stringify(body)}`);
+  return body;
 }
 
 // Clear packaging numbers from the sheet row (on delete)
@@ -1252,10 +1255,12 @@ async function clearPackagingRow(rowIndex) {
   if (!rowIndex) return;
   const token = await getGoogleAccessToken();
   const range = encodeURIComponent(`'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`);
-  await fetch(
+  const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${PACKAGING_SHEET_ID}/values/${range}:clear`,
     { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
   );
+  const body = await res.json();
+  if (!res.ok) throw new Error(`Sheets API ${res.status}: ${JSON.stringify(body)}`);
 }
 
 const checkPackagingView = (req, res, next) =>
@@ -1338,11 +1343,17 @@ app.post('/api/packaging-log', authenticateToken, checkPackagingManage, async (r
        req.user.id, req.user.name]
     );
 
-    // Write back to sheet in the background — don't fail the save if sheet write fails
-    writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0)
-      .catch(err => console.error('Sheet write error (post):', err));
+    let sheetError = null;
+    try {
+      await writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0);
+    } catch (e) {
+      sheetError = e.message;
+      console.error('Sheet write error (post):', e.message);
+    }
 
-    res.json(r.rows[0]);
+    const row = r.rows[0];
+    if (sheetError) row._sheetError = sheetError;
+    res.json(row);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
@@ -1350,7 +1361,6 @@ app.patch('/api/packaging-log/:id', authenticateToken, checkPackagingManage, asy
   try {
     const { beer_name, package_date, half_bbl, sixth_bbl, cases, notes } = req.body;
 
-    // Fetch existing to get sheet_row_index
     const existing = await pool.query('SELECT sheet_row_index FROM packaging_logs WHERE id=$1', [req.params.id]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
     const { sheet_row_index } = existing.rows[0];
@@ -1364,10 +1374,17 @@ app.patch('/api/packaging-log/:id', authenticateToken, checkPackagingManage, asy
        notes || null, req.params.id]
     );
 
-    writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0)
-      .catch(err => console.error('Sheet write error (patch):', err));
+    let sheetError = null;
+    try {
+      await writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0);
+    } catch (e) {
+      sheetError = e.message;
+      console.error('Sheet write error (patch):', e.message);
+    }
 
-    res.json(r.rows[0]);
+    const row = r.rows[0];
+    if (sheetError) row._sheetError = sheetError;
+    res.json(row);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 

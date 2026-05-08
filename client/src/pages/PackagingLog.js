@@ -96,9 +96,13 @@ function EntryModal({ entry, onClose, onSaved }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      setError(d.message || 'Save failed.'); setSaving(false); return;
+      setError(data.message || 'Save failed.'); setSaving(false); return;
+    }
+    if (data._sheetError) {
+      setError(`Saved to log, but sheet write failed: ${data._sheetError}`);
+      setSaving(false); return;
     }
     onSaved(); onClose();
   };
