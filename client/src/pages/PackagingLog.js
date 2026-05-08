@@ -111,7 +111,7 @@ function EntryModal({ entry, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
       <div className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-lg flex flex-col max-h-[90vh]">
         <div className="px-6 pt-6 pb-2 flex-shrink-0 flex items-center justify-between">
-          <h3 className="text-white font-semibold text-lg">{isEdit ? 'Edit Entry' : 'Log Packaging Run'}</h3>
+          <h3 className="text-white font-semibold text-lg">{isEdit ? 'Edit Entry' : 'Log Packaging'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
         </div>
 
@@ -198,7 +198,7 @@ function EntryModal({ entry, onClose, onSaved }) {
 
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Cans</span>
+              <span className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Cases</span>
               {cases > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
                   {cases} cases
@@ -229,7 +229,7 @@ function EntryModal({ entry, onClose, onSaved }) {
           <button onClick={handleSave} disabled={saving}
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition disabled:opacity-50"
             style={{ backgroundColor: '#F05A28' }}>
-            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Log Run'}
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Log'}
           </button>
         </div>
       </div>
