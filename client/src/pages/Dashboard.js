@@ -15,7 +15,7 @@ const TOOL_META = {
   'sales-crm':           { icon: '📊', description: 'Manage distributor and account relationships',         page: 'sales-crm' },
   'production-schedule': { icon: '🗓️', description: 'Brewery production planning and task tracking',        page: 'production-schedule' },
   '86ed-customers':      { icon: '🚫', description: 'Track customers removed from our locations',           page: '86ed-customers' },
-  'packaging-log':       { icon: '📦', description: 'Log kegs and cases packaged from each beer',            page: 'packaging-log' },
+  'packaging-log':       { image: '/icons/canning-line.svg', description: 'Log kegs and cases packaged from each beer', page: 'packaging-log' },
   'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'usermanagement' },
 };
 
