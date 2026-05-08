@@ -7,16 +7,6 @@ function fmtDate(iso) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function kegSummary(row) {
-  const parts = [];
-  if (row.half_bbl  > 0) parts.push(`${row.half_bbl} × ½`);
-  if (row.sixth_bbl > 0) parts.push(`${row.sixth_bbl} × ⅙`);
-  return parts.length ? parts.join(', ') : '—';
-}
-
-function totalKegs(row) {
-  return (row.half_bbl || 0) + (row.sixth_bbl || 0);
-}
 
 // ── Stepper ───────────────────────────────────────────────────────────────────
 function Stepper({ value, onChange }) {
