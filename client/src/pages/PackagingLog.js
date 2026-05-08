@@ -284,7 +284,7 @@ export default function PackagingLog({ user, canUpload, onBack }) {
             <button onClick={() => setEditing('new')}
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition"
               style={{ backgroundColor: '#F05A28' }}>
-              + Log Run
+              + Add Packaging
             </button>
           )}
         </div>
@@ -309,7 +309,7 @@ export default function PackagingLog({ user, canUpload, onBack }) {
               {filtered.length === 0 ? (
                 <div className="py-20 text-center text-gray-500 text-sm">
                   {entries.length === 0
-                    ? canUpload ? 'No runs logged yet. Use "+ Log Run" to get started.' : 'No runs logged yet.'
+                    ? canUpload ? 'No runs logged yet. Use "+ Add Packaging" to get started.' : 'No runs logged yet.'
                     : 'No runs match your search.'}
                 </div>
               ) : (
