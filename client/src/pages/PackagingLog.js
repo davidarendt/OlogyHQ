@@ -2,22 +2,6 @@ import { useState, useEffect } from 'react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
-const KEGS = [
-  { key: 'half_bbl',    label: '½ bbl',  sub: '(15.5 gal)' },
-  { key: 'quarter_bbl', label: '¼ bbl',  sub: '(7.75 gal)' },
-  { key: 'sixth_bbl',   label: '⅙ bbl',  sub: '(5.16 gal)' },
-];
-
-const CANS = [
-  { key: 'cans_16oz_4pk', label: '16oz 4-pack' },
-  { key: 'cans_12oz_6pk', label: '12oz 6-pack' },
-  { key: 'cans_12oz_4pk', label: '12oz 4-pack' },
-];
-
-function today() {
-  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-}
-
 function fmtDate(iso) {
   if (!iso) return '';
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -25,26 +9,13 @@ function fmtDate(iso) {
 
 function kegSummary(row) {
   const parts = [];
-  if (row.half_bbl    > 0) parts.push(`${row.half_bbl} × ½`);
-  if (row.quarter_bbl > 0) parts.push(`${row.quarter_bbl} × ¼`);
-  if (row.sixth_bbl   > 0) parts.push(`${row.sixth_bbl} × ⅙`);
-  return parts.length ? parts.join(', ') : '—';
-}
-
-function canSummary(row) {
-  const parts = [];
-  if (row.cans_16oz_4pk > 0) parts.push(`${row.cans_16oz_4pk} × 16oz 4pk`);
-  if (row.cans_12oz_6pk > 0) parts.push(`${row.cans_12oz_6pk} × 12oz 6pk`);
-  if (row.cans_12oz_4pk > 0) parts.push(`${row.cans_12oz_4pk} × 12oz 4pk`);
+  if (row.half_bbl  > 0) parts.push(`${row.half_bbl} × ½`);
+  if (row.sixth_bbl > 0) parts.push(`${row.sixth_bbl} × ⅙`);
   return parts.length ? parts.join(', ') : '—';
 }
 
 function totalKegs(row) {
-  return (row.half_bbl || 0) + (row.quarter_bbl || 0) + (row.sixth_bbl || 0);
-}
-
-function totalCans(row) {
-  return (row.cans_16oz_4pk || 0) + (row.cans_12oz_6pk || 0) + (row.cans_12oz_4pk || 0);
+  return (row.half_bbl || 0) + (row.sixth_bbl || 0);
 }
 
 // ── Stepper ───────────────────────────────────────────────────────────────────
@@ -65,40 +36,61 @@ function Stepper({ value, onChange }) {
 }
 
 // ── Entry Modal ───────────────────────────────────────────────────────────────
-function EntryModal({ entry, beers, onClose, onSaved }) {
+function EntryModal({ entry, onClose, onSaved }) {
   const isEdit = !!entry;
-  const [beerId, setBeerId]   = useState(entry?.beer_id || '');
-  const [beerName, setBeerName] = useState(entry?.beer_name || '');
-  const [date, setDate]       = useState(entry?.package_date || today());
-  const [counts, setCounts]   = useState({
-    half_bbl:     entry?.half_bbl     || 0,
-    quarter_bbl:  entry?.quarter_bbl  || 0,
-    sixth_bbl:    entry?.sixth_bbl    || 0,
-    cans_16oz_4pk: entry?.cans_16oz_4pk || 0,
-    cans_12oz_6pk: entry?.cans_12oz_6pk || 0,
-    cans_12oz_4pk: entry?.cans_12oz_4pk || 0,
-  });
-  const [notes, setNotes]   = useState(entry?.notes || '');
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
 
-  const set = key => val => setCounts(p => ({ ...p, [key]: val }));
+  // For new entries, sheetBeers drives the dropdown
+  const [sheetBeers, setSheetBeers]   = useState([]);
+  const [loadingBeers, setLoadingBeers] = useState(!isEdit);
+  const [beerError, setBeerError]     = useState('');
 
-  const handleBeerSelect = e => {
-    const id = e.target.value;
-    setBeerId(id);
-    const beer = beers.find(b => String(b.id) === id);
-    setBeerName(beer ? beer.name : '');
+  // Selected row index from sheet (null when editing — locked to existing)
+  const [selectedRow, setSelectedRow] = useState(null);
+
+  const [beerName, setBeerName]   = useState(entry?.beer_name || '');
+  const [date, setDate]           = useState(entry?.package_date || '');
+  const [halfBbl, setHalfBbl]     = useState(entry?.half_bbl  || 0);
+  const [sixthBbl, setSixthBbl]   = useState(entry?.sixth_bbl || 0);
+  const [cases, setCases]         = useState(entry?.cases     || 0);
+  const [notes, setNotes]         = useState(entry?.notes     || '');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+
+  useEffect(() => {
+    if (isEdit) return;
+    fetch(`${API}/api/packaging-log/sheet-beers`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setSheetBeers(data);
+        else setBeerError('Could not load schedule from sheet.');
+      })
+      .catch(() => setBeerError('Could not load schedule from sheet.'))
+      .finally(() => setLoadingBeers(false));
+  }, [isEdit]);
+
+  const handleBeerSelect = (e) => {
+    const rowIndex = parseInt(e.target.value);
+    if (!rowIndex) { setSelectedRow(null); setBeerName(''); setDate(''); return; }
+    const beer = sheetBeers.find(b => b.rowIndex === rowIndex);
+    if (!beer) return;
+    setSelectedRow(rowIndex);
+    setBeerName(beer.beerName);
+    setDate(beer.plannedDate);
   };
 
   const handleSave = async () => {
-    if (!beerId) { setError('Select a beer.'); return; }
-    const total = Object.values(counts).reduce((s, v) => s + v, 0);
-    if (total === 0) { setError('Enter at least one keg or case count.'); return; }
+    if (!beerName.trim()) { setError('Select a beer.'); return; }
+    if (!date)            { setError('Date is required.'); return; }
+    if (halfBbl + sixthBbl + cases === 0) { setError('Enter at least one count.'); return; }
     setSaving(true); setError('');
-    const body = { beer_id: beerId, beer_name: beerName, package_date: date, ...counts, notes: notes.trim() || null };
+
+    const body = isEdit
+      ? { beer_name: beerName, package_date: date, half_bbl: halfBbl, sixth_bbl: sixthBbl, cases, notes: notes.trim() || null }
+      : { beer_name: beerName, package_date: date, half_bbl: halfBbl, sixth_bbl: sixthBbl, cases, notes: notes.trim() || null, sheet_row_index: selectedRow };
+
     const url    = isEdit ? `${API}/api/packaging-log/${entry.id}` : `${API}/api/packaging-log`;
     const method = isEdit ? 'PATCH' : 'POST';
+
     const res = await fetch(url, {
       method, credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -110,9 +102,6 @@ function EntryModal({ entry, beers, onClose, onSaved }) {
     }
     onSaved(); onClose();
   };
-
-  const hasKegs = KEGS.some(k => counts[k.key] > 0);
-  const hasCans = CANS.some(c => counts[c.key] > 0);
 
   return (
     <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
@@ -127,64 +116,94 @@ function EntryModal({ entry, beers, onClose, onSaved }) {
             <div className="px-3 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-sm">{error}</div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Beer selector (new) or locked name (edit) */}
+          {isEdit ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-gray-400 text-sm mb-1.5">Beer</label>
+                <div className="w-full bg-gray-700/50 text-white px-3 py-2.5 rounded-lg text-sm border border-gray-600">
+                  {beerName}
+                </div>
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1.5">Date</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+            </div>
+          ) : loadingBeers ? (
+            <div className="text-gray-500 text-sm">Loading schedule…</div>
+          ) : beerError ? (
+            <div className="px-3 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-sm">{beerError}</div>
+          ) : (
             <div>
               <label className="block text-gray-400 text-sm mb-1.5">Beer</label>
-              <select value={beerId} onChange={handleBeerSelect}
-                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-                <option value="">Select beer…</option>
-                {beers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+              {sheetBeers.length === 0 ? (
+                <div className="text-gray-500 text-sm">No beers scheduled within ±10 days without packaging numbers.</div>
+              ) : (
+                <select value={selectedRow || ''} onChange={handleBeerSelect}
+                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  <option value="">Select beer…</option>
+                  {sheetBeers.map(b => (
+                    <option key={b.rowIndex} value={b.rowIndex}>
+                      {b.beerName}{b.tankSize ? ` — ${b.tankSize} bbl` : ''} — {fmtDate(b.plannedDate)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {selectedRow && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">Date:</span>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                    className="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <span className="text-gray-600 text-xs">(adjust if actual date differs)</span>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="block text-gray-400 text-sm mb-1.5">Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            </div>
-          </div>
+          )}
 
-          {/* Kegs */}
+          {/* Counts */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Kegs</span>
-              {hasKegs && (
+              {(halfBbl + sixthBbl) > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
-                  {KEGS.reduce((s, k) => s + counts[k.key], 0)} total
+                  {halfBbl + sixthBbl} total
                 </span>
               )}
             </div>
             <div className="space-y-2">
-              {KEGS.map(k => (
-                <div key={k.key} className="flex items-center justify-between">
-                  <div>
-                    <span className="text-white text-sm font-medium">{k.label}</span>
-                    <span className="text-gray-500 text-xs ml-1.5">{k.sub}</span>
-                  </div>
-                  <Stepper value={counts[k.key]} onChange={set(k.key)} />
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-white text-sm font-medium">½ bbl</span>
+                  <span className="text-gray-500 text-xs ml-1.5">(15.5 gal)</span>
                 </div>
-              ))}
+                <Stepper value={halfBbl} onChange={setHalfBbl} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-white text-sm font-medium">⅙ bbl</span>
+                  <span className="text-gray-500 text-xs ml-1.5">(5.16 gal)</span>
+                </div>
+                <Stepper value={sixthBbl} onChange={setSixthBbl} />
+              </div>
             </div>
           </div>
 
           <div className="border-t border-gray-700" />
 
-          {/* Cans */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-gray-300 text-sm font-semibold uppercase tracking-wide">Cans</span>
-              {hasCans && (
+              {cases > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
-                  {CANS.reduce((s, c) => s + counts[c.key], 0)} total packs
+                  {cases} cases
                 </span>
               )}
             </div>
-            <div className="space-y-2">
-              {CANS.map(c => (
-                <div key={c.key} className="flex items-center justify-between">
-                  <span className="text-white text-sm font-medium">{c.label}</span>
-                  <Stepper value={counts[c.key]} onChange={set(c.key)} />
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <span className="text-white text-sm font-medium">Cases</span>
+              <Stepper value={cases} onChange={setCases} />
             </div>
           </div>
 
@@ -217,26 +236,21 @@ function EntryModal({ entry, beers, onClose, onSaved }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function PackagingLog({ user, canUpload, onBack }) {
   const [entries, setEntries] = useState([]);
-  const [beers, setBeers]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | 'new' | entry object
   const [search, setSearch]   = useState('');
 
   const fetchAll = async () => {
-    const [eRes, bRes] = await Promise.all([
-      fetch(`${API}/api/packaging-log`, { credentials: 'include' }),
-      fetch(`${API}/api/packaging-log/beers`, { credentials: 'include' }),
-    ]);
-    const [eData, bData] = await Promise.all([eRes.json(), bRes.json()]);
-    setEntries(Array.isArray(eData) ? eData : []);
-    setBeers(Array.isArray(bData) ? bData : []);
+    const r = await fetch(`${API}/api/packaging-log`, { credentials: 'include' });
+    const data = await r.json();
+    setEntries(Array.isArray(data) ? data : []);
     setLoading(false);
   };
 
   useEffect(() => { fetchAll(); }, []);
 
-  const handleDelete = async (id, beerName) => {
-    if (!window.confirm(`Delete packaging run for ${beerName}?`)) return;
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Delete packaging run for ${name}? This will also clear the numbers in the schedule sheet.`)) return;
     await fetch(`${API}/api/packaging-log/${id}`, { method: 'DELETE', credentials: 'include' });
     setEntries(p => p.filter(e => e.id !== id));
   };
@@ -260,7 +274,7 @@ export default function PackagingLog({ user, canUpload, onBack }) {
         <div className="flex items-start justify-between mb-8">
           <div>
             <h2 className="text-cream text-4xl font-bold">Packaging Log</h2>
-            <p className="text-gray-400 mt-2">Track kegs and cans packaged from each beer</p>
+            <p className="text-gray-400 mt-2">Track kegs and cases packaged from each beer</p>
           </div>
           {canUpload && (
             <button onClick={() => setEditing('new')}
@@ -301,7 +315,7 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Date</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Beer</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Kegs</th>
-                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Cans</th>
+                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Cases</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4 hidden lg:table-cell">Logged By</th>
                       {canUpload && <th className="px-4 py-4" />}
                     </tr>
@@ -320,12 +334,9 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                           ) : <span className="text-gray-600 text-sm">—</span>}
                         </td>
                         <td className="px-4 py-4">
-                          {totalCans(entry) > 0 ? (
-                            <div>
-                              <span className="text-white text-sm font-semibold">{totalCans(entry)}</span>
-                              <span className="text-gray-500 text-xs ml-1.5">{canSummary(entry)}</span>
-                            </div>
-                          ) : <span className="text-gray-600 text-sm">—</span>}
+                          {entry.cases > 0
+                            ? <span className="text-white text-sm font-semibold">{entry.cases}</span>
+                            : <span className="text-gray-600 text-sm">—</span>}
                         </td>
                         <td className="px-4 py-4 text-gray-400 text-sm hidden lg:table-cell">{entry.submitted_by_name}</td>
                         {canUpload && (
@@ -373,11 +384,10 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                         <p className="text-gray-500 text-xs">{kegSummary(entry)}</p>
                       </div>
                     )}
-                    {totalCans(entry) > 0 && (
+                    {entry.cases > 0 && (
                       <div className="bg-gray-700/50 rounded-lg px-3 py-2">
-                        <p className="text-gray-400 text-xs mb-0.5">Cans</p>
-                        <p className="text-white text-sm font-semibold">{totalCans(entry)}</p>
-                        <p className="text-gray-500 text-xs">{canSummary(entry)}</p>
+                        <p className="text-gray-400 text-xs mb-0.5">Cases</p>
+                        <p className="text-white text-sm font-semibold">{entry.cases}</p>
                       </div>
                     )}
                   </div>
@@ -394,7 +404,6 @@ export default function PackagingLog({ user, canUpload, onBack }) {
       {editing && (
         <EntryModal
           entry={editing === 'new' ? null : editing}
-          beers={beers}
           onClose={() => setEditing(null)}
           onSaved={fetchAll}
         />

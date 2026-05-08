@@ -11,6 +11,7 @@ const nodemailer = require('nodemailer');
 const pdfParse   = require('pdf-parse');
 const { PDFDocument } = require('pdf-lib');
 const { createClient } = require('@supabase/supabase-js');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -1191,6 +1192,52 @@ app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async
 });
 
 // ── Packaging Log ─────────────────────────────────────────────────────────────
+
+const PACKAGING_SHEET_ID = '1t_jz1Jr0x9hEmsekmGifotuS4lroqS1bARzTZ7hudQs';
+const PACKAGING_TAB      = 'Schedule / Distro';
+
+function getPackagingSheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      private_key: (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+// Google Sheets serial date (days since Dec 30 1899) → 'YYYY-MM-DD'
+function sheetSerialToYMD(serial) {
+  if (typeof serial !== 'number') return null;
+  const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+  return d.toISOString().split('T')[0];
+}
+
+// Write packaging numbers (and actual date) back to the sheet row
+async function writePackagingRow(rowIndex, actualDate, halfBbl, sixthBbl, cases) {
+  if (!rowIndex) return;
+  const sheets = getPackagingSheetsClient();
+  const [y, m, d] = actualDate.split('-');
+  const dateStr = `${parseInt(m)}/${parseInt(d)}/${y}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: PACKAGING_SHEET_ID,
+    range: `'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[dateStr, halfBbl || 0, sixthBbl || 0, cases || 0]] },
+  });
+}
+
+// Clear packaging numbers from the sheet row (on delete or zero-out)
+async function clearPackagingRow(rowIndex) {
+  if (!rowIndex) return;
+  const sheets = getPackagingSheetsClient();
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: PACKAGING_SHEET_ID,
+    range: `'${PACKAGING_TAB}'!Z${rowIndex}:AC${rowIndex}`,
+  });
+}
+
 const checkPackagingView = (req, res, next) =>
   pool.query(`SELECT 1 FROM permissions p JOIN tools t ON t.id=p.tool_id WHERE p.role=ANY($1::text[]) AND t.slug='packaging-log' AND p.permission_level IN ('view','upload')`, [req.user.roles])
     .then(r => (r.rows.length || req.user.roles.includes('admin')) ? next() : res.status(403).json({ message: 'Forbidden' }))
@@ -1201,12 +1248,48 @@ const checkPackagingManage = (req, res, next) =>
     .then(r => (r.rows.length || req.user.roles.includes('admin')) ? next() : res.status(403).json({ message: 'Forbidden' }))
     .catch(() => res.status(500).json({ message: 'Server error' }));
 
-// Must be before /:id
-app.get('/api/packaging-log/beers', authenticateToken, checkPackagingView, async (req, res) => {
+// Read upcoming beers from the sheet — must be before /:id
+app.get('/api/packaging-log/sheet-beers', authenticateToken, checkPackagingView, async (req, res) => {
   try {
-    const r = await pool.query(`SELECT id, name FROM prod_beers WHERE status='active' ORDER BY name`);
-    res.json(r.rows);
-  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+    const sheets = getPackagingSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: PACKAGING_SHEET_ID,
+      range: `'${PACKAGING_TAB}'!A:AC`,
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+
+    const rows = response.data.values || [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+
+    const result = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const plannedDateYMD = sheetSerialToYMD(row[3]); // col D
+      if (!plannedDateYMD) continue;
+
+      const plannedDate = new Date(plannedDateYMD + 'T12:00:00');
+      if (Math.abs(plannedDate - today) > TEN_DAYS_MS) continue;
+
+      // Skip rows that already have packaging numbers written
+      if (row[26] || row[27] || row[28]) continue; // AA, AB, AC
+
+      const beerName = row[9]; // col J
+      if (!beerName) continue;
+
+      result.push({
+        rowIndex:    i + 1,                         // 1-based sheet row
+        beerName:    String(beerName).trim(),
+        plannedDate: plannedDateYMD,
+        tankSize:    row[6] != null ? String(row[6]) : null, // col G (yield in bbl)
+      });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('sheet-beers error:', err);
+    res.status(500).json({ message: 'Could not read packaging schedule from sheet' });
+  }
 });
 
 app.get('/api/packaging-log', authenticateToken, checkPackagingView, async (req, res) => {
@@ -1220,45 +1303,64 @@ app.get('/api/packaging-log', authenticateToken, checkPackagingView, async (req,
 
 app.post('/api/packaging-log', authenticateToken, checkPackagingManage, async (req, res) => {
   try {
-    const { beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
-            cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes } = req.body;
+    const { beer_name, package_date, half_bbl, sixth_bbl, cases, notes, sheet_row_index } = req.body;
     if (!beer_name?.trim()) return res.status(400).json({ message: 'Beer is required' });
     if (!package_date)      return res.status(400).json({ message: 'Date is required' });
+
     const r = await pool.query(
       `INSERT INTO packaging_logs
-         (beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
-          cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes, submitted_by_id, submitted_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [beer_id || null, beer_name.trim(), package_date,
-       half_bbl || 0, quarter_bbl || 0, sixth_bbl || 0,
-       cans_16oz_4pk || 0, cans_12oz_6pk || 0, cans_12oz_4pk || 0,
-       notes || null, req.user.id, req.user.name]
+         (beer_name, package_date, half_bbl, sixth_bbl, cases, notes,
+          sheet_row_index, submitted_by_id, submitted_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [beer_name.trim(), package_date,
+       half_bbl || 0, sixth_bbl || 0, cases || 0,
+       notes || null, sheet_row_index || null,
+       req.user.id, req.user.name]
     );
+
+    // Write back to sheet in the background — don't fail the save if sheet write fails
+    writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0)
+      .catch(err => console.error('Sheet write error (post):', err));
+
     res.json(r.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
 app.patch('/api/packaging-log/:id', authenticateToken, checkPackagingManage, async (req, res) => {
   try {
-    const { beer_id, beer_name, package_date, half_bbl, quarter_bbl, sixth_bbl,
-            cans_16oz_4pk, cans_12oz_6pk, cans_12oz_4pk, notes } = req.body;
+    const { beer_name, package_date, half_bbl, sixth_bbl, cases, notes } = req.body;
+
+    // Fetch existing to get sheet_row_index
+    const existing = await pool.query('SELECT sheet_row_index FROM packaging_logs WHERE id=$1', [req.params.id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+    const { sheet_row_index } = existing.rows[0];
+
     const r = await pool.query(
       `UPDATE packaging_logs SET
-         beer_id=$1, beer_name=$2, package_date=$3, half_bbl=$4, quarter_bbl=$5, sixth_bbl=$6,
-         cans_16oz_4pk=$7, cans_12oz_6pk=$8, cans_12oz_4pk=$9, notes=$10
-       WHERE id=$11 RETURNING *`,
-      [beer_id || null, beer_name.trim(), package_date,
-       half_bbl || 0, quarter_bbl || 0, sixth_bbl || 0,
-       cans_16oz_4pk || 0, cans_12oz_6pk || 0, cans_12oz_4pk || 0,
+         beer_name=$1, package_date=$2, half_bbl=$3, sixth_bbl=$4, cases=$5, notes=$6
+       WHERE id=$7 RETURNING *`,
+      [beer_name.trim(), package_date,
+       half_bbl || 0, sixth_bbl || 0, cases || 0,
        notes || null, req.params.id]
     );
+
+    writePackagingRow(sheet_row_index, package_date, half_bbl || 0, sixth_bbl || 0, cases || 0)
+      .catch(err => console.error('Sheet write error (patch):', err));
+
     res.json(r.rows[0]);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.delete('/api/packaging-log/:id', authenticateToken, checkPackagingManage, async (req, res) => {
   try {
+    const existing = await pool.query('SELECT sheet_row_index FROM packaging_logs WHERE id=$1', [req.params.id]);
+    const rowIndex = existing.rows[0]?.sheet_row_index;
+
     await pool.query('DELETE FROM packaging_logs WHERE id=$1', [req.params.id]);
+
+    clearPackagingRow(rowIndex)
+      .catch(err => console.error('Sheet clear error (delete):', err));
+
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });

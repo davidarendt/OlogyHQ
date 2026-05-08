@@ -5,7 +5,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["node-cron"]
+  external_node_modules = ["node-cron", "googleapis"]
 
 [functions."label-reminder"]
   schedule = "0 12 * * *"
