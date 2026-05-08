@@ -11,7 +11,6 @@ const nodemailer = require('nodemailer');
 const pdfParse   = require('pdf-parse');
 const { PDFDocument } = require('pdf-lib');
 const { createClient } = require('@supabase/supabase-js');
-const { google } = require('googleapis');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -1197,6 +1196,7 @@ const PACKAGING_SHEET_ID = '1t_jz1Jr0x9hEmsekmGifotuS4lroqS1bARzTZ7hudQs';
 const PACKAGING_TAB      = 'Schedule / Distro';
 
 function getPackagingSheetsClient() {
+  const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
