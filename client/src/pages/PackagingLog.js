@@ -320,7 +320,8 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                     <tr className="border-b border-gray-700">
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Date</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Beer</th>
-                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Kegs</th>
+                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">½ bbl</th>
+                      <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">⅙ bbl</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4">Cases</th>
                       <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-4 hidden lg:table-cell">Logged By</th>
                       {canUpload && <th className="px-4 py-4" />}
@@ -332,12 +333,14 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                         <td className="px-6 py-4 text-gray-300 text-sm whitespace-nowrap">{fmtDate(entry.package_date)}</td>
                         <td className="px-4 py-4 text-white text-sm font-medium">{entry.beer_name}</td>
                         <td className="px-4 py-4">
-                          {totalKegs(entry) > 0 ? (
-                            <div>
-                              <span className="text-white text-sm font-semibold">{totalKegs(entry)}</span>
-                              <span className="text-gray-500 text-xs ml-1.5">{kegSummary(entry)}</span>
-                            </div>
-                          ) : <span className="text-gray-600 text-sm">—</span>}
+                          {entry.half_bbl > 0
+                            ? <span className="text-white text-sm font-semibold">{entry.half_bbl}</span>
+                            : <span className="text-gray-600 text-sm">—</span>}
+                        </td>
+                        <td className="px-4 py-4">
+                          {entry.sixth_bbl > 0
+                            ? <span className="text-white text-sm font-semibold">{entry.sixth_bbl}</span>
+                            : <span className="text-gray-600 text-sm">—</span>}
                         </td>
                         <td className="px-4 py-4">
                           {entry.cases > 0
@@ -382,12 +385,17 @@ export default function PackagingLog({ user, canUpload, onBack }) {
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {totalKegs(entry) > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {entry.half_bbl > 0 && (
                       <div className="bg-gray-700/50 rounded-lg px-3 py-2">
-                        <p className="text-gray-400 text-xs mb-0.5">Kegs</p>
-                        <p className="text-white text-sm font-semibold">{totalKegs(entry)}</p>
-                        <p className="text-gray-500 text-xs">{kegSummary(entry)}</p>
+                        <p className="text-gray-400 text-xs mb-0.5">½ bbl</p>
+                        <p className="text-white text-sm font-semibold">{entry.half_bbl}</p>
+                      </div>
+                    )}
+                    {entry.sixth_bbl > 0 && (
+                      <div className="bg-gray-700/50 rounded-lg px-3 py-2">
+                        <p className="text-gray-400 text-xs mb-0.5">⅙ bbl</p>
+                        <p className="text-white text-sm font-semibold">{entry.sixth_bbl}</p>
                       </div>
                     )}
                     {entry.cases > 0 && (
