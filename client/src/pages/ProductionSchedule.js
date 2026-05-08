@@ -1342,6 +1342,12 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
 
         {!loading && tab === 'schedule' && (
           <div>
+            {/* WIP banner */}
+            <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+              <span>🚧</span>
+              <span className="font-semibold">Work in Progress</span>
+              <span className="text-yellow-500/70">— This tool is still being developed. Data may change.</span>
+            </div>
             {/* Grid controls */}
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <div className="flex items-center gap-1">
