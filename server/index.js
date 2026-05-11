@@ -2406,9 +2406,17 @@ app.get('/api/recipes', authenticateToken, async (req, res) => {
       const linked = await pool.query('SELECT id, name FROM recipes WHERE id = ANY($1)', [allIds]);
       linked.rows.forEach(r => { linkedMap[r.id] = r.name; });
     }
-    const recipes = result.rows.map(r => ({
-      ...r,
-      linked_recipes: (r.linked_recipe_ids || []).map(id => ({ id, name: linkedMap[id] || '' })),
+    const recipes = await Promise.all(result.rows.map(async (r) => {
+      let photo_url = null;
+      if (r.image_filename) {
+        const { data } = await supabase.storage.from('recipe-photos').createSignedUrl(r.image_filename, 3600);
+        photo_url = data?.signedUrl || null;
+      }
+      return {
+        ...r,
+        photo_url,
+        linked_recipes: (r.linked_recipe_ids || []).map(id => ({ id, name: linkedMap[id] || '' })),
+      };
     }));
     res.json(recipes);
   } catch (err) {

@@ -22,20 +22,10 @@ function getCatLabel(v) {
   return CATEGORIES.find(c => c.value === v)?.label || 'Other';
 }
 
-// ── Authenticated image loader ─────────────────────────────────────────────────
-function RecipeImg({ recipeId, bust, className }) {
-  const [src, setSrc] = useState(null);
-  useEffect(() => {
-    let objUrl;
-    setSrc(null);
-    fetch(`${API}/api/recipes/${recipeId}/photo`, { credentials: 'include' })
-      .then(r => r.ok ? r.blob() : null)
-      .then(blob => { if (blob) { objUrl = URL.createObjectURL(blob); setSrc(objUrl); } })
-      .catch(() => {});
-    return () => { if (objUrl) URL.revokeObjectURL(objUrl); };
-  }, [recipeId, bust]); // bust = image_filename, changes when photo is replaced
-  if (!src) return <div className="w-full bg-gray-700" style={{ minHeight: 200 }} />;
-  return <img src={src} alt="" className={className} />;
+// ── Image loader ───────────────────────────────────────────────────────────────
+function RecipeImg({ photoUrl, className }) {
+  if (!photoUrl) return <div className="w-full bg-gray-700" style={{ minHeight: 200 }} />;
+  return <img src={photoUrl} alt="" className={className} />;
 }
 
 // ── Helpers for display ────────────────────────────────────────────────────────
@@ -98,10 +88,9 @@ function RecipeDetail({ recipe, canUpload, onClose, onEdit, onViewRecipe }) {
 
         {/* Photo — left column on desktop, bottom on mobile */}
         <div className="order-last sm:order-first sm:w-64 flex-shrink-0 bg-gray-900">
-          {recipe.image_filename
+          {recipe.photo_url
             ? <RecipeImg
-                recipeId={recipe.id}
-                bust={recipe.image_filename}
+                photoUrl={recipe.photo_url}
                 className="w-full h-auto sm:h-full object-cover"
               />
             : <div className="w-full h-48 sm:h-full flex items-center justify-center text-5xl bg-gray-800">
@@ -350,7 +339,7 @@ function RecipeModal({ recipe, allRecipes, onClose, onSaved }) {
                   <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-700">
                     {photo
                       ? <img src={previewUrl} alt="" className="w-full h-full object-cover" />
-                      : <RecipeImg recipeId={recipe.id} bust={recipe.image_filename} className="w-full h-full object-cover" />
+                      : <RecipeImg photoUrl={recipe.photo_url} className="w-full h-full object-cover" />
                     }
                   </div>
                   <p className="text-gray-400 text-sm">{photoLabel}</p>
@@ -457,8 +446,8 @@ function RecipeCard({ recipe, onClick }) {
     <button onClick={onClick}
       className="group bg-gray-800 rounded-2xl border border-gray-700 hover:border-orange-500 transition-all duration-200 text-left overflow-hidden flex flex-col hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5">
       <div className="w-full h-56 overflow-hidden flex-shrink-0">
-        {recipe.image_filename
-          ? <RecipeImg recipeId={recipe.id} bust={recipe.image_filename} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+        {recipe.photo_url
+          ? <RecipeImg photoUrl={recipe.photo_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           : <div className="w-full h-full bg-gray-700 flex items-center justify-center text-4xl">
               {recipe.category === 'prep' ? '🔪' : '🍽️'}
             </div>
