@@ -51,8 +51,8 @@ function InitialsAvatar({ name, className }) {
 
 function StatusBadge({ status }) {
   return status === 'active'
-    ? <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900 text-red-300">Active</span>
-    : <span className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">Lifted</span>;
+    ? <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900 text-red-300">Banned</span>
+    : <span className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">Ban Lifted</span>;
 }
 
 function DetailModal({ customer, canUpload, onClose, onEdit, onDelete, onToggleStatus }) {
@@ -432,8 +432,8 @@ function FormModal({ customer, onClose, onSave }) {
                 onChange={e => setStatus(e.target.value)}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
               >
-                <option value="active">Active</option>
-                <option value="lifted">Lifted</option>
+                <option value="active">Banned</option>
+                <option value="lifted">Ban Lifted</option>
               </select>
             </div>
           )}
