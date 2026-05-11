@@ -3999,7 +3999,12 @@ const eightySixedPhotoUpload = multer({ storage: multer.memoryStorage(), limits:
 app.get('/api/86ed', authenticateToken, check86edView, async (req, res) => {
   try {
     const r = await pool.query('SELECT * FROM eighty_sixed_customers ORDER BY created_at DESC');
-    res.json(r.rows);
+    const rows = await Promise.all(r.rows.map(async (row) => {
+      if (!row.photo_filename) return row;
+      const { data } = await supabase.storage.from('eightysixed-photos').createSignedUrl(row.photo_filename, 3600);
+      return { ...row, photo_url: data?.signedUrl || null };
+    }));
+    res.json(rows);
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 

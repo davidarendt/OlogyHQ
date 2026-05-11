@@ -10,19 +10,9 @@ function formatDate(dateStr) {
   return new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-function CustomerPhoto({ id, filename, className }) {
-  const [src, setSrc] = useState(null);
-  useEffect(() => {
-    if (!filename) return;
-    let objectUrl = null;
-    fetch(`${API}/api/86ed/${id}/photo?v=${encodeURIComponent(filename)}`, { credentials: 'include' })
-      .then(r => r.blob())
-      .then(blob => { objectUrl = URL.createObjectURL(blob); setSrc(objectUrl); })
-      .catch(() => {});
-    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [id, filename]);
-  if (!src) return <div className={`${className} bg-gray-700 animate-pulse`} style={{ borderRadius: 'inherit' }} />;
-  return <img src={src} alt="" className={`${className} object-cover`} style={{ borderRadius: 'inherit' }} />;
+function CustomerPhoto({ photoUrl, className }) {
+  if (!photoUrl) return <div className={`${className} bg-gray-700 animate-pulse`} style={{ borderRadius: 'inherit' }} />;
+  return <img src={photoUrl} alt="" className={`${className} object-cover`} style={{ borderRadius: 'inherit' }} />;
 }
 
 const AVATAR_COLORS = [
@@ -79,8 +69,8 @@ function DetailModal({ customer, canUpload, onClose, onEdit, onDelete, onToggleS
 
         <div className="p-4">
           <div className="w-full h-64 rounded-lg overflow-hidden">
-            {customer.photo_filename
-              ? <CustomerPhoto id={customer.id} filename={customer.photo_filename} className="w-full h-64" />
+            {customer.photo_url
+              ? <CustomerPhoto photoUrl={customer.photo_url} className="w-full h-64" />
               : <InitialsAvatar name={customer.name} className="w-full h-64 rounded-lg" />
             }
           </div>
@@ -355,7 +345,7 @@ function FormModal({ customer, onClose, onSave }) {
               </div>
             ) : hasExistingPhoto ? (
               <div className="relative rounded-lg overflow-hidden h-48">
-                <CustomerPhoto id={customer.id} filename={customer.photo_filename} className="w-full h-48" />
+                <CustomerPhoto photoUrl={customer.photo_url} className="w-full h-48" />
                 <div className="absolute top-2 right-2 flex gap-1">
                   <button
                     type="button"
@@ -575,8 +565,8 @@ export default function EightySixedCustomers({ canUpload, onBack }) {
                 className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden text-left hover:border-gray-500 transition-colors"
               >
                 <div className="w-full aspect-[3/2] overflow-hidden">
-                  {c.photo_filename
-                    ? <CustomerPhoto id={c.id} filename={c.photo_filename} className="w-full h-full" />
+                  {c.photo_url
+                    ? <CustomerPhoto photoUrl={c.photo_url} className="w-full h-full" />
                     : <InitialsAvatar name={c.name} className="w-full h-full" />
                   }
                 </div>
