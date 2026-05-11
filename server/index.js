@@ -857,8 +857,8 @@ app.post('/api/sop-documents', authenticateToken, checkSOPPermission, sopUpload.
 // Update SOP name/roles
 app.patch('/api/sop-documents/:id', authenticateToken, checkSOPPermission, async (req, res) => {
   try {
-    const { name, roles } = req.body;
-    const parsedRoles = JSON.parse(roles || '[]');
+    const { name, roles } = req.body || {};
+    const parsedRoles = Array.isArray(roles) ? roles : JSON.parse(roles || '[]');
     await pool.query('UPDATE sop_documents SET name=$1 WHERE id=$2', [name, req.params.id]);
     await pool.query('DELETE FROM sop_document_roles WHERE document_id=$1', [req.params.id]);
     for (const role of parsedRoles) {
