@@ -101,10 +101,11 @@ function DocModal({ doc, onClose, onSaved }) {
         }
       } else {
         // Edit: name/roles only, no file re-upload
-        const fd = new FormData();
-        fd.append('name', name.trim());
-        fd.append('roles', JSON.stringify(roles));
-        const res = await fetch(`${API}/api/sop-documents/${doc.id}`, { method: 'PATCH', credentials: 'include', body: fd });
+        const res = await fetch(`${API}/api/sop-documents/${doc.id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), roles }),
+        });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { setError(data.message || 'Save failed.'); setSaving(false); return; }
       }
