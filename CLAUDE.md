@@ -30,7 +30,7 @@ The app is deployed as a **single Netlify site** (`ologyhq.netlify.app`):
 - **Frontend**: React build in `client/build`, published via Netlify
 - **Backend**: Express app wrapped by `netlify/functions/api.js` using `serverless-http`
 - **Database**: Supabase PostgreSQL via connection pooler (`aws-1-us-west-2.pooler.supabase.com:6543`, transaction mode, SSL required)
-- **File storage**: Supabase Storage (private buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`, `eightysixed-photos`)
+- **File storage**: Supabase Storage (private buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`, `coffee-photos`, `eightysixed-photos`)
 
 All `/api/*` requests redirect to `/.netlify/functions/api/:splat` via `netlify.toml`.
 
@@ -53,7 +53,7 @@ Label order emails run via Netlify Scheduled Functions (not node-cron in product
 There is **no React Router**. `App.js` holds a `page` string state and a `pageProps` object. Navigation works via `handleNavigate(pageName, props)`. Browser back button is supported via `window.history.pushState` on each navigation and a `popstate` listener. Adding a new page requires: importing the component, adding an `if (page === '...')` branch in `App.js`, and adding an entry to `TOOL_META` in `Dashboard.js`.
 
 ### Auth
-JWT stored in an **httpOnly cookie** (`token`). The server middleware `authenticateToken` validates it and attaches `req.user = { id, name, role }`. The client calls `GET /api/me` on mount to rehydrate session.
+JWT stored in an **httpOnly cookie** (`token`). The server middleware `authenticateToken` validates it and attaches `req.user = { id, name, role, roles }` where `roles` is an array (normalised from the single `role` string). The client calls `GET /api/me` on mount to rehydrate session.
 
 Password reset and user invite both use the same token mechanism: `reset_token` (64-char hex) + `reset_token_expires` columns on the `users` table. Forgot-password tokens expire in 1 hour; invite tokens expire in 7 days. New users are created with `password = NULL` and cannot log in until they set a password via the invite link.
 
@@ -72,7 +72,7 @@ For all other behavior, admin goes through the normal permission system — no b
 **Protected user**: `david@ologybrewing.com` cannot be deleted — the delete endpoint checks the target email before proceeding.
 
 ### Two-Level Permission Tools
-HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Sales CRM, Production Schedule, and 86ed Customers use two permission levels:
+HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Coffee Keeper, Sales CRM, Production Schedule, and 86ed Customers use two permission levels:
 - `view` — can see the tool card and access the tool
 - `upload` — can access manage/upload areas within the tool (Manage tab, Edit/Delete, Send Order Email, etc.)
 
@@ -131,7 +131,16 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `checklist_roles` — checklist_id (→ checklists, cascade), role
 - `checklist_items` — id, checklist_id (→ checklists, cascade), text, sort_order
 - `checklist_runs` — id, checklist_id (→ checklists), checklist_name (denormalized), run_by_id (nullable), run_by_name, notes, items_completed, items_total, run_date (DATE), auto_saved (bool, default false), created_at
+- `checklist_daily_state` — checklist_id, item_id, run_date (DATE); represents in-progress checkbox state. Auto-archived into `checklist_runs` on next load.
 - `eighty_sixed_customers` — id, name (nullable), description (nullable), photo_filename (nullable), incident_date (DATE), reason (nullable), status ('active'|'lifted'), lifted_at (TIMESTAMPTZ, nullable), created_by_id (→ users, SET NULL), created_by_name, created_at
+- `coffee_beverages` — id, name, status ('menu'|'special'|'wip'), price, glass, method, garnish, last_special_on, notes, photo_filename, linked_batched_item_ids (INTEGER[]), sort_order, suggested_by_name, suggested_by_id (→ users, SET NULL), created_at, updated_at
+- `coffee_beverage_ingredients` — id, beverage_id (→ coffee_beverages, cascade), ingredient_name, amount, unit, sort_order
+- `coffee_tag_definitions` — id, name, color, sort_order
+- `coffee_tags` — beverage_id, tag_name, tag_color
+- `coffee_catalog` — id, category, value, sort_order
+- `coffee_settings` — singleton row (id=1), show_creator (boolean, default true)
+- `coffee_batched_items` — id, name, recipe_notes, yield_amount, yield_unit, linked_beverage_ids (INTEGER[]), sort_order, created_at, updated_at
+- `coffee_submissions` — id, type ('new'|'change'), beverage_id (nullable), submitted_by_id, submitted_by_name, beverage_name, description, status ('pending'|'reviewed'), created_at
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
@@ -146,9 +155,9 @@ Dark theme throughout. `tailwind.config.js` overrides three color families — d
 Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundColor: '#F05A28' }}` for dynamic brand color. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
 
 ### File Uploads (Supabase Storage)
-All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`, `recipe-photos`, `cocktail-photos`.
+All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`.
 
-Recipe photos, cocktail photos, and 86ed customer photos are served differently — the server downloads from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the authenticated fetch pattern. Buckets using direct-stream: `recipe-photos`, `cocktail-photos`, `eightysixed-photos`.
+Recipe photos, cocktail photos, coffee photos, and 86ed customer photos are served differently — the server downloads from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the authenticated fetch pattern. Buckets using direct-stream: `recipe-photos`, `cocktail-photos`, `coffee-photos`, `eightysixed-photos`.
 
 Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`. Similarly, `/api/86ed/:id/photo` must be before any catch-all on `/api/86ed/:id`.
 
@@ -330,3 +339,20 @@ Both tables have RLS enabled with open policies and are published to `supabase_r
 **Permission levels**:
 - `view` — see the list, search by name, view full detail including photo/reason
 - `upload` — add entries, edit, lift/reinstate ban, delete
+
+### Coffee Keeper Tool
+`CoffeeKeeper.js` is a full parallel to `CocktailKeeper.js` for coffee drinks. Same structure, separate DB tables, separate `/api/coffee/*` routes, no `ice` field.
+
+**Tabs**: Beverages | Syrups/Infusions | Manage (`canUpload` only)
+
+**Key differences from Cocktail Keeper**:
+- Primary items are `coffee_beverages` (not `cocktails`); house-made items are `coffee_batched_items`
+- No `ice` field — service fields are only `glass`, `method`, `garnish`
+- Bidirectional link arrays: `linked_batched_item_ids` on beverages, `linked_beverage_ids` on batched items
+- Suggestion submissions POST to `/api/coffee/submissions` with `beverage_id` (not `cocktail_id`)
+- Photo bucket: `coffee-photos`; permission middleware: `checkCoffeeView` / `checkCoffeeManage`
+
+Everything else — suggestion flow, ownership-based editing, ingredient autocomplete/merge, creator banner, `formatCreatorName`, `PhotoImg` auth-fetch pattern, `show_creator` settings toggle — is identical to Cocktail Keeper.
+
+**Route ordering** in `server/index.js` (same pattern as cocktails):
+- `GET /api/coffee/settings`, `/ingredients`, `/catalog`, `/tag-definitions`, `/submissions`, `/batched` and `PATCH /api/coffee/reorder`, `/batched/reorder` must all be before `GET/PATCH/DELETE /api/coffee/:id`
