@@ -481,6 +481,11 @@ export default function Checklists({ user, canUpload, onBack }) {
         </button>
       </nav>
 
+      <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-6 py-3 flex items-center gap-2">
+        <span className="text-yellow-400 font-semibold text-sm">🚧 Under Construction</span>
+        <span className="text-yellow-300/70 text-sm">— This tool is still being built and may not work as expected.</span>
+      </div>
+
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex items-start justify-between mb-8">
           <div>
