@@ -28,11 +28,38 @@ function drivePreviewUrl(url) {
   return url;
 }
 
-function driveOpenUrl(url) {
-  if (!url) return null;
-  const fileMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (fileMatch) return `https://drive.google.com/file/d/${fileMatch[1]}/view`;
-  return url;
+async function printBol(invoiceNumber) {
+  try {
+    const res = await fetch(`${API}/api/bol/${encodeURIComponent(invoiceNumber)}/stream`, { credentials: 'include' });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('load', () => {
+        win.print();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      });
+    }
+  } catch {}
+}
+
+async function printInvoice(pdfUrl) {
+  const fileId = extractFileId(pdfUrl);
+  if (!fileId) return;
+  try {
+    const res = await fetch(`${API}/api/distro-orders/print-day?fileIds=${fileId}`, { credentials: 'include' });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('load', () => {
+        win.print();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      });
+    }
+  } catch {}
 }
 
 function getMonday(date) {
@@ -254,16 +281,13 @@ function OrderCard({ order, onClick }) {
             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#F05A28' }} />
           )}
           {order.bol && !bolExcluded(order.recipient) && (
-            <a
-              href={`${API}/api/bol/${encodeURIComponent(order.invoice_number)}/file`}
-              target="_blank"
-              rel="noreferrer"
-              onClick={e => e.stopPropagation()}
-              title="View BOL"
+            <button
+              onClick={e => { e.stopPropagation(); printBol(order.invoice_number); }}
+              title="Print BOL"
               className="text-gray-400 hover:text-orange-400 transition"
             >
               <Paperclip size={10} />
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -341,7 +365,6 @@ export default function DistroTaproomOrders({ user, canUpload, onBack }) {
   });
 
   const previewUrl = selected ? drivePreviewUrl(selected.pdf_url) : null;
-  const openUrl    = selected ? driveOpenUrl(selected.pdf_url) : null;
   const showBol    = selected && !bolExcluded(selected.recipient) && !!selected.invoice_number;
 
   return (
@@ -386,14 +409,12 @@ export default function DistroTaproomOrders({ user, canUpload, onBack }) {
                           Amended
                         </span>
                       )}
-                      <a
-                        href={`${API}/api/bol/${encodeURIComponent(selected.invoice_number)}/file`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        onClick={() => printBol(selected.invoice_number)}
                         className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition"
                       >
-                        View BOL
-                      </a>
+                        Print BOL
+                      </button>
                       {canUpload && (
                         <>
                           <button
@@ -425,16 +446,14 @@ export default function DistroTaproomOrders({ user, canUpload, onBack }) {
                   )}
                 </>
               )}
-              {openUrl && (
-                <a
-                  href={openUrl}
-                  target="_blank"
-                  rel="noreferrer"
+              {selected && selected.pdf_url && (
+                <button
+                  onClick={() => printInvoice(selected.pdf_url)}
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ backgroundColor: '#F05A28' }}
                 >
-                  Open / Print
-                </a>
+                  Print
+                </button>
               )}
             </div>
           </div>

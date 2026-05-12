@@ -28,19 +28,11 @@ const DEFAULT_META = { Icon: Wrench, description: '', page: null };
 
 function Dashboard({ user, onLogout, onNavigate }) {
   const [tools, setTools] = useState([]);
-  const [distroBadge, setDistroBadge] = useState(null);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_API_URL || ''}/api/my-tools`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => setTools(Array.isArray(data) ? data : []));
-  }, []);
-
-  useEffect(() => {
-    fetch(`${process.env.REACT_APP_API_URL || ''}/api/distro-orders/activity-badge`, { credentials: 'include' })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setDistroBadge(data); })
-      .catch(() => {});
   }, []);
 
   return (
@@ -95,11 +87,6 @@ function Dashboard({ user, onLogout, onNavigate }) {
                   {tool.name}
                 </h3>
                 <p className="text-gray-400 text-sm mt-2">{meta.description || tool.description || ''}</p>
-
-                {/* Activity dot for distro orders */}
-                {tool.slug === 'distro-taproom-orders' && distroBadge && (distroBadge.recentBols > 0 || distroBadge.ordersMissingBol > 0) && (
-                  <span className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: '#F05A28' }} />
-                )}
 
                 {/* Coming Soon ribbon */}
                 {!isLive && (

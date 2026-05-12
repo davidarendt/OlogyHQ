@@ -1736,6 +1736,20 @@ app.get('/api/bol/:invoiceNumber/file', authenticateToken, checkBOLView, async (
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// Stream BOL bytes directly — used by client print workflow (blob URL → window.print())
+app.get('/api/bol/:invoiceNumber/stream', authenticateToken, checkBOLView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT filename FROM bol_attachments WHERE invoice_number=$1', [req.params.invoiceNumber]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    const { data, error } = await supabase.storage.from('bol-documents').download(r.rows[0].filename);
+    if (error || !data) return res.status(404).json({ message: 'File not found' });
+    const buf = Buffer.from(await data.arrayBuffer());
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', 'inline');
+    res.send(buf);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 // Delete BOL
 app.delete('/api/bol/:invoiceNumber', authenticateToken, checkBOLManage, async (req, res) => {
   try {
