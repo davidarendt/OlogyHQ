@@ -1,25 +1,30 @@
 import { useState, useEffect } from 'react';
+import {
+  Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
+  Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
+  UserX, Package, Users, Wrench,
+} from 'lucide-react';
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
 const TOOL_META = {
-  'taproom-inventory':   { icon: '🍺', description: 'Manage keg and product inventory across all taprooms', page: 'taproom-inventory' },
-  'distro-taproom-orders': { image: '/icons/keg.png', description: 'Manage distro and taproom order requests', page: 'distro-taproom-orders' },
-  'production-photos':   { icon: '📸', description: 'View and upload outgoing distro order photos',        page: 'production-photos' },
-  'label-inventory':     { image: '/icons/label.png', description: 'Track label stock and usage',          page: 'label-inventory' },
-  'hr-documents':        { icon: '🗂️', description: 'Access forms and employee documents',                 page: 'hr-documents' },
-  'sops':                { icon: '📋', description: 'Standard operating procedures and reference documents', page: 'sops' },
-  'checklists':          { icon: '✔️', description: 'Run and track operational checklists',                 page: 'checklists' },
-  'cocktail-keeper':     { icon: '🍹', description: 'Browse and manage cocktail recipes',                  page: 'cocktail-keeper' },
-  'recipes':             { image: '/icons/recipes.svg', description: 'Browse and search kitchen recipes',   page: 'recipes' },
-  'taproom-inspections': { icon: '✅', description: 'Conduct and review taproom quality inspections',      page: 'taproom-inspections' },
-  'sales-crm':           { icon: '📊', description: 'Manage distributor and account relationships',         page: 'sales-crm' },
-  'production-schedule': { icon: '🗓️', description: 'Brewery production planning and task tracking',        page: 'production-schedule' },
-  '86ed-customers':      { icon: '🚫', description: 'Track customers removed from our locations',           page: '86ed-customers' },
-  'packaging-log':       { image: '/icons/canning-line.svg', description: 'Log kegs and cases packaged from each beer', page: 'packaging-log' },
-  'user-management':     { icon: '👥', description: 'Manage user accounts and roles',                      page: 'usermanagement' },
+  'taproom-inventory':     { Icon: Beer,            description: 'Manage keg and product inventory across all taprooms',    page: 'taproom-inventory' },
+  'distro-taproom-orders': { Icon: Truck,           description: 'Manage distro and taproom order requests',                page: 'distro-taproom-orders' },
+  'production-photos':     { Icon: Camera,          description: 'View and upload outgoing distro order photos',            page: 'production-photos' },
+  'label-inventory':       { Icon: Tag,             description: 'Track label stock and usage',                             page: 'label-inventory' },
+  'hr-documents':          { Icon: FolderOpen,      description: 'Access forms and employee documents',                     page: 'hr-documents' },
+  'sops':                  { Icon: ScrollText,      description: 'Standard operating procedures and reference documents',   page: 'sops' },
+  'checklists':            { Icon: ListChecks,      description: 'Run and track operational checklists',                    page: 'checklists' },
+  'cocktail-keeper':       { Icon: Wine,            description: 'Browse and manage cocktail recipes',                      page: 'cocktail-keeper' },
+  'recipes':               { Icon: UtensilsCrossed, description: 'Browse and search kitchen recipes',                       page: 'recipes' },
+  'taproom-inspections':   { Icon: ClipboardCheck,  description: 'Conduct and review taproom quality inspections',          page: 'taproom-inspections' },
+  'sales-crm':             { Icon: TrendingUp,      description: 'Manage distributor and account relationships',            page: 'sales-crm' },
+  'production-schedule':   { Icon: CalendarDays,    description: 'Brewery production planning and task tracking',           page: 'production-schedule' },
+  '86ed-customers':        { Icon: UserX,           description: 'Track customers removed from our locations',              page: '86ed-customers' },
+  'packaging-log':         { Icon: Package,         description: 'Log kegs and cases packaged from each beer',              page: 'packaging-log' },
+  'user-management':       { Icon: Users,           description: 'Manage user accounts and roles',                          page: 'usermanagement' },
 };
 
-const DEFAULT_META = { icon: '🔧', description: '', page: null };
+const DEFAULT_META = { Icon: Wrench, description: '', page: null };
 
 function Dashboard({ user, onLogout, onNavigate }) {
   const [tools, setTools] = useState([]);
@@ -56,6 +61,7 @@ function Dashboard({ user, onLogout, onNavigate }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {tools.map((tool) => {
             const meta = TOOL_META[tool.slug] || DEFAULT_META;
+            const { Icon } = meta;
             const isLive = !!(tool.url || meta.page);
 
             const handleClick = isLive
@@ -72,10 +78,11 @@ function Dashboard({ user, onLogout, onNavigate }) {
                   isLive ? 'hover:border-orange-500 cursor-pointer' : 'cursor-default opacity-75'
                 }`}
               >
-                {meta.image
-                  ? <img src={meta.image} alt="" className="w-16 h-16 object-contain mb-4" />
-                  : <div className="text-4xl mb-4">{meta.icon}</div>
-                }
+                <Icon
+                  size={40}
+                  className="mb-4 transition group-hover:text-orange-400"
+                  style={{ color: '#F05A28' }}
+                />
                 <h3 className={`font-semibold text-lg transition ${isLive ? 'text-white group-hover:text-orange-400' : 'text-white'}`}>
                   {tool.name}
                 </h3>
