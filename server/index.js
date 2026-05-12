@@ -3156,6 +3156,490 @@ app.delete('/api/cocktails/submissions/:id', authenticateToken, checkCocktailsMa
   }
 });
 
+// ── Coffee Keeper ───────────────────────────────────────────────────────────
+
+function checkCoffeeView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'coffee-keeper' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkCoffeeManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'coffee-keeper' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+const coffeePhotoUpload = multer({ storage: memoryStorage, limits: { fileSize: 25 * 1024 * 1024 } });
+
+// List catalog values
+app.get('/api/coffee/catalog', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM coffee_catalog ORDER BY category, sort_order');
+    const catalog = {};
+    for (const row of result.rows) {
+      if (!catalog[row.category]) catalog[row.category] = [];
+      catalog[row.category].push(row.value);
+    }
+    res.json(catalog);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List tag definitions
+app.get('/api/coffee/tag-definitions', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM coffee_tag_definitions ORDER BY sort_order');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Coffee settings (singleton row) — before /:id
+app.get('/api/coffee/settings', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM coffee_settings WHERE id = 1');
+    res.json(r.rows[0] || { show_creator: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/coffee/settings', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { show_creator } = req.body;
+    await pool.query(
+      `INSERT INTO coffee_settings (id, show_creator) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET show_creator = $1`,
+      [show_creator]
+    );
+    res.json({ show_creator });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Ingredient list + merge — before /:id
+app.get('/api/coffee/ingredients', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT ingredient_name AS name, COUNT(*)::int AS count FROM coffee_beverage_ingredients GROUP BY ingredient_name ORDER BY ingredient_name`
+    );
+    res.json(r.rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/coffee/ingredients/merge', authenticateToken, async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    if (!to || !Array.isArray(from) || from.length === 0) return res.status(400).json({ message: 'Invalid' });
+    await pool.query(`UPDATE coffee_beverage_ingredients SET ingredient_name=$1 WHERE ingredient_name = ANY($2::text[])`, [to, from]);
+    res.json({ message: 'Merged' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Reorder beverages — before /:id
+app.patch('/api/coffee/reorder', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query('UPDATE coffee_beverages SET sort_order=$1 WHERE id=$2', [i + 1, ids[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List submissions (manage only) — before /:id
+app.get('/api/coffee/submissions', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.*, b.name AS beverage_name_ref
+       FROM coffee_submissions s
+       LEFT JOIN coffee_beverages b ON b.id = s.beverage_id
+       ORDER BY s.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Submit a suggestion (view access)
+app.post('/api/coffee/submissions', authenticateToken, checkCoffeeView, async (req, res) => {
+  try {
+    const { type, beverage_id, beverage_name, description } = req.body;
+    const result = await pool.query(
+      `INSERT INTO coffee_submissions (type, beverage_id, submitted_by_id, submitted_by_name, beverage_name, description)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [type || 'new', beverage_id || null, req.user.id, req.user.name, beverage_name || null, description || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Mark submission as reviewed (manage only)
+app.patch('/api/coffee/submissions/:id', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await pool.query(
+      `UPDATE coffee_submissions SET status=$1 WHERE id=$2 RETURNING *`,
+      [status, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete submission (manage only)
+app.delete('/api/coffee/submissions/:id', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM coffee_submissions WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List all batched items — before /batched/:id
+app.get('/api/coffee/batched', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM coffee_batched_items ORDER BY sort_order ASC, created_at ASC');
+    const allIds = [...new Set(result.rows.flatMap(r => r.linked_beverage_ids || []))];
+    let bevMap = {};
+    if (allIds.length > 0) {
+      const linked = await pool.query('SELECT id, name FROM coffee_beverages WHERE id = ANY($1)', [allIds]);
+      linked.rows.forEach(r => { bevMap[r.id] = r.name; });
+    }
+    res.json(result.rows.map(b => ({
+      ...b,
+      linked_beverages: (b.linked_beverage_ids || []).map(id => ({ id, name: bevMap[id] || '' })),
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Reorder batched items — before /batched/:id
+app.patch('/api/coffee/batched/reorder', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    for (let i = 0; i < ids.length; i++) {
+      await pool.query('UPDATE coffee_batched_items SET sort_order=$1 WHERE id=$2', [i + 1, ids[i]]);
+    }
+    res.json({ message: 'Reordered' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create batched item
+app.post('/api/coffee/batched', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { name, recipe_notes, yield_amount, yield_unit, linked_beverage_ids } = req.body;
+    const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM coffee_batched_items');
+    const ids = JSON.parse(linked_beverage_ids || '[]');
+    const result = await pool.query(
+      `INSERT INTO coffee_batched_items (name, recipe_notes, yield_amount, yield_unit, linked_beverage_ids, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name, recipe_notes||null, yield_amount||null, yield_unit||null, ids, maxOrder.rows[0].m + 1]
+    );
+    const item = result.rows[0];
+    for (const bid of ids) {
+      await pool.query(
+        `UPDATE coffee_beverages SET linked_batched_item_ids = array_append(linked_batched_item_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_batched_item_ids))`,
+        [item.id, bid]
+      );
+    }
+    res.json(item);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update batched item
+app.patch('/api/coffee/batched/:id', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, recipe_notes, yield_amount, yield_unit, linked_beverage_ids } = req.body;
+    const existing = await pool.query('SELECT * FROM coffee_batched_items WHERE id=$1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    const oldIds = existing.rows[0].linked_beverage_ids || [];
+    const newIds = JSON.parse(linked_beverage_ids || '[]');
+
+    const result = await pool.query(
+      `UPDATE coffee_batched_items SET name=$1, recipe_notes=$2, yield_amount=$3, yield_unit=$4, linked_beverage_ids=$5
+       WHERE id=$6 RETURNING *`,
+      [name, recipe_notes||null, yield_amount||null, yield_unit||null, newIds, id]
+    );
+
+    const removed = oldIds.filter(c => !newIds.includes(c));
+    const added = newIds.filter(c => !oldIds.includes(c));
+    for (const bid of removed) {
+      await pool.query(
+        `UPDATE coffee_beverages SET linked_batched_item_ids = array_remove(linked_batched_item_ids, $1) WHERE id=$2`,
+        [parseInt(id), bid]
+      );
+    }
+    for (const bid of added) {
+      await pool.query(
+        `UPDATE coffee_beverages SET linked_batched_item_ids = array_append(linked_batched_item_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_batched_item_ids))`,
+        [parseInt(id), bid]
+      );
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete batched item
+app.delete('/api/coffee/batched/:id', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM coffee_batched_items WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    for (const bid of (r.rows[0].linked_beverage_ids || [])) {
+      await pool.query(
+        `UPDATE coffee_beverages SET linked_batched_item_ids = array_remove(linked_batched_item_ids, $1) WHERE id=$2`,
+        [parseInt(req.params.id), bid]
+      );
+    }
+    await pool.query('DELETE FROM coffee_batched_items WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List all beverages
+app.get('/api/coffee', authenticateToken, async (req, res) => {
+  try {
+    const beverages = await pool.query('SELECT * FROM coffee_beverages ORDER BY sort_order ASC, created_at ASC');
+    const ingredients = await pool.query('SELECT * FROM coffee_beverage_ingredients ORDER BY beverage_id, sort_order');
+    const tags = await pool.query('SELECT * FROM coffee_tags ORDER BY beverage_id');
+
+    const ingMap = {};
+    for (const i of ingredients.rows) {
+      if (!ingMap[i.beverage_id]) ingMap[i.beverage_id] = [];
+      ingMap[i.beverage_id].push(i);
+    }
+    const tagMap = {};
+    for (const t of tags.rows) {
+      if (!tagMap[t.beverage_id]) tagMap[t.beverage_id] = [];
+      tagMap[t.beverage_id].push({ name: t.tag_name, color: t.tag_color });
+    }
+
+    const batched = await pool.query('SELECT id, name FROM coffee_batched_items ORDER BY sort_order');
+    const batchedMap = {};
+    for (const b of batched.rows) batchedMap[b.id] = b.name;
+
+    res.json(beverages.rows.map(c => ({
+      ...c,
+      ingredients: ingMap[c.id] || [],
+      tags: tagMap[c.id] || [],
+      linked_batched_items: (c.linked_batched_item_ids || []).map(id => ({ id, name: batchedMap[id] || '' })),
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get beverage photo — must be before /:id
+app.get('/api/coffee/:id/photo', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT photo_filename FROM coffee_beverages WHERE id=$1', [req.params.id]);
+    if (!r.rows.length || !r.rows[0].photo_filename) return res.status(404).json({ message: 'No photo' });
+    const { data, error } = await supabase.storage.from('coffee-photos').download(r.rows[0].photo_filename);
+    if (error || !data) return res.status(404).json({ message: 'Photo not found' });
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const ext = path.extname(r.rows[0].photo_filename).toLowerCase();
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.heic': 'image/heic', '.heif': 'image/heif' };
+    res.setHeader('Content-Type', mimeMap[ext] || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create beverage
+app.post('/api/coffee', authenticateToken, checkCoffeeView, coffeePhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const manageCheck = req.user.roles.includes('admin') ? { rows: [1] } : await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'coffee-keeper' AND p.permission_level = 'upload'`,
+      [req.user.roles]
+    );
+    const canManage = manageCheck.rows.length > 0;
+
+    const { name, method, glass, garnish, status, price, last_special_on, notes, suggested_by_name, linked_batched_item_ids, ingredients, tags } = req.body;
+    const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM coffee_beverages');
+    let photo_filename = null;
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      photo_filename = `coffee_${Date.now()}${ext}`;
+      await uploadToSupabase('coffee-photos', photo_filename, req.file.buffer, req.file.mimetype);
+    }
+    const batchIds = JSON.parse(linked_batched_item_ids || '[]');
+    const effectiveStatus = canManage ? (status || 'menu') : 'wip';
+    const suggestedByName = canManage ? (suggested_by_name || null) : req.user.name;
+    const suggestedById   = canManage ? null : req.user.id;
+    const result = await pool.query(
+      `INSERT INTO coffee_beverages (name, method, glass, garnish, status, price, last_special_on, notes, photo_filename, linked_batched_item_ids, sort_order, suggested_by_name, suggested_by_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [name, method||null, glass||null, garnish||null, effectiveStatus, canManage ? (price||null) : null, canManage ? (last_special_on||null) : null, notes||null, photo_filename, batchIds, maxOrder.rows[0].m + 1, suggestedByName, suggestedById]
+    );
+    const beverage = result.rows[0];
+    const ingList = JSON.parse(ingredients || '[]');
+    for (let i = 0; i < ingList.length; i++) {
+      const ing = ingList[i];
+      await pool.query(
+        'INSERT INTO coffee_beverage_ingredients (beverage_id, ingredient_name, amount, unit, sort_order) VALUES ($1,$2,$3,$4,$5)',
+        [beverage.id, ing.ingredient_name, ing.amount||null, ing.unit||null, i+1]
+      );
+    }
+    const tagList = JSON.parse(tags || '[]');
+    for (const tag of tagList) {
+      const td = await pool.query('SELECT color FROM coffee_tag_definitions WHERE name=$1', [tag]);
+      await pool.query(
+        'INSERT INTO coffee_tags (beverage_id, tag_name, tag_color) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [beverage.id, tag, td.rows[0]?.color || '#6b7280']
+      );
+    }
+    for (const bid of batchIds) {
+      await pool.query(
+        `UPDATE coffee_batched_items SET linked_beverage_ids = array_append(linked_beverage_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_beverage_ids))`,
+        [beverage.id, bid]
+      );
+    }
+    res.json(beverage);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update beverage
+app.patch('/api/coffee/:id', authenticateToken, checkCoffeeView, coffeePhotoUpload.single('photo'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, method, glass, garnish, status, price, last_special_on, notes, suggested_by_name, linked_batched_item_ids, ingredients, tags, remove_photo } = req.body;
+    const existing = await pool.query('SELECT * FROM coffee_beverages WHERE id=$1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ message: 'Not found' });
+
+    const canManage = await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'coffee-keeper' AND p.permission_level = 'upload'`,
+      [req.user.roles]
+    );
+    const isManager = req.user.roles.includes('admin') || canManage.rows.length > 0;
+    if (!isManager && existing.rows[0].suggested_by_id !== req.user.id) {
+      return res.status(403).json({ message: 'You can only edit beverages you submitted.' });
+    }
+
+    let photo_filename = existing.rows[0].photo_filename;
+    if (remove_photo === 'true' || remove_photo === true) {
+      if (photo_filename) await supabase.storage.from('coffee-photos').remove([photo_filename]);
+      photo_filename = null;
+    }
+    if (req.file) {
+      if (photo_filename) await supabase.storage.from('coffee-photos').remove([photo_filename]);
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      photo_filename = `coffee_${Date.now()}${ext}`;
+      await uploadToSupabase('coffee-photos', photo_filename, req.file.buffer, req.file.mimetype);
+    }
+
+    const oldBatchIds = existing.rows[0].linked_batched_item_ids || [];
+    const newBatchIds = JSON.parse(linked_batched_item_ids || '[]');
+
+    const effectiveStatus    = isManager ? (status || 'menu')      : existing.rows[0].status;
+    const effectivePrice     = isManager ? (price || null)         : existing.rows[0].price;
+    const effectiveSpecialOn = isManager ? (last_special_on||null) : existing.rows[0].last_special_on;
+    const effectiveSuggestedBy = isManager ? (suggested_by_name || null) : existing.rows[0].suggested_by_name;
+
+    const result = await pool.query(
+      `UPDATE coffee_beverages SET name=$1, method=$2, glass=$3, garnish=$4, status=$5, price=$6, last_special_on=$7, notes=$8, photo_filename=$9, linked_batched_item_ids=$10, suggested_by_name=$11
+       WHERE id=$12 RETURNING *`,
+      [name, method||null, glass||null, garnish||null, effectiveStatus, effectivePrice, effectiveSpecialOn, notes||null, photo_filename, newBatchIds, effectiveSuggestedBy, id]
+    );
+
+    await pool.query('DELETE FROM coffee_beverage_ingredients WHERE beverage_id=$1', [id]);
+    const ingList = JSON.parse(ingredients || '[]');
+    for (let i = 0; i < ingList.length; i++) {
+      const ing = ingList[i];
+      await pool.query(
+        'INSERT INTO coffee_beverage_ingredients (beverage_id, ingredient_name, amount, unit, sort_order) VALUES ($1,$2,$3,$4,$5)',
+        [id, ing.ingredient_name, ing.amount||null, ing.unit||null, i+1]
+      );
+    }
+
+    await pool.query('DELETE FROM coffee_tags WHERE beverage_id=$1', [id]);
+    const tagList = JSON.parse(tags || '[]');
+    for (const tag of tagList) {
+      const td = await pool.query('SELECT color FROM coffee_tag_definitions WHERE name=$1', [tag]);
+      await pool.query(
+        'INSERT INTO coffee_tags (beverage_id, tag_name, tag_color) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [id, tag, td.rows[0]?.color || '#6b7280']
+      );
+    }
+
+    const removedBatch = oldBatchIds.filter(b => !newBatchIds.includes(b));
+    const addedBatch = newBatchIds.filter(b => !oldBatchIds.includes(b));
+    for (const bid of removedBatch) {
+      await pool.query(
+        `UPDATE coffee_batched_items SET linked_beverage_ids = array_remove(linked_beverage_ids, $1) WHERE id=$2`,
+        [parseInt(id), bid]
+      );
+    }
+    for (const bid of addedBatch) {
+      await pool.query(
+        `UPDATE coffee_batched_items SET linked_beverage_ids = array_append(linked_beverage_ids, $1)
+         WHERE id=$2 AND NOT ($1 = ANY(linked_beverage_ids))`,
+        [parseInt(id), bid]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete beverage
+app.delete('/api/coffee/:id', authenticateToken, checkCoffeeManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM coffee_beverages WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    if (r.rows[0].photo_filename) {
+      await supabase.storage.from('coffee-photos').remove([r.rows[0].photo_filename]);
+    }
+    for (const bid of (r.rows[0].linked_batched_item_ids || [])) {
+      await pool.query(
+        `UPDATE coffee_batched_items SET linked_beverage_ids = array_remove(linked_beverage_ids, $1) WHERE id=$2`,
+        [parseInt(req.params.id), bid]
+      );
+    }
+    await pool.query('DELETE FROM coffee_beverages WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // ── Sales CRM ──────────────────────────────────────────────────────────────
 
 

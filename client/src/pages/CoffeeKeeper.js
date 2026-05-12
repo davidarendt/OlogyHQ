@@ -1,0 +1,1451 @@
+import { useState, useEffect, useRef } from 'react';
+
+const API = process.env.REACT_APP_API_URL || '';
+
+function formatCreatorName(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+}
+
+function PhotoImg({ src, alt, className }) {
+  const [objectUrl, setObjectUrl] = useState(null);
+  useEffect(() => {
+    let url;
+    fetch(src, { credentials: 'include' })
+      .then(r => r.ok ? r.blob() : null)
+      .then(blob => {
+        if (blob) { url = URL.createObjectURL(blob); setObjectUrl(url); }
+      })
+      .catch(() => {});
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [src]);
+  if (!objectUrl) return null;
+  return <img src={objectUrl} alt={alt || ''} className={className} />;
+}
+
+function formatAmount(n) {
+  if (n == null) return '';
+  const f = parseFloat(n);
+  return f % 1 === 0 ? String(f) : String(f);
+}
+
+function TagBadge({ name, color }) {
+  return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: color + '33', color, border: `1px solid ${color}66` }}>
+      {name}
+    </span>
+  );
+}
+
+// ── Detail Views ─────────────────────────────────────────────────────────────
+
+function BeverageDetail({ beverage, batched, onClose, onEdit, onViewBatched, onRecommendEdit, canUpload, user, showCreator }) {
+  const hasPhoto = !!beverage.photo_filename;
+  const linkedBatched = (beverage.linked_batched_items || []).filter(b => b.name);
+  const serviceFields = [
+    beverage.method && { label: 'Method', value: beverage.method },
+    beverage.glass  && { label: 'Glass',  value: beverage.glass  },
+  ].filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 sm:p-8" onClick={onClose}>
+      <div
+        className="bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {hasPhoto && (
+          <div className="w-full h-56 bg-gray-800 rounded-t-2xl overflow-hidden">
+            <PhotoImg
+              src={`${API}/api/coffee/${beverage.id}/photo`}
+              alt={beverage.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
+        <div className="p-8">
+          <div className="flex items-start justify-between gap-4 mb-6">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-cream text-3xl font-bold leading-tight">{beverage.name}</h2>
+              {(beverage.price || beverage.last_special_on || (beverage.tags || []).length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  {beverage.price && (
+                    <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ backgroundColor: '#F05A2820', color: '#F05A28', border: '1px solid #F05A2845' }}>
+                      ${parseFloat(beverage.price).toFixed(2)}
+                    </span>
+                  )}
+                  {beverage.last_special_on && (
+                    <span className="text-xs font-medium bg-pink-900/30 text-pink-300 border border-pink-700/40 px-3 py-1 rounded-full">
+                      Last Special · {new Date(beverage.last_special_on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  )}
+                  {(beverage.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 pt-1">
+              {(canUpload || beverage.suggested_by_id === user?.id) ? (
+                <button
+                  onClick={onEdit}
+                  className="text-sm font-medium px-3 py-1.5 rounded-lg transition"
+                  style={{ border: '1px solid #F05A2860', color: '#F05A28', backgroundColor: '#F05A2812' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F05A2825'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#F05A2812'}
+                >
+                  Edit
+                </button>
+              ) : (
+                <button
+                  onClick={onRecommendEdit}
+                  className="text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-500/60 text-gray-300 hover:text-white hover:border-gray-400 transition"
+                >
+                  Recommend an Edit
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white transition text-sm font-medium"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {showCreator && beverage.suggested_by_name && (
+            <div className="mb-6 px-3 py-2 rounded-lg bg-gray-600/40 border border-gray-500/30 text-sm text-gray-400">
+              Created by <span className="text-gray-200 font-medium">{formatCreatorName(beverage.suggested_by_name)}</span>
+            </div>
+          )}
+
+          {serviceFields.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {serviceFields.map(({ label, value }) => (
+                <div key={label} className="px-3 py-1.5 rounded-lg bg-gray-800/70 border border-gray-600">
+                  <span className="block text-gray-500 text-xs leading-none mb-0.5">{label}</span>
+                  <span className="text-gray-100 text-sm font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-gray-600/50 mb-6" />
+
+          {(beverage.ingredients || []).length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Ingredients</h3>
+              <ul className="space-y-2">
+                {beverage.ingredients.map((ing, i) => {
+                  const isBatched = linkedBatched.some(b => b.name && ing.ingredient_name &&
+                    ing.ingredient_name.toLowerCase().includes(b.name.toLowerCase().replace(/^"(.+)"$/, '$1')));
+                  const isGarnish = ing.unit === 'Garnish';
+                  return (
+                    <li key={i} className={`flex items-baseline gap-2.5 ${isGarnish ? 'opacity-60' : ''}`}>
+                      <span className="text-gray-500 text-xs shrink-0">–</span>
+                      {formatAmount(ing.amount) && (
+                        <span className="text-orange-300 font-semibold tabular-nums text-sm shrink-0">{formatAmount(ing.amount)}</span>
+                      )}
+                      {ing.unit && !isGarnish && (
+                        <span className="text-gray-400 text-xs shrink-0">{ing.unit}</span>
+                      )}
+                      <span className={`text-sm ${isBatched ? 'text-orange-200' : 'text-gray-200'}`}>
+                        {ing.ingredient_name}
+                      </span>
+                      {isGarnish && <span className="text-gray-500 text-xs italic shrink-0">garnish</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {beverage.notes && (
+            <div className="mb-6">
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Notes</h3>
+              <p className="text-gray-300 text-sm whitespace-pre-line leading-relaxed">{beverage.notes}</p>
+            </div>
+          )}
+
+          {linkedBatched.length > 0 && (
+            <div>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">House-Made</h3>
+              <div className="flex flex-wrap gap-2">
+                {linkedBatched.map(b => {
+                  const fullItem = batched.find(bi => bi.id === b.id);
+                  return fullItem ? (
+                    <button
+                      key={b.id}
+                      onClick={() => onViewBatched(fullItem)}
+                      className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-orange-500/50 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 hover:text-orange-200 transition"
+                    >
+                      {b.name}
+                      <span className="text-orange-500/70 text-xs">↗</span>
+                    </button>
+                  ) : (
+                    <span key={b.id} className="text-sm px-3 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300/70">
+                      {b.name}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BatchedDetail({ item, beverages, onClose, onEdit, canUpload }) {
+  const linkedBeverages = (item.linked_beverages || []).filter(c => c.name);
+  const steps = (item.recipe_notes || '').split('\n').filter(s => s.trim());
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-cream text-2xl font-bold">{item.name}</h2>
+              {(item.yield_amount || item.yield_unit) && (
+                <p className="text-gray-400 text-sm mt-1">
+                  Yield: <span className="text-gray-300">{item.yield_amount} {item.yield_unit}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {canUpload && (
+                <button onClick={onEdit} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">
+                  Edit
+                </button>
+              )}
+              <button onClick={onClose} className="text-gray-400 hover:text-white transition text-xl leading-none">✕</button>
+            </div>
+          </div>
+
+          {steps.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Recipe</h3>
+              <ol className="space-y-2">
+                {steps.map((step, i) => (
+                  <li key={i} className="flex gap-3 text-gray-300 text-sm leading-relaxed">
+                    <span className="text-orange-400 font-semibold tabular-nums shrink-0 mt-0.5">{i + 1}.</span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {linkedBeverages.length > 0 && (
+            <div>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Used In</h3>
+              <div className="flex flex-wrap gap-2">
+                {linkedBeverages.map(c => (
+                  <span key={c.id} className="text-sm px-2.5 py-0.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300">
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ComboSelect ───────────────────────────────────────────────────────────────
+
+function ComboSelect({ label, value, options, onChange }) {
+  const isCustom = !!value && !options.includes(value);
+  const [custom, setCustom] = useState(isCustom);
+
+  const handleSelect = (e) => {
+    if (e.target.value === '__custom__') {
+      setCustom(true);
+      onChange('');
+    } else {
+      setCustom(false);
+      onChange(e.target.value);
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">{label}</label>
+      {custom ? (
+        <div className="flex gap-1">
+          <input
+            className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={`Custom ${label.toLowerCase()}…`}
+            autoFocus
+          />
+          <button type="button" onClick={() => { setCustom(false); onChange(''); }}
+            className="text-gray-500 hover:text-gray-300 px-2 text-lg leading-none">↩</button>
+        </div>
+      ) : (
+        <select
+          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 cursor-pointer"
+          value={value}
+          onChange={handleSelect}
+        >
+          <option value="">—</option>
+          {options.map(v => <option key={v} value={v}>{v}</option>)}
+          <option value="__custom__">+ Add new…</option>
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ── Ingredient fuzzy autocomplete ─────────────────────────────────────────────
+
+function fuzzyMatch(query, target) {
+  const q = query.toLowerCase().replace(/\s+/g, '');
+  const t = target.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
+function IngredientInput({ value, allIngredients, onChange, inputRef }) {
+  const [open, setOpen] = useState(false);
+  const [warn, setWarn] = useState(false);
+  const justSelected = useRef(false);
+  const containerRef = useRef();
+
+  const matches = value.length >= 1 ? allIngredients.filter(n => fuzzyMatch(value, n)) : [];
+  const exactMatch = allIngredients.some(n => n.toLowerCase() === value.toLowerCase());
+
+  const handleChange = (e) => {
+    onChange(e.target.value);
+    setWarn(false);
+    setOpen(e.target.value.length >= 1);
+  };
+
+  const select = (name) => {
+    justSelected.current = true;
+    onChange(name);
+    setOpen(false);
+    setWarn(false);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (justSelected.current) { justSelected.current = false; return; }
+      setOpen(false);
+      if (value.trim().length >= 1 && !exactMatch && allIngredients.filter(n => fuzzyMatch(value, n)).length > 0) {
+        setWarn(true);
+      }
+    }, 150);
+  };
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      <input
+        ref={inputRef}
+        className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
+        placeholder="Ingredient"
+        value={value}
+        onChange={handleChange}
+        onFocus={() => {
+          if (value.length >= 1) setOpen(true);
+          setTimeout(() => containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+        }}
+        onBlur={handleBlur}
+      />
+      {open && matches.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-gray-700 border border-gray-600 rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+          {matches.slice(0, 8).map(name => (
+            <button key={name} type="button" onMouseDown={() => select(name)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-600 transition">
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+      {warn && !open && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-gray-800 border border-orange-500/50 rounded-lg shadow-xl p-3">
+          <p className="text-orange-300 text-xs font-medium mb-2">Did you mean one of these?</p>
+          <div className="space-y-1 mb-3">
+            {allIngredients.filter(n => fuzzyMatch(value, n)).slice(0, 5).map(name => (
+              <button key={name} type="button" onMouseDown={() => select(name)}
+                className="block w-full text-left text-sm text-white hover:text-orange-400 transition px-1 py-0.5">
+                {name}
+              </button>
+            ))}
+          </div>
+          <button type="button" onMouseDown={() => setWarn(false)}
+            className="text-xs text-gray-500 hover:text-gray-300 transition">
+            No, add "{value}" as new ingredient
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Edit Modals ───────────────────────────────────────────────────────────────
+
+function BeverageModal({ beverage, catalog, tagDefs, batchedItems, allIngredients, onSave, onClose, isSuggestion }) {
+  const isNew = !beverage;
+  const [form, setForm] = useState({
+    name: beverage?.name || '',
+    method: beverage?.method || '',
+    glass: beverage?.glass || '',
+    status: beverage?.status || 'menu',
+    price: beverage?.price || '',
+    last_special_on: beverage?.last_special_on || '',
+    suggested_by_name: beverage?.suggested_by_name || '',
+    notes: beverage?.notes || '',
+  });
+  const [ingredients, setIngredients] = useState(
+    beverage?.ingredients?.length
+      ? beverage.ingredients.map(i => ({ ingredient_name: i.ingredient_name, amount: i.amount ?? '', unit: i.unit || '' }))
+      : [{ ingredient_name: '', amount: '', unit: '' }]
+  );
+  const [selectedTags, setSelectedTags] = useState(new Set((beverage?.tags || []).map(t => t.name)));
+  const [selectedBatched, setSelectedBatched] = useState(new Set((beverage?.linked_batched_item_ids || [])));
+  const [photo, setPhoto] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef();
+  const ingredientRefs = useRef([]);
+  const justAddedIngredient = useRef(false);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const addIngredient = () => {
+    justAddedIngredient.current = true;
+    setIngredients(prev => [...prev, { ingredient_name: '', amount: '', unit: '' }]);
+  };
+
+  useEffect(() => {
+    if (justAddedIngredient.current) {
+      justAddedIngredient.current = false;
+      const el = ingredientRefs.current[ingredients.length - 1];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.focus();
+      }
+    }
+  }, [ingredients.length]);
+
+  const removeIngredient = (i) => setIngredients(prev => prev.filter((_, idx) => idx !== i));
+  const setIng = (i, k, v) => setIngredients(prev => prev.map((ing, idx) => idx === i ? { ...ing, [k]: v } : ing));
+  const moveIng = (i, dir) => {
+    const arr = [...ingredients];
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setIngredients(arr);
+  };
+
+  const toggleTag = (name) => setSelectedTags(prev => {
+    const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s;
+  });
+  const toggleBatched = (id) => setSelectedBatched(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v ?? ''));
+      fd.append('ingredients', JSON.stringify(ingredients.filter(i => i.ingredient_name.trim())));
+      fd.append('tags', JSON.stringify([...selectedTags]));
+      fd.append('linked_batched_item_ids', JSON.stringify([...selectedBatched]));
+      if (photo) fd.append('photo', photo);
+      if (removePhoto) fd.append('remove_photo', 'true');
+
+      const url = isNew ? `${API}/api/coffee` : `${API}/api/coffee/${beverage.id}`;
+      const method = isNew ? 'POST' : 'PATCH';
+      const res = await fetch(url, { method, credentials: 'include', body: fd });
+      if (!res.ok) throw new Error();
+      onSave();
+    } catch {
+      alert('Failed to save beverage.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+  const selectCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-cream text-xl font-bold">{isSuggestion ? 'Suggest a Beverage' : isNew ? 'New Beverage' : 'Edit Beverage'}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Name *</label>
+              <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} required />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <ComboSelect label="Method" value={form.method} options={catalog.method || []} onChange={v => set('method', v)} />
+              <ComboSelect label="Glass"  value={form.glass}  options={catalog.glass  || []} onChange={v => set('glass',  v)} />
+            </div>
+
+            {isSuggestion ? (
+              <div className="bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-gray-400 text-sm">
+                Category: <span className="text-yellow-400 font-medium">In Progress</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Status</label>
+                    <select className={selectCls} value={form.status} onChange={e => set('status', e.target.value)}>
+                      <option value="menu">Menu Item</option>
+                      <option value="special">Special</option>
+                      <option value="wip">In Progress</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Price</label>
+                    <input type="number" step="0.01" className={inputCls} value={form.price} onChange={e => set('price', e.target.value)} placeholder="0.00" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Last Featured as Special</label>
+                  <div className="flex items-center gap-2">
+                    <input type="date" className={inputCls} value={form.last_special_on} onChange={e => set('last_special_on', e.target.value)} />
+                    {form.last_special_on && (
+                      <button type="button" onClick={() => set('last_special_on', '')}
+                        className="text-gray-500 hover:text-red-400 transition text-xs flex-shrink-0">
+                        ✕ Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Created By</label>
+                  <input className={inputCls} value={form.suggested_by_name} onChange={e => set('suggested_by_name', e.target.value)} placeholder="Creator's name…" />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Ingredients</label>
+              <div className="space-y-2">
+                {ingredients.map((ing, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <div className="flex flex-col gap-0.5">
+                      <button type="button" onClick={() => moveIng(i, -1)} disabled={i === 0} className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
+                      <button type="button" onClick={() => moveIng(i, 1)} disabled={i === ingredients.length - 1} className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
+                    </div>
+                    <IngredientInput
+                      inputRef={el => { ingredientRefs.current[i] = el; }}
+                      value={ing.ingredient_name}
+                      allIngredients={allIngredients}
+                      onChange={v => setIng(i, 'ingredient_name', v)}
+                    />
+                    <input
+                      type="number" step="0.01"
+                      className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
+                      placeholder="Amt"
+                      value={ing.amount}
+                      onChange={e => setIng(i, 'amount', e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && i === ingredients.length - 1) {
+                          e.preventDefault();
+                          addIngredient();
+                        }
+                      }}
+                    />
+                    <select
+                      className="w-20 bg-gray-700 border border-gray-600 rounded px-1 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500"
+                      value={ing.unit}
+                      onChange={e => setIng(i, 'unit', e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(catalog.unit || []).map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <button type="button" onClick={() => removeIngredient(i)} className="text-gray-500 hover:text-red-400 transition text-sm shrink-0">✕</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addIngredient} className="mt-2 text-xs text-orange-400 hover:text-orange-300 transition">
+                + Add Ingredient
+              </button>
+            </div>
+
+            {tagDefs.length > 0 && (
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Tags</label>
+                <div className="flex flex-wrap gap-2">
+                  {tagDefs.map(td => (
+                    <button
+                      key={td.name}
+                      type="button"
+                      onClick={() => toggleTag(td.name)}
+                      className="text-xs font-medium px-2.5 py-1 rounded-full transition"
+                      style={
+                        selectedTags.has(td.name)
+                          ? { backgroundColor: td.color + '33', color: td.color, border: `1px solid ${td.color}` }
+                          : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
+                      }
+                    >
+                      {td.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {batchedItems.length > 0 && (
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">House-Made Items Used</label>
+                <div className="flex flex-wrap gap-2">
+                  {batchedItems.map(b => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => toggleBatched(b.id)}
+                      className="text-xs px-2.5 py-1 rounded-md transition"
+                      style={
+                        selectedBatched.has(b.id)
+                          ? { backgroundColor: '#F05A2822', color: '#F05A28', border: '1px solid #F05A2866' }
+                          : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
+                      }
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Notes</label>
+              <textarea className={inputCls + ' resize-none'} rows={3} value={form.notes} onChange={e => set('notes', e.target.value)} />
+            </div>
+
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Photo</label>
+              {beverage?.photo_filename && !removePhoto && !photo && (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-gray-400 text-xs">Current photo set</span>
+                  <button type="button" onClick={() => setRemovePhoto(true)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { setPhoto(e.target.files[0]); setRemovePhoto(false); }} />
+              <button type="button" onClick={() => fileRef.current.click()} className="text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 rounded px-3 py-1.5 transition">
+                {photo ? photo.name : 'Choose photo…'}
+              </button>
+              {photo && <button type="button" onClick={() => setPhoto(null)} className="ml-2 text-xs text-gray-500 hover:text-red-400">Remove</button>}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BatchedModal({ item, beverages, catalog, onSave, onClose }) {
+  const isNew = !item;
+  const [form, setForm] = useState({
+    name: item?.name || '',
+    recipe_notes: item?.recipe_notes || '',
+    yield_amount: item?.yield_amount || '',
+    yield_unit: item?.yield_unit || '',
+  });
+  const [selectedBeverages, setSelectedBeverages] = useState(new Set((item?.linked_beverage_ids || [])));
+  const [saving, setSaving] = useState(false);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const toggle = (id) => setSelectedBeverages(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const body = { ...form, linked_beverage_ids: JSON.stringify([...selectedBeverages]) };
+      const url = isNew ? `${API}/api/coffee/batched` : `${API}/api/coffee/batched/${item.id}`;
+      const method = isNew ? 'POST' : 'PATCH';
+      const res = await fetch(url, {
+        method, credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      onSave();
+    } catch {
+      alert('Failed to save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-cream text-xl font-bold">{isNew ? 'New Batched Item' : 'Edit Batched Item'}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Name *</label>
+              <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} required />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Yield Amount</label>
+                <input type="number" step="0.01" className={inputCls} value={form.yield_amount} onChange={e => set('yield_amount', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Yield Unit</label>
+                <select className={inputCls} value={form.yield_unit} onChange={e => set('yield_unit', e.target.value)}>
+                  <option value="">—</option>
+                  {(catalog.unit || []).map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">Recipe / Instructions</label>
+              <textarea className={inputCls + ' resize-none'} rows={8} value={form.recipe_notes} onChange={e => set('recipe_notes', e.target.value)} placeholder="One step per line…" />
+              <p className="text-gray-500 text-xs mt-1">Each line becomes a numbered step.</p>
+            </div>
+
+            {beverages.length > 0 && (
+              <div>
+                <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Used In Beverages</label>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {beverages.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggle(c.id)}
+                      className="text-xs px-2.5 py-1 rounded-md transition"
+                      style={
+                        selectedBeverages.has(c.id)
+                          ? { backgroundColor: '#F05A2822', color: '#F05A28', border: '1px solid #F05A2866' }
+                          : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
+                      }
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Recommend Edit Modal ──────────────────────────────────────────────────────
+
+function RecommendEditModal({ beverage, onClose, onSave }) {
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/coffee/submissions`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'change', beverage_id: beverage.id, description }),
+      });
+      if (!res.ok) throw new Error();
+      onSave();
+    } catch {
+      alert('Failed to submit.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500';
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-cream text-xl font-bold">Recommend an Edit</h2>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white transition text-sm">✕</button>
+          </div>
+          <p className="text-gray-400 text-sm mb-5">{beverage.name}</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-xs uppercase tracking-wider mb-1 block">What would you change? *</label>
+              <textarea
+                className={inputCls + ' resize-none'}
+                rows={5}
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Describe your suggested change — ingredients, ratios, garnish…"
+                required
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50" style={{ backgroundColor: '#F05A28' }}>
+                {saving ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ingredient Manager ────────────────────────────────────────────────────────
+
+function IngredientManager({ allIngredients, onMerged }) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [merging, setMerging] = useState(false);
+
+  const filtered = allIngredients.filter(n => !search || n.toLowerCase().includes(search.toLowerCase()));
+
+  const toggle = (name) => {
+    setSelected(prev => {
+      const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s;
+    });
+  };
+
+  useEffect(() => {
+    if (selected.size >= 2) {
+      const arr = [...selected];
+      setMergeTarget(arr.reduce((a, b) => a.length >= b.length ? a : b, ''));
+    }
+  }, [selected]);
+
+  const doMerge = async () => {
+    if (!mergeTarget.trim() || selected.size < 2) return;
+    setMerging(true);
+    await fetch(`${API}/api/coffee/ingredients/merge`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: [...selected], to: mergeTarget.trim() }),
+    });
+    setSelected(new Set());
+    setMergeTarget('');
+    setMerging(false);
+    onMerged();
+  };
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <p className="text-gray-400 text-sm">Select two or more ingredients to merge them into one canonical name.</p>
+      <input
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+        placeholder="Search ingredients…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+
+      {selected.size >= 2 && (
+        <div className="bg-gray-700/60 border border-orange-500/40 rounded-lg p-4 space-y-3">
+          <p className="text-orange-300 text-sm font-medium">Merge {selected.size} ingredients into:</p>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 min-w-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500"
+              value={mergeTarget}
+              onChange={e => setMergeTarget(e.target.value)}
+              placeholder="Canonical name…"
+            />
+            <button onClick={doMerge} disabled={merging || !mergeTarget.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 shrink-0"
+              style={{ backgroundColor: '#F05A28' }}>
+              {merging ? 'Merging…' : 'Merge'}
+            </button>
+            <button onClick={() => setSelected(new Set())}
+              className="px-3 py-2 rounded-lg text-sm bg-gray-600 text-gray-300 hover:bg-gray-500 shrink-0">
+              Cancel
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[...selected].map(n => (
+              <span key={n} className="text-xs px-2 py-0.5 rounded-full bg-orange-900/40 text-orange-300 border border-orange-700/40">{n}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selected.size === 1 && (
+        <p className="text-gray-500 text-xs">Select at least one more ingredient to merge.</p>
+      )}
+
+      <div className="space-y-1">
+        {filtered.length === 0 && <p className="text-gray-500 text-sm">No ingredients found.</p>}
+        {filtered.map(name => (
+          <label key={name} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-700/50 cursor-pointer transition">
+            <input
+              type="checkbox"
+              checked={selected.has(name)}
+              onChange={() => toggle(name)}
+              className="accent-orange-500"
+            />
+            <span className="text-white text-sm flex-1">{name}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export default function CoffeeKeeper({ user, canUpload, onBack }) {
+  const [beverages, setBeverages] = useState([]);
+  const [batched, setBatched] = useState([]);
+  const [catalog, setCatalog] = useState({});
+  const [tagDefs, setTagDefs] = useState([]);
+  const [allIngredients, setAllIngredients] = useState([]);
+  const [coffeeSettings, setCoffeeSettings] = useState({ show_creator: true });
+  const [tab, setTab] = useState('beverages');
+  const [beverageCategory, setBeverageCategory] = useState('all');
+  const [manageTab, setManageTab] = useState('beverages');
+  const [tagFilter, setTagFilter] = useState(null);
+  const [search, setSearch] = useState('');
+  const [viewBeverage, setViewBeverage] = useState(null);
+  const [viewBatched, setViewBatched] = useState(null);
+  const [editBeverage, setEditBeverage] = useState(undefined);
+  const [editBatched, setEditBatched] = useState(undefined);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [recommendBeverage, setRecommendBeverage] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const fetches = [
+        fetch(`${API}/api/coffee`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/coffee/batched`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/coffee/catalog`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/coffee/tag-definitions`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/coffee/ingredients`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`${API}/api/coffee/settings`, { credentials: 'include' }).then(r => r.json()),
+      ];
+      if (canUpload) fetches.push(fetch(`${API}/api/coffee/submissions`, { credentials: 'include' }).then(r => r.json()));
+      const [bvRes, btRes, catRes, tdRes, ingRes, settingsRes, subRes] = await Promise.all(fetches);
+      setBeverages(Array.isArray(bvRes) ? bvRes : []);
+      setBatched(Array.isArray(btRes) ? btRes : []);
+      setCatalog(catRes || {});
+      setTagDefs(Array.isArray(tdRes) ? tdRes : []);
+      setAllIngredients(Array.isArray(ingRes) ? ingRes.map(r => r.name) : []);
+      if (settingsRes && !settingsRes.message) setCoffeeSettings(settingsRes);
+      if (subRes) setSubmissions(Array.isArray(subRes) ? subRes : []);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const allTags = [...new Set(beverages.flatMap(c => (c.tags || []).map(t => t.name)))].sort();
+
+  const filteredBeverages = beverages.filter(c => {
+    if (beverageCategory !== 'all' && c.status !== beverageCategory) return false;
+    if (tagFilter && !(c.tags || []).some(t => t.name === tagFilter)) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const inName = c.name.toLowerCase().includes(q);
+      const inIngredients = (c.ingredients || []).some(i => i.ingredient_name.toLowerCase().includes(q));
+      if (!inName && !inIngredients) return false;
+    }
+    return true;
+  });
+
+  const pendingSubmissions = submissions.filter(s => s.status === 'pending');
+
+  const handleDelete = async (type, id) => {
+    if (!window.confirm('Delete this item?')) return;
+    const url = type === 'beverage' ? `${API}/api/coffee/${id}` : `${API}/api/coffee/batched/${id}`;
+    await fetch(url, { method: 'DELETE', credentials: 'include' });
+    load();
+  };
+
+  const afterSave = () => {
+    setEditBeverage(undefined);
+    setEditBatched(undefined);
+    setSuggestOpen(false);
+    setRecommendBeverage(null);
+    load();
+  };
+
+  const handleReviewSubmission = async (id, status) => {
+    await fetch(`${API}/api/coffee/submissions/${id}`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    load();
+  };
+
+  const handleDeleteSubmission = async (id) => {
+    if (!window.confirm('Delete this submission?')) return;
+    await fetch(`${API}/api/coffee/submissions/${id}`, { method: 'DELETE', credentials: 'include' });
+    load();
+  };
+
+  const TABS = [
+    { key: 'beverages', label: 'Beverages' },
+    { key: 'batched', label: 'Syrups/Infusions' },
+    ...(canUpload ? [{ key: 'manage', label: 'Manage' }] : []),
+  ];
+
+  const tabCls = (k) => `px-4 py-2 text-sm font-medium rounded-lg transition ${
+    tab === k ? 'text-white' : 'text-gray-400 hover:text-white'
+  }`;
+  const tabStyle = (k) => tab === k ? { backgroundColor: '#F05A28' } : {};
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
+        </button>
+        <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
+          ← Back to Dashboard
+        </button>
+      </nav>
+
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        <div className="flex gap-2 mb-6">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} className={tabCls(t.key)} style={tabStyle(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {loading && <p className="text-gray-400 text-center py-12">Loading…</p>}
+
+        {/* ── Beverages Tab ── */}
+        {!loading && tab === 'beverages' && (
+          <>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'menu', label: 'Menu Items' },
+                { key: 'special', label: 'Specials' },
+                { key: 'wip', label: 'In Progress' },
+              ].map(cat => (
+                <button
+                  key={cat.key}
+                  onClick={() => { setBeverageCategory(cat.key); setTagFilter(null); setSearch(''); }}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition ${beverageCategory === cat.key ? 'text-white' : 'text-gray-400 hover:text-white bg-gray-800'}`}
+                  style={beverageCategory === cat.key ? { backgroundColor: '#F05A28' } : {}}
+                >
+                  {cat.label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <button
+                onClick={() => setSuggestOpen(true)}
+                className="px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 transition"
+              >
+                + Suggest a Beverage
+              </button>
+            </div>
+
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {allTags.map(tag => {
+                  const color = (beverages.find(c => (c.tags||[]).some(t => t.name === tag))?.tags || []).find(t => t.name === tag)?.color || '#6b7280';
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+                      className="text-xs font-medium px-2.5 py-1 rounded-full transition"
+                      style={
+                        tagFilter === tag
+                          ? { backgroundColor: color + '33', color, border: `1px solid ${color}` }
+                          : { backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #4b5563' }
+                      }
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <input
+              className="w-full max-w-sm bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500 mb-6"
+              placeholder="Search by name or ingredient…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+
+            {filteredBeverages.length === 0 && (
+              <p className="text-gray-500 text-center py-12">No beverages found.</p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredBeverages.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => setViewBeverage(c)}
+                  className="relative bg-gray-800 border border-gray-700 rounded-xl overflow-hidden cursor-pointer hover:border-orange-500 transition group"
+                >
+                  {c.photo_filename && (
+                    <div className="w-full h-32 bg-gray-900 overflow-hidden">
+                      <PhotoImg
+                        src={`${API}/api/coffee/${c.id}/photo`}
+                        alt={c.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <h3 className="text-white font-semibold text-base group-hover:text-orange-400 transition leading-tight mb-1">{c.name}</h3>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {c.method && <span className="text-xs text-gray-500">{c.method}</span>}
+                      {c.glass && <span className="text-gray-600 text-xs">·</span>}
+                      {c.glass && <span className="text-xs text-gray-500">{c.glass}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {(c.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
+                    </div>
+                    {c.price && (
+                      <p className="text-sm font-semibold mt-2" style={{ color: '#F05A28' }}>${parseFloat(c.price).toFixed(2)}</p>
+                    )}
+                  </div>
+                  {coffeeSettings.show_creator && c.suggested_by_name && (
+                    <div style={{
+                      position: 'absolute', top: '18px', right: '-26px',
+                      width: '110px', backgroundColor: '#F05A28', color: 'white',
+                      fontSize: '10px', fontWeight: '700', textAlign: 'center',
+                      padding: '4px 0', transform: 'rotate(45deg)',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.5)', letterSpacing: '0.04em',
+                      pointerEvents: 'none',
+                    }}>
+                      {formatCreatorName(c.suggested_by_name)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── Batched Items Tab ── */}
+        {!loading && tab === 'batched' && (
+          <div className="space-y-3">
+            {batched.length === 0 && <p className="text-gray-500 text-center py-12">No house-made items.</p>}
+            {batched.map(b => (
+              <div
+                key={b.id}
+                onClick={() => setViewBatched(b)}
+                className="bg-gray-800 border border-gray-700 rounded-xl p-4 cursor-pointer hover:border-orange-500 transition group"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold group-hover:text-orange-400 transition">{b.name}</h3>
+                    {(b.yield_amount || b.yield_unit) && (
+                      <p className="text-gray-500 text-sm mt-0.5">Yield: {b.yield_amount} {b.yield_unit}</p>
+                    )}
+                  </div>
+                  {(b.linked_beverages || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 justify-end max-w-xs">
+                      {(b.linked_beverages || []).map(c => (
+                        <span key={c.id} className="text-xs text-gray-400 bg-gray-700 px-2 py-0.5 rounded">{c.name}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Manage Tab ── */}
+        {!loading && tab === 'manage' && canUpload && (
+          <>
+            <div className="flex gap-2 mb-6">
+              {[
+                { key: 'beverages', label: 'Beverages' },
+                { key: 'batched', label: 'Syrups/Infusions' },
+                { key: 'ingredients', label: 'Ingredients' },
+                { key: 'submissions', label: `Submissions${pendingSubmissions.length ? ` (${pendingSubmissions.length})` : ''}` },
+                { key: 'settings', label: 'Settings' },
+              ].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setManageTab(t.key)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition ${manageTab === t.key ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {manageTab === 'beverages' && (
+              <>
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={() => setEditBeverage(null)}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition"
+                    style={{ backgroundColor: '#F05A28' }}
+                  >
+                    + New Beverage
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {beverages.map(c => (
+                    <div key={c.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-white font-medium text-sm">{c.name}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            c.status === 'menu' ? 'bg-green-900/50 text-green-400' :
+                            c.status === 'special' ? 'bg-pink-900/50 text-pink-400' :
+                            'bg-yellow-900/50 text-yellow-400'
+                          }`}>
+                            {c.status === 'menu' ? 'Menu' : c.status === 'special' ? 'Special' : 'In Progress'}
+                          </span>
+                          {c.suggested_by_name && (
+                            <span className="text-xs text-gray-500">by {formatCreatorName(c.suggested_by_name)}</span>
+                          )}
+                        </div>
+                        <div className="flex gap-1 mt-0.5 flex-wrap">
+                          {c.method && <span className="text-xs text-gray-500">{c.method}</span>}
+                          {(c.tags || []).map(t => <TagBadge key={t.name} name={t.name} color={t.color} />)}
+                        </div>
+                      </div>
+                      <button onClick={() => setEditBeverage(c)} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete('beverage', c.id)} className="text-sm text-gray-500 hover:text-red-400 transition">
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {manageTab === 'ingredients' && (
+              <IngredientManager allIngredients={allIngredients} onMerged={() => load()} />
+            )}
+
+            {manageTab === 'submissions' && (
+              <div className="space-y-3">
+                {submissions.length === 0 && (
+                  <p className="text-gray-500 text-center py-12">No submissions yet.</p>
+                )}
+                {submissions.map(s => (
+                  <div key={s.id} className={`bg-gray-800 border rounded-xl p-4 ${s.status === 'pending' ? 'border-orange-500/40' : 'border-gray-700 opacity-60'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.type === 'new' ? 'bg-blue-900/50 text-blue-300' : 'bg-purple-900/50 text-purple-300'}`}>
+                            {s.type === 'new' ? 'New Idea' : 'Change Request'}
+                          </span>
+                          {s.type === 'change' && s.beverage_name_ref && (
+                            <span className="text-xs text-gray-400">re: {s.beverage_name_ref}</span>
+                          )}
+                          {s.type === 'new' && s.beverage_name && (
+                            <span className="text-sm font-medium text-white">"{s.beverage_name}"</span>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${s.status === 'pending' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>
+                            {s.status}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 text-sm whitespace-pre-line">{s.description}</p>
+                        <p className="text-gray-500 text-xs mt-2">
+                          From {s.submitted_by_name} · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        {s.status === 'pending' && (
+                          <button
+                            onClick={() => handleReviewSubmission(s.id, 'reviewed')}
+                            className="text-xs px-2 py-1 rounded border border-green-600 text-green-400 hover:bg-green-900/30 transition"
+                          >
+                            Mark Reviewed
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteSubmission(s.id)}
+                          className="text-xs text-gray-500 hover:text-red-400 transition text-right"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {manageTab === 'batched' && (
+              <>
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={() => setEditBatched(null)}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition"
+                    style={{ backgroundColor: '#F05A28' }}
+                  >
+                    + New House-Made Item
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {batched.map(b => (
+                    <div key={b.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-white font-medium text-sm">{b.name}</span>
+                        {(b.yield_amount || b.yield_unit) && (
+                          <span className="text-gray-500 text-xs ml-2">{b.yield_amount} {b.yield_unit}</span>
+                        )}
+                      </div>
+                      <button onClick={() => setEditBatched(b)} className="text-sm text-gray-400 hover:text-orange-400 transition px-2 py-1 rounded border border-gray-600 hover:border-orange-500">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete('batched', b.id)} className="text-sm text-gray-500 hover:text-red-400 transition">
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {manageTab === 'settings' && (
+              <div className="max-w-sm space-y-4">
+                <p className="text-gray-400 text-sm">Configure how beverages appear to all users.</p>
+                <label className="flex items-center justify-between gap-4 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 cursor-pointer">
+                  <span className="text-white text-sm">Show creator name on beverages</span>
+                  <button
+                    onClick={async () => {
+                      const next = !coffeeSettings.show_creator;
+                      setCoffeeSettings(s => ({ ...s, show_creator: next }));
+                      await fetch(`${API}/api/coffee/settings`, {
+                        method: 'PATCH', credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ show_creator: next }),
+                      });
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${coffeeSettings.show_creator ? 'bg-orange-500' : 'bg-gray-600'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${coffeeSettings.show_creator ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </label>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      {viewBeverage && (
+        <BeverageDetail
+          beverage={viewBeverage}
+          batched={batched}
+          canUpload={canUpload}
+          user={user}
+          showCreator={coffeeSettings.show_creator}
+          onClose={() => setViewBeverage(null)}
+          onEdit={() => { setEditBeverage(viewBeverage); setViewBeverage(null); }}
+          onViewBatched={(item) => { setViewBeverage(null); setViewBatched(item); }}
+          onRecommendEdit={() => { setRecommendBeverage(viewBeverage); setViewBeverage(null); }}
+        />
+      )}
+      {viewBatched && (
+        <BatchedDetail
+          item={viewBatched}
+          beverages={beverages}
+          canUpload={canUpload}
+          onClose={() => setViewBatched(null)}
+          onEdit={() => { setEditBatched(viewBatched); setViewBatched(null); }}
+        />
+      )}
+
+      {editBeverage !== undefined && (
+        <BeverageModal
+          beverage={editBeverage}
+          catalog={catalog}
+          tagDefs={tagDefs}
+          batchedItems={batched}
+          allIngredients={allIngredients}
+          isSuggestion={!canUpload}
+          onSave={afterSave}
+          onClose={() => setEditBeverage(undefined)}
+        />
+      )}
+      {editBatched !== undefined && (
+        <BatchedModal
+          item={editBatched}
+          beverages={beverages}
+          catalog={catalog}
+          onSave={afterSave}
+          onClose={() => setEditBatched(undefined)}
+        />
+      )}
+      {suggestOpen && (
+        <BeverageModal
+          beverage={null}
+          catalog={catalog}
+          tagDefs={tagDefs}
+          batchedItems={batched}
+          allIngredients={allIngredients}
+          isSuggestion={true}
+          onSave={afterSave}
+          onClose={() => setSuggestOpen(false)}
+        />
+      )}
+      {recommendBeverage && (
+        <RecommendEditModal
+          beverage={recommendBeverage}
+          onClose={() => setRecommendBeverage(null)}
+          onSave={afterSave}
+        />
+      )}
+    </div>
+  );
+}
