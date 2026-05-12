@@ -413,7 +413,8 @@ export default function DistroTaproomOrders({ user, canUpload, onBack }) {
                       )}
                       <button
                         onClick={() => printBol(selected.invoice_number)}
-                        className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition"
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition hover:opacity-90"
+                        style={{ backgroundColor: '#F05A28' }}
                       >
                         Print BOL
                       </button>
@@ -454,7 +455,7 @@ export default function DistroTaproomOrders({ user, canUpload, onBack }) {
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ backgroundColor: '#F05A28' }}
                 >
-                  Print
+                  Print Invoice
                 </button>
               )}
             </div>
