@@ -1542,6 +1542,7 @@ if (require.main === module) {
 
 // ── Distro / Taproom Orders (Google Sheet) ────────────────────────────────────
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Teo4JcdQRY8mmnUZOcS3NTZIIhhwWj6YoqFom6tqp6E/gviz/tq?tqx=out:csv&sheet=Invoice%20Log';
+const BOL_EXCLUDED_SERVER = ['northside', 'midtown', 'power mill', 'tampa', 'tri-eagle', 'johnson', 'progressive'];
 
 const checkBOLView = (req, res, next) => {
   if (req.user.roles.includes('admin')) return next();
@@ -1611,6 +1612,33 @@ app.get('/api/distro-orders', authenticateToken, async (req, res) => {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch orders' });
   }
+});
+
+// Activity badge — lightweight, used by Dashboard to show notification dot
+app.get('/api/distro-orders/activity-badge', authenticateToken, async (req, res) => {
+  try {
+    const [bolRes, sheetRes] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FROM bol_attachments WHERE uploaded_at > NOW() - INTERVAL '7 days'`),
+      fetch(SHEET_CSV_URL),
+    ]);
+    const recentBols = parseInt(bolRes.rows[0].count, 10);
+
+    const csv = await sheetRes.text();
+    const lines = csv.split('\n').filter(l => l.trim());
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todayStr = `${today.getMonth()+1}/${today.getDate()}/${today.getFullYear()}`;
+    const bolInvoices = new Set((await pool.query('SELECT invoice_number FROM bol_attachments')).rows.map(r => r.invoice_number));
+    let ordersMissingBol = 0;
+    lines.slice(1).forEach(line => {
+      const cols = parseCSVLine(line);
+      const date = cols[2] || '';
+      const inv  = cols[1] || '';
+      const recipient = (cols[3] || '').toLowerCase();
+      const excluded = BOL_EXCLUDED_SERVER.some(e => recipient.includes(e));
+      if (!excluded && date === todayStr && inv && !bolInvoices.has(inv)) ordersMissingBol++;
+    });
+    res.json({ recentBols, ordersMissingBol });
+  } catch { res.json({ recentBols: 0, ordersMissingBol: 0 }); }
 });
 
 app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {

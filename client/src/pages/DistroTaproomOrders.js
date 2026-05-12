@@ -236,6 +236,9 @@ function OrderCard({ order, onClick }) {
     );
   }
 
+  const bolRecent = order.bol && order.bol.uploaded_at &&
+    (Date.now() - new Date(order.bol.uploaded_at).getTime()) < 48 * 60 * 60 * 1000;
+
   return (
     <button
       onClick={onClick}
@@ -246,18 +249,23 @@ function OrderCard({ order, onClick }) {
         <div className="font-semibold truncate group-hover:text-orange-400 transition" style={{ color: '#F05A28' }}>
           {order.recipient}
         </div>
-        {order.bol && !bolExcluded(order.recipient) && (
-          <a
-            href={`${API}/api/bol/${encodeURIComponent(order.invoice_number)}/file`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={e => e.stopPropagation()}
-            title="View BOL"
-            className="shrink-0 text-gray-400 hover:text-orange-400 transition"
-          >
-            <Paperclip size={10} />
-          </a>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {bolRecent && (
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#F05A28' }} />
+          )}
+          {order.bol && !bolExcluded(order.recipient) && (
+            <a
+              href={`${API}/api/bol/${encodeURIComponent(order.invoice_number)}/file`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="View BOL"
+              className="text-gray-400 hover:text-orange-400 transition"
+            >
+              <Paperclip size={10} />
+            </a>
+          )}
+        </div>
       </div>
       {order.invoice_number && (
         <div className="text-gray-500 mt-0.5">#{order.invoice_number}</div>
