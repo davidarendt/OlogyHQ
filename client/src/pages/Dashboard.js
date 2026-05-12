@@ -33,13 +33,13 @@ function Dashboard({ user, onLogout, onNavigate }) {
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Top Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
         <button onClick={() => {}} className="flex items-center gap-3 cursor-default">
           <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-400 text-sm">Welcome, {user.name}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-sm hidden sm:inline">Welcome, {user.name}</span>
           <button onClick={onLogout} className="text-sm text-gray-400 hover:text-white transition">
             Sign Out
           </button>
