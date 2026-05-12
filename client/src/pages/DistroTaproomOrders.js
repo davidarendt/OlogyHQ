@@ -36,10 +36,11 @@ async function printBol(invoiceNumber) {
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank');
     if (win) {
-      win.addEventListener('load', () => {
+      setTimeout(() => {
+        win.focus();
         win.print();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
-      });
+      }, 1000);
     }
   } catch {}
 }
@@ -54,10 +55,11 @@ async function printInvoice(pdfUrl) {
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank');
     if (win) {
-      win.addEventListener('load', () => {
+      setTimeout(() => {
+        win.focus();
         win.print();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
-      });
+      }, 1000);
     }
   } catch {}
 }
