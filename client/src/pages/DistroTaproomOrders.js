@@ -247,7 +247,16 @@ function OrderCard({ order, onClick }) {
           {order.recipient}
         </div>
         {order.bol && !bolExcluded(order.recipient) && (
-          <Paperclip size={10} className="shrink-0 text-gray-400" />
+          <a
+            href={`${API}/api/bol/${encodeURIComponent(order.invoice_number)}/file`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            title="View BOL"
+            className="shrink-0 text-gray-400 hover:text-orange-400 transition"
+          >
+            <Paperclip size={10} />
+          </a>
         )}
       </div>
       {order.invoice_number && (
