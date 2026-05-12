@@ -1543,6 +1543,30 @@ if (require.main === module) {
 // ── Distro / Taproom Orders (Google Sheet) ────────────────────────────────────
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Teo4JcdQRY8mmnUZOcS3NTZIIhhwWj6YoqFom6tqp6E/gviz/tq?tqx=out:csv&sheet=Invoice%20Log';
 
+const checkBOLView = (req, res, next) => {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'distro-taproom-orders'
+       AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+};
+
+const checkBOLManage = (req, res, next) => {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'distro-taproom-orders'
+       AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+};
+
+const bolUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
 function parseCSVLine(line) {
   const result = [];
   let current = '';
@@ -1562,17 +1586,24 @@ function parseCSVLine(line) {
 
 app.get('/api/distro-orders', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(SHEET_CSV_URL);
+    const [response, bolResult] = await Promise.all([
+      fetch(SHEET_CSV_URL),
+      pool.query('SELECT invoice_number, is_amended, uploaded_by_name, uploaded_at FROM bol_attachments'),
+    ]);
     const csv = await response.text();
     const lines = csv.split('\n').filter(l => l.trim());
+    const bolMap = {};
+    bolResult.rows.forEach(b => { bolMap[b.invoice_number] = b; });
     const orders = lines.slice(1).map(line => {
       const cols = parseCSVLine(line);
+      const inv = cols[1] || '';
       return {
-        invoice_number: cols[1] || '',
+        invoice_number: inv,
         date:           cols[2] || '',
         recipient:      cols[3] || '',
         pdf_url:        cols[8] || '',
         status:         cols[10] || '',
+        bol:            bolMap[inv] || null,
       };
     }).filter(o => o.date && o.recipient);
     res.json(orders);
@@ -1626,6 +1657,66 @@ app.get('/api/distro-orders/print-day', authenticateToken, async (req, res) => {
     console.error('print-day error:', err);
     res.status(500).json({ message: 'Failed to merge PDFs' });
   }
+});
+
+// ── BOL Attachments ───────────────────────────────────────────────────────────
+
+// Presign upload URL — client uploads directly to Supabase
+app.post('/api/bol/presign', authenticateToken, checkBOLManage, async (req, res) => {
+  try {
+    const { invoice_number } = req.body;
+    if (!invoice_number) return res.status(400).json({ message: 'invoice_number required' });
+    const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+    const { data, error } = await supabase.storage.from('bol-documents').createSignedUploadUrl(uniqueName);
+    if (error) return res.status(500).json({ message: error.message });
+    res.json({ signedUrl: data.signedUrl, path: data.path });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Commit BOL record after direct upload — insert or replace (sets is_amended on replace)
+app.post('/api/bol/commit', authenticateToken, checkBOLManage, async (req, res) => {
+  try {
+    const { invoice_number, filename } = req.body;
+    if (!invoice_number || !filename) return res.status(400).json({ message: 'invoice_number and filename required' });
+    const existing = await pool.query('SELECT filename FROM bol_attachments WHERE invoice_number=$1', [invoice_number]);
+    if (existing.rows.length) {
+      await supabase.storage.from('bol-documents').remove([existing.rows[0].filename]);
+      const r = await pool.query(
+        `UPDATE bol_attachments SET filename=$1, is_amended=TRUE, uploaded_by_id=$2, uploaded_by_name=$3, uploaded_at=NOW()
+         WHERE invoice_number=$4 RETURNING *`,
+        [filename, req.user.id, req.user.name, invoice_number]
+      );
+      return res.json(r.rows[0]);
+    }
+    const r = await pool.query(
+      `INSERT INTO bol_attachments (invoice_number, filename, is_amended, uploaded_by_id, uploaded_by_name)
+       VALUES ($1,$2,FALSE,$3,$4) RETURNING *`,
+      [invoice_number, filename, req.user.id, req.user.name]
+    );
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Serve BOL file — signed URL redirect
+app.get('/api/bol/:invoiceNumber/file', authenticateToken, checkBOLView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT filename FROM bol_attachments WHERE invoice_number=$1', [req.params.invoiceNumber]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    const { data, error } = await supabase.storage.from('bol-documents').createSignedUrl(r.rows[0].filename, 3600);
+    if (error) return res.status(500).json({ message: 'Could not generate URL' });
+    res.redirect(data.signedUrl);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Delete BOL
+app.delete('/api/bol/:invoiceNumber', authenticateToken, checkBOLManage, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT filename FROM bol_attachments WHERE invoice_number=$1', [req.params.invoiceNumber]);
+    if (!r.rows.length) return res.status(404).json({ message: 'Not found' });
+    await supabase.storage.from('bol-documents').remove([r.rows[0].filename]);
+    await pool.query('DELETE FROM bol_attachments WHERE invoice_number=$1', [req.params.invoiceNumber]);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
 // ── Taproom Inventory ──────────────────────────────────────────────────────

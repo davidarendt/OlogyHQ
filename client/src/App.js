@@ -76,7 +76,7 @@ function App() {
   if (page === 'permissions') return <Permissions onBack={() => handleNavigate('usermanagement')} onHome={() => handleNavigate('dashboard')} />;
   if (page === 'hr-documents') return <HRDocuments user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'production-photos') return <ProductionPhotos user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
-  if (page === 'distro-taproom-orders') return <DistroTaproomOrders user={user} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'distro-taproom-orders') return <DistroTaproomOrders user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'sops') return <SOPsChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'checklists') return <Checklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'label-inventory') return <LabelInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
