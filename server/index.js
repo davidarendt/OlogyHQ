@@ -1190,6 +1190,260 @@ app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Production Checklists ─────────────────────────────────────────────────────
+
+function checkProdChecklistView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'production-checklists' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkProdChecklistManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'production-checklists' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+async function autoArchiveProductionChecklists() {
+  try {
+    const clRows = await pool.query('SELECT id, name, frequency FROM production_checklists');
+    for (const cl of clRows.rows) {
+      const now = new Date();
+      let cutoff;
+      if (cl.frequency === 'weekly') {
+        const day = now.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+      } else if (cl.frequency === 'monthly') {
+        cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else {
+        cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      }
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+
+      const stale = await pool.query(
+        `SELECT DISTINCT run_date FROM production_checklist_daily_state WHERE checklist_id=$1 AND run_date < $2::date ORDER BY run_date`,
+        [cl.id, cutoffStr]
+      );
+      if (!stale.rows.length) continue;
+
+      const periodMap = new Map();
+      for (const row of stale.rows) {
+        const rd = new Date(row.run_date + 'T12:00:00');
+        let key;
+        if (cl.frequency === 'weekly') {
+          const d2 = rd.getDay();
+          const diff2 = d2 === 0 ? -6 : 1 - d2;
+          const mon = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate() + diff2);
+          key = mon.toISOString().split('T')[0];
+        } else if (cl.frequency === 'monthly') {
+          key = `${rd.getFullYear()}-${String(rd.getMonth()+1).padStart(2,'0')}-01`;
+        } else {
+          key = row.run_date;
+        }
+        if (!periodMap.has(key)) periodMap.set(key, []);
+        periodMap.get(key).push(row.run_date);
+      }
+
+      for (const [periodKey, dates] of periodMap.entries()) {
+        const exists = await pool.query(
+          'SELECT 1 FROM production_checklist_runs WHERE checklist_id=$1 AND run_date=$2 AND auto_saved=true',
+          [cl.id, periodKey]
+        );
+        if (!exists.rows.length) {
+          const state = await pool.query(
+            `SELECT DISTINCT item_id FROM production_checklist_daily_state WHERE checklist_id=$1 AND run_date = ANY($2::date[])`,
+            [cl.id, dates]
+          );
+          const items = await pool.query('SELECT COUNT(*)::int AS cnt FROM production_checklist_items WHERE checklist_id=$1', [cl.id]);
+          await pool.query(
+            `INSERT INTO production_checklist_runs (checklist_id, checklist_name, run_by_name, notes, items_completed, items_total, run_date, auto_saved)
+             VALUES ($1,$2,'Auto-saved','',$3,$4,$5,true)`,
+            [cl.id, cl.name, state.rows.length, items.rows[0].cnt, periodKey]
+          );
+        }
+        await pool.query(
+          'DELETE FROM production_checklist_daily_state WHERE checklist_id=$1 AND run_date = ANY($2::date[])',
+          [cl.id, dates]
+        );
+      }
+    }
+  } catch (err) { console.error('autoArchiveProductionChecklists error:', err); }
+}
+
+// List checklists
+app.get('/api/production-checklists', authenticateToken, checkProdChecklistView, async (req, res) => {
+  try {
+    await autoArchiveProductionChecklists();
+    const isManage = req.user.roles.includes('admin') || await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'production-checklists' AND p.permission_level = 'upload'`,
+      [req.user.roles]
+    ).then(r => r.rows.length > 0);
+
+    const cls   = await pool.query('SELECT * FROM production_checklists ORDER BY sort_order ASC, id ASC');
+    const roles = await pool.query('SELECT * FROM production_checklist_roles');
+    const items = await pool.query('SELECT * FROM production_checklist_items ORDER BY sort_order ASC');
+    const todayCounts = await pool.query(
+      `SELECT checklist_id, COUNT(DISTINCT item_id)::int AS count FROM production_checklist_daily_state WHERE run_date=CURRENT_DATE GROUP BY checklist_id`
+    );
+
+    const roleMap = {};
+    roles.rows.forEach(r => {
+      if (!roleMap[r.checklist_id]) roleMap[r.checklist_id] = [];
+      roleMap[r.checklist_id].push(r.role);
+    });
+    const itemMap = {};
+    items.rows.forEach(i => {
+      if (!itemMap[i.checklist_id]) itemMap[i.checklist_id] = [];
+      itemMap[i.checklist_id].push(i);
+    });
+    const todayCountMap = {};
+    todayCounts.rows.forEach(r => { todayCountMap[r.checklist_id] = r.count; });
+
+    let result = cls.rows.map(cl => ({
+      ...cl,
+      roles: roleMap[cl.id] || [],
+      items: itemMap[cl.id] || [],
+      today_checked_count: todayCountMap[cl.id] || 0,
+    }));
+
+    if (!isManage) {
+      result = result.filter(cl => (roleMap[cl.id] || []).includes(req.user.role));
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// List run history — before /:id
+app.get('/api/production-checklists/runs', authenticateToken, checkProdChecklistView, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT r.*, c.frequency FROM production_checklist_runs r
+       LEFT JOIN production_checklists c ON c.id = r.checklist_id
+       ORDER BY r.run_date DESC, r.created_at DESC`
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Create checklist
+app.post('/api/production-checklists', authenticateToken, checkProdChecklistManage, async (req, res) => {
+  try {
+    const { name, display_name, category, description, frequency, roles, items } = req.body;
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM production_checklists');
+    const r = await pool.query(
+      `INSERT INTO production_checklists (name, display_name, category, description, frequency, sort_order, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [name, display_name||null, category||'daily', description||null, frequency||'daily', maxSort.rows[0].m + 1, req.user.id, req.user.name]
+    );
+    const id = r.rows[0].id;
+    for (const role of (roles || [])) {
+      await pool.query('INSERT INTO production_checklist_roles (checklist_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, role]);
+    }
+    for (let i = 0; i < (items || []).length; i++) {
+      await pool.query('INSERT INTO production_checklist_items (checklist_id, text, sort_order) VALUES ($1,$2,$3)', [id, items[i].text, i + 1]);
+    }
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Reorder — before /:id
+app.patch('/api/production-checklists/reorder', authenticateToken, checkProdChecklistManage, async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE production_checklists SET sort_order=$1 WHERE id=$2', [i + 1, orderedIds[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Delete run — before /:id
+app.delete('/api/production-checklists/runs/:id', authenticateToken, checkProdChecklistManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM production_checklist_runs WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Today's state — before /:id
+app.get('/api/production-checklists/:id/today', authenticateToken, checkProdChecklistView, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT item_id FROM production_checklist_daily_state WHERE checklist_id=$1 AND run_date=CURRENT_DATE',
+      [req.params.id]
+    );
+    const checked = {};
+    r.rows.forEach(row => { checked[row.item_id] = true; });
+    res.json(checked);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Check item
+app.post('/api/production-checklists/:id/items/:itemId/check', authenticateToken, checkProdChecklistView, async (req, res) => {
+  try {
+    await pool.query(
+      `INSERT INTO production_checklist_daily_state (checklist_id, run_date, item_id, checked_by_name)
+       VALUES ($1, CURRENT_DATE, $2, $3) ON CONFLICT DO NOTHING`,
+      [req.params.id, req.params.itemId, req.user.name]
+    );
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Uncheck item
+app.delete('/api/production-checklists/:id/items/:itemId/check', authenticateToken, checkProdChecklistView, async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM production_checklist_daily_state WHERE checklist_id=$1 AND run_date=CURRENT_DATE AND item_id=$2',
+      [req.params.id, req.params.itemId]
+    );
+    res.json({ ok: true });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Update checklist
+app.patch('/api/production-checklists/:id', authenticateToken, checkProdChecklistManage, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, display_name, category, description, frequency, roles, items } = req.body;
+    await pool.query(
+      'UPDATE production_checklists SET name=$1, display_name=$2, category=$3, description=$4, frequency=$5, updated_at=NOW() WHERE id=$6',
+      [name, display_name||null, category, description||null, frequency, id]
+    );
+    await pool.query('DELETE FROM production_checklist_roles WHERE checklist_id=$1', [id]);
+    for (const role of (roles || [])) {
+      await pool.query('INSERT INTO production_checklist_roles (checklist_id, role) VALUES ($1,$2)', [id, role]);
+    }
+    await pool.query('DELETE FROM production_checklist_items WHERE checklist_id=$1', [id]);
+    for (let i = 0; i < (items || []).length; i++) {
+      await pool.query('INSERT INTO production_checklist_items (checklist_id, text, sort_order) VALUES ($1,$2,$3)', [id, items[i].text, i + 1]);
+    }
+    const updated = await pool.query('SELECT * FROM production_checklists WHERE id=$1', [id]);
+    res.json(updated.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Delete checklist
+app.delete('/api/production-checklists/:id', authenticateToken, checkProdChecklistManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM production_checklists WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 // ── Packaging Log ─────────────────────────────────────────────────────────────
 
 const PACKAGING_SHEET_ID = '1t_jz1Jr0x9hEmsekmGifotuS4lroqS1bARzTZ7hudQs';

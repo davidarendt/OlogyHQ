@@ -62,7 +62,8 @@ function Permissions({ onBack, onHome }) {
   const eightySixedTool = tools.find(t => t.slug === '86ed-customers');
   const distroTool      = tools.find(t => t.slug === 'distro-taproom-orders');
   const coffeeTool      = tools.find(t => t.slug === 'coffee-keeper');
-  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule', '86ed-customers', 'distro-taproom-orders', 'coffee-keeper'];
+  const prodChecklistTool = tools.find(t => t.slug === 'production-checklists');
+  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule', '86ed-customers', 'distro-taproom-orders', 'coffee-keeper', 'production-checklists'];
   const otherTools    = tools.filter(t => !dualSlugs.includes(t.slug));
 
   return (
@@ -510,6 +511,38 @@ function Permissions({ onBack, onHome }) {
                         <Toggle
                           active={hasPermission(role, coffeeTool.id, 'upload')}
                           onClick={() => togglePermission(role, coffeeTool.id, 'upload')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              )}
+              {/* Production Checklists — two rows: Access and Manage */}
+              {prodChecklistTool && (
+                <>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="px-3 pt-3 pb-1 whitespace-nowrap">
+                      <div className="text-white text-sm font-medium">Production Checklists</div>
+                      <div className="text-gray-500 text-xs mt-0.5">Access</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-3 pb-1 text-center">
+                        <Toggle
+                          active={hasPermission(role, prodChecklistTool.id, 'view')}
+                          onClick={() => togglePermission(role, prodChecklistTool.id, 'view')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-gray-700">
+                    <td className="px-3 pt-1 pb-3 whitespace-nowrap">
+                      <div className="text-gray-500 text-xs">Manage</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-1 pb-3 text-center">
+                        <Toggle
+                          active={hasPermission(role, prodChecklistTool.id, 'upload')}
+                          onClick={() => togglePermission(role, prodChecklistTool.id, 'upload')}
                         />
                       </td>
                     ))}
