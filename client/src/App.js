@@ -6,7 +6,7 @@ import Permissions from './pages/Permissions';
 import HRDocuments from './pages/HRDocuments';
 import ProductionPhotos from './pages/ProductionPhotos';
 import DistroTaproomOrders from './pages/DistroTaproomOrders';
-import SOPsChecklists from './pages/SOPsChecklists';
+import SOPsChecklists from './pages/SopsChecklists';
 import Checklists from './pages/Checklists';
 import LabelInventory from './pages/LabelInventory';
 import TaproomInventory from './pages/TaproomInventory';
