@@ -39,7 +39,7 @@ function isChecked(checksSet, weekStart, rowType, rowKey, day, taskText) {
 }
 
 // ── Task item ──────────────────────────────────────────────────────────────────
-function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap }) {
+function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28' }) {
   const { label, initials } = parseInitials(text);
   const checked = isChecked(checksSet, weekStart, rowType, rowKey, day, text);
   const assignedNames = initials.length ? resolveInitials(initials, initialsMap) : null;
@@ -50,8 +50,9 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
       className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors group
         ${checked ? 'bg-gray-700/40' : 'bg-gray-700/60 hover:bg-gray-700'}`}
     >
-      <span className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all
-        ${checked ? 'border-orange-500 bg-orange-500' : 'border-gray-500 group-hover:border-orange-400'}`}
+      <span
+        className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all border-gray-500"
+        style={checked ? { borderColor: accentColor, backgroundColor: accentColor } : {}}
       >
         {checked && <Check size={12} className="text-white" strokeWidth={3} />}
       </span>
@@ -60,7 +61,7 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
           {label}
         </span>
         {assignedNames && (
-          <span className="text-xs text-orange-400 mt-0.5 block">{assignedNames}</span>
+          <span className="text-xs mt-0.5 block" style={{ color: accentColor }}>{assignedNames}</span>
         )}
       </span>
     </div>
@@ -108,11 +109,13 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
         {DAYS.map(day => {
           const tasks = section.dayTasks[day] || [];
           return (
-            <div key={day} className="p-3">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{DAY_SHORT[day]}</div>
+            <div key={day} className="p-3" style={{ borderTop: `2px solid ${accent}20` }}>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>
+                {DAY_SHORT[day]}
+              </div>
               {tasks.length ? (
                 <div className="space-y-1.5">
-                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} {...sharedProps} />)}
+                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} accentColor={accent} {...sharedProps} />)}
                 </div>
               ) : (
                 <p className="text-gray-600 text-xs">—</p>
@@ -124,11 +127,13 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
 
       {/* Mobile: selected day only */}
       <div className="md:hidden p-3">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{DAY_LABELS[selectedDay]}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>
+          {DAY_LABELS[selectedDay]}
+        </div>
         {(section.dayTasks[selectedDay] || []).length ? (
           <div className="space-y-1.5">
             {(section.dayTasks[selectedDay] || []).map((t, i) => (
-              <TaskItem key={i} text={t} day={selectedDay} {...sharedProps} />
+              <TaskItem key={i} text={t} day={selectedDay} accentColor={accent} {...sharedProps} />
             ))}
           </div>
         ) : (
@@ -166,11 +171,13 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
         {DAYS.map(day => {
           const tasks = person.dayTasks[day] || [];
           return (
-            <div key={day} className="p-3">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{DAY_SHORT[day]}</div>
+            <div key={day} className="p-3" style={{ borderTop: '2px solid rgba(240,90,40,0.15)' }}>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#F05A28' }}>
+                {DAY_SHORT[day]}
+              </div>
               {tasks.length ? (
                 <div className="space-y-1.5">
-                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} {...sharedProps} />)}
+                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} accentColor="#F05A28" {...sharedProps} />)}
                 </div>
               ) : (
                 <p className="text-gray-600 text-xs">—</p>
@@ -182,11 +189,13 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
 
       {/* Mobile: selected day only */}
       <div className="md:hidden p-3">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{DAY_LABELS[selectedDay]}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#F05A28' }}>
+          {DAY_LABELS[selectedDay]}
+        </div>
         {(person.dayTasks[selectedDay] || []).length ? (
           <div className="space-y-1.5">
             {(person.dayTasks[selectedDay] || []).map((t, i) => (
-              <TaskItem key={i} text={t} day={selectedDay} {...sharedProps} />
+              <TaskItem key={i} text={t} day={selectedDay} accentColor="#F05A28" {...sharedProps} />
             ))}
           </div>
         ) : (
