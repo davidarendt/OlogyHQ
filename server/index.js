@@ -1690,87 +1690,81 @@ function checkProdWeeklyManage(req, res, next) {
 
 async function parseWeeklySheet() {
   const token = await getGoogleAccessToken();
-  const range = encodeURIComponent(`'${WEEKLY_TAB}'!A1:I50`);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WEEKLY_SHEET_ID}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`;
+  // Use FORMATTED_VALUE so dates come back as "5/11/2026" strings, not serials
+  const range = encodeURIComponent(`'${WEEKLY_TAB}'!A1:I25`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WEEKLY_SHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) throw new Error(`Sheets API error: ${resp.status}`);
   const data = await resp.json();
   const rows = data.values || [];
 
-  // Find week_start from B16 (row index 15, col 1) — serial date
+  // Fixed sheet structure (0-indexed rows):
+  // Row 1  (idx 1):  Person 1 header — col D = name, E-I = their tasks per day
+  // Row 2  (idx 2):  "Brews" section label
+  // Rows 3-7 (idx 3-7): Brew day tasks — col B = task text
+  // Row 8  (idx 8):  Person 2 header — col D = name, E-I = their tasks
+  // Row 9  (idx 9):  "Packaging" section label, may also have E-I tasks
+  // Rows 10-14 (idx 10-14): Packaging day tasks — col B = task text
+  // Row 15 (idx 15): Person 3 header + "Week of: <date>" in A-B, col D = name, E-I = their tasks
+  // Row 16 (idx 16): "Time Off" section label, may also have E-I tasks
+  // Rows 17-21 (idx 17-21): Time Off day tasks — col B = task text
+
+  // Week start from row 16 col B ("5/11/2026")
   let weekStart = null;
-  if (rows[15] && rows[15][1] != null) {
-    const val = rows[15][1];
-    if (typeof val === 'number') {
-      weekStart = sheetSerialToYMD(val);
+  const weekRaw = rows[15]?.[1] != null ? String(rows[15][1]).trim() : '';
+  if (weekRaw) {
+    if (/^\d{5,}$/.test(weekRaw)) {
+      weekStart = sheetSerialToYMD(parseInt(weekRaw));
     } else {
-      weekStart = String(val).slice(0, 10);
+      // Parse "M/D/YYYY" → "YYYY-MM-DD"
+      const d = new Date(weekRaw + ' 12:00:00');
+      if (!isNaN(d)) weekStart = d.toISOString().slice(0, 10);
     }
   }
 
-  // Find initials from person header rows (rows 2, 9, 16 → 0-indexed 1, 8, 15)
-  const personHeaderIdxs = [1, 8, 15];
-  // Each person header row: col E-I each has an initial
-  // Between person rows, there are task rows
-
-  const sections = [];
-  // Parse person blocks: rows 2-8 (idx 1-7), 9-15 (idx 8-14), 16-22 (idx 15-21)
-  const personBlocks = [
-    { headerIdx: 1, taskIdxs: [2, 3, 4, 5, 6] },
-    { headerIdx: 8, taskIdxs: [9, 10, 11, 12, 13] },
-    { headerIdx: 15, taskIdxs: [16, 17, 18, 19, 20] },
+  // Section B-column tasks (fixed day row positions, col B)
+  const DAYS = WEEKLY_DAYS;
+  const sectionDefs = [
+    { key: 'brews',     label: 'Brews',     dayRowIdxs: [3, 4, 5, 6, 7]   },
+    { key: 'packaging', label: 'Packaging', dayRowIdxs: [10, 11, 12, 13, 14] },
+    { key: 'timeoff',   label: 'Time Off',  dayRowIdxs: [17, 18, 19, 20, 21] },
   ];
 
-  // Parse the three named sections from col A (Brews, Packaging, Time Off)
-  // and col B tasks within them, plus grid tasks from E-I
-  // Section structure discovered by scanning col A for section names
-  const sectionMeta = [];
-  let currentSection = null;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const colA = row?.[0] ? String(row[0]).trim() : '';
-    const colB = row?.[1] ? String(row[1]).trim() : '';
+  const sections = sectionDefs.map(sec => {
+    const dayTasks = {};
+    DAYS.forEach(d => { dayTasks[d] = []; });
+    sec.dayRowIdxs.forEach((rowIdx, i) => {
+      const day = DAYS[i];
+      const task = rows[rowIdx]?.[1] ? String(rows[rowIdx][1]).trim() : '';
+      if (task) dayTasks[day].push(task);
+    });
+    return { key: sec.key, label: sec.label, dayTasks };
+  });
 
-    if (colA && colA.length > 0 && colA !== '') {
-      // Could be a section header
-      if (/brew/i.test(colA)) { currentSection = { key: 'brews', label: 'Brews', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
-      if (/pack/i.test(colA)) { currentSection = { key: 'packaging', label: 'Packaging', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
-      if (/time.?off/i.test(colA)) { currentSection = { key: 'timeoff', label: 'Time Off', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
-    }
-    if (currentSection) {
-      // B column task
-      if (colB) currentSection.tasks.push({ rowIdx: i, text: colB });
-      // Grid tasks E-I
+  // Person blocks — fixed header rows, tasks from all rows in their area (E-I cols by day)
+  const personHeaderIdxs = [1, 8, 15];
+  const people = personHeaderIdxs.map((headerIdx, i) => {
+    const headerRow = rows[headerIdx] || [];
+    const name = headerRow[3] ? String(headerRow[3]).trim() : null; // col D
+    if (!name) return null;
+
+    const dayTasks = {};
+    DAYS.forEach(d => { dayTasks[d] = []; });
+
+    // Scan all rows in this person's area for E-I tasks
+    const endRowIdx = i < personHeaderIdxs.length - 1 ? personHeaderIdxs[i + 1] - 1 : rows.length - 1;
+    for (let rowIdx = headerIdx; rowIdx <= endRowIdx && rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx] || [];
       for (const [colIdxStr, day] of Object.entries(WEEKLY_DAY_COLS)) {
-        const colIdx = parseInt(colIdxStr);
-        const cell = row?.[colIdx] ? String(row[colIdx]).trim() : '';
-        if (cell) currentSection.gridRows.push({ rowIdx: i, day, text: cell });
+        const cell = row[parseInt(colIdxStr)];
+        if (cell && String(cell).trim()) dayTasks[day].push(String(cell).trim());
       }
     }
-  }
 
-  // Parse person blocks
-  const personData = [];
-  for (const block of personBlocks) {
-    const headerRow = rows[block.headerIdx] || [];
-    // Get initials from E-I (cols 4-8)
-    for (const [colIdxStr, day] of Object.entries(WEEKLY_DAY_COLS)) {
-      const colIdx = parseInt(colIdxStr);
-      const initial = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
-      if (!initial) continue;
-      // Collect tasks for this column from task rows
-      const tasks = [];
-      for (const tIdx of block.taskIdxs) {
-        const cell = rows[tIdx]?.[colIdx] ? String(rows[tIdx][colIdx]).trim() : '';
-        if (cell) tasks.push(cell);
-      }
-      if (tasks.length > 0) {
-        personData.push({ initial, day, tasks });
-      }
-    }
-  }
+    return { name, dayTasks };
+  }).filter(Boolean);
 
-  return { weekStart, sections: sectionMeta, personData };
+  return { weekStart, sections, people };
 }
 
 // GET /api/prod-weekly/sheet

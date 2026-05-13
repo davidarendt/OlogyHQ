@@ -3,201 +3,101 @@ import { ChevronLeft, RefreshCw, Users, LayoutList, Settings, Plus, Pencil, Tras
 
 const API = process.env.REACT_APP_API_URL || '';
 
-const DAY_LABELS = {
-  monday: 'Mon',
-  tuesday: 'Tue',
-  wednesday: 'Wed',
-  thursday: 'Thu',
-  friday: 'Fri',
-};
+const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri' };
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
-function isChecked(checks, row_type, row_key, day, task_text) {
-  return checks.some(
-    c => c.row_type === row_type && c.row_key === row_key &&
-         (day ? c.day === day : true) && c.task_text === task_text
-  );
+// Parse "(R, C)" or "(J)" from end of a task string
+function parseInitials(text) {
+  const m = text.match(/\(([^)]+)\)\s*$/);
+  if (!m) return { label: text, initials: [] };
+  const label = text.slice(0, text.lastIndexOf('(')).trim();
+  const initials = m[1].split(',').map(s => s.trim()).filter(Boolean);
+  return { label, initials };
 }
 
-function CheckRow({ label, rowType, rowKey, day, taskText, checks, onToggle, small }) {
-  const checked = isChecked(checks, rowType, rowKey, day, taskText);
+function resolveInitials(initials, initialsMap) {
+  return initials.map(i => initialsMap[i] || i).join(', ');
+}
+
+function checkKey(weekStart, rowType, rowKey, day, taskText) {
+  return `${weekStart}|${rowType}|${rowKey}|${day || ''}|${taskText}`;
+}
+
+function isChecked(checksSet, weekStart, rowType, rowKey, day, taskText) {
+  return checksSet.has(checkKey(weekStart, rowType, rowKey, day, taskText));
+}
+
+function TaskRow({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap }) {
+  const { label, initials } = parseInitials(text);
+  const checked = isChecked(checksSet, weekStart, rowType, rowKey, day, text);
+  const assignedNames = initials.length ? resolveInitials(initials, initialsMap) : null;
+
   return (
-    <label className={`flex items-start gap-2 cursor-pointer group ${small ? 'py-0.5' : 'py-1'}`}>
+    <label className="flex items-start gap-2 py-1 cursor-pointer group">
       <span
-        onClick={() => onToggle(rowType, rowKey, day, taskText, checked)}
+        onClick={() => onToggle(rowType, rowKey, day, text, checked)}
         className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition
           ${checked ? 'bg-orange-500 border-orange-500' : 'border-gray-500 group-hover:border-orange-400'}`}
       >
         {checked && <Check size={10} className="text-white" strokeWidth={3} />}
       </span>
-      <span className={`${checked ? 'line-through text-gray-500' : 'text-gray-200'} ${small ? 'text-xs' : 'text-sm'} leading-snug`}>
-        {label}
+      <span className="flex-1 min-w-0">
+        <span className={`text-sm leading-snug ${checked ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+          {label}
+        </span>
+        {assignedNames && (
+          <span className="ml-1.5 text-xs text-orange-400">{assignedNames}</span>
+        )}
       </span>
     </label>
   );
 }
 
-// ── By Section tab ────────────────────────────────────────────────────────────
-function BySectionTab({ sections, personData, initialsMap, checks, onToggle }) {
+// ── By Section tab ─────────────────────────────────────────────────────────────
+function BySectionTab({ sections, weekStart, checksSet, onToggle, initialsMap }) {
+  if (!sections.length) return <p className="text-gray-400 text-center py-8">No section data found.</p>;
+
   return (
     <div className="space-y-6">
       {sections.map(sec => {
-        const colTasks = {};
-        for (const day of DAYS) colTasks[day] = [];
-        for (const gr of sec.gridRows) {
-          if (colTasks[gr.day]) colTasks[gr.day].push(gr.text);
-        }
-        const hasGrid = sec.gridRows.length > 0;
+        const totalTasks = DAYS.reduce((n, d) => n + (sec.dayTasks[d]?.length || 0), 0);
+        const doneTasks = DAYS.reduce((n, d) =>
+          n + (sec.dayTasks[d] || []).filter(t => isChecked(checksSet, weekStart, 'section', sec.key, d, t)).length, 0);
 
         return (
           <div key={sec.key} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-700">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
               <h3 className="text-white font-semibold">{sec.label}</h3>
-            </div>
-            <div className="p-4">
-              {/* B-column tasks (no day) */}
-              {sec.tasks.length > 0 && (
-                <div className="mb-3">
-                  {sec.tasks.map((t, i) => (
-                    <CheckRow
-                      key={i}
-                      label={t.text}
-                      rowType="section"
-                      rowKey={sec.key}
-                      day={null}
-                      taskText={t.text}
-                      checks={checks}
-                      onToggle={onToggle}
-                    />
-                  ))}
-                </div>
+              {totalTasks > 0 && (
+                <span className="text-xs text-gray-400">{doneTasks}/{totalTasks} done</span>
               )}
-              {/* Grid tasks by day */}
-              {hasGrid && (
-                <div className="grid grid-cols-5 gap-2 mt-2">
-                  {DAYS.map(day => (
-                    <div key={day}>
-                      <div className="text-gray-400 text-xs font-medium mb-1">{DAY_LABELS[day]}</div>
-                      {colTasks[day].map((text, i) => (
-                        <CheckRow
-                          key={i}
-                          label={text}
-                          rowType="section_grid"
-                          rowKey={sec.key}
-                          day={day}
-                          taskText={text}
-                          checks={checks}
-                          onToggle={onToggle}
-                          small
-                        />
-                      ))}
-                      {colTasks[day].length === 0 && <span className="text-gray-600 text-xs">—</span>}
+            </div>
+            <div className="grid grid-cols-5 divide-x divide-gray-700">
+              {DAYS.map(day => {
+                const tasks = sec.dayTasks[day] || [];
+                return (
+                  <div key={day} className="p-3">
+                    <div className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-2">
+                      {DAY_LABELS[day]}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Person tasks */}
-      {(() => {
-        // Group by initial
-        const byPerson = {};
-        for (const pd of personData) {
-          if (!byPerson[pd.initial]) byPerson[pd.initial] = {};
-          byPerson[pd.initial][pd.day] = pd.tasks;
-        }
-        return Object.entries(byPerson).map(([initial, dayTasks]) => {
-          const name = initialsMap[initial] || initial;
-          return (
-            <div key={initial} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-700">
-                <h3 className="text-white font-semibold">{name}</h3>
-              </div>
-              <div className="p-4 grid grid-cols-5 gap-2">
-                {DAYS.map(day => (
-                  <div key={day}>
-                    <div className="text-gray-400 text-xs font-medium mb-1">{DAY_LABELS[day]}</div>
-                    {(dayTasks[day] || []).map((text, i) => (
-                      <CheckRow
+                    {tasks.length ? tasks.map((t, i) => (
+                      <TaskRow
                         key={i}
-                        label={text}
-                        rowType="person"
-                        rowKey={initial}
+                        text={t}
+                        rowType="section"
+                        rowKey={sec.key}
                         day={day}
-                        taskText={text}
-                        checks={checks}
+                        weekStart={weekStart}
+                        checksSet={checksSet}
                         onToggle={onToggle}
-                        small
+                        initialsMap={initialsMap}
                       />
-                    ))}
-                    {(!dayTasks[day] || dayTasks[day].length === 0) && (
+                    )) : (
                       <span className="text-gray-600 text-xs">—</span>
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-          );
-        });
-      })()}
-    </div>
-  );
-}
-
-// ── By Person tab ─────────────────────────────────────────────────────────────
-function ByPersonTab({ personData, initialsMap, checks, onToggle }) {
-  // Group by initial
-  const byPerson = {};
-  for (const pd of personData) {
-    if (!byPerson[pd.initial]) byPerson[pd.initial] = {};
-    byPerson[pd.initial][pd.day] = pd.tasks;
-  }
-
-  if (Object.keys(byPerson).length === 0) {
-    return <p className="text-gray-400 text-center py-8">No person data found in sheet.</p>;
-  }
-
-  return (
-    <div className="space-y-6">
-      {Object.entries(byPerson).map(([initial, dayTasks]) => {
-        const name = initialsMap[initial] || initial;
-        const totalTasks = Object.values(dayTasks).flat().length;
-        const completedTasks = Object.entries(dayTasks).reduce((acc, [day, tasks]) =>
-          acc + tasks.filter(t => isChecked(checks, 'person', initial, day, t)).length, 0);
-
-        return (
-          <div key={initial} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <h3 className="text-white font-semibold">{name}</h3>
-              {totalTasks > 0 && (
-                <span className="text-xs text-gray-400">{completedTasks}/{totalTasks}</span>
-              )}
-            </div>
-            <div className="p-4 grid grid-cols-5 gap-3">
-              {DAYS.map(day => (
-                <div key={day}>
-                  <div className="text-gray-400 text-xs font-medium mb-1">{DAY_LABELS[day]}</div>
-                  {(dayTasks[day] || []).map((text, i) => (
-                    <CheckRow
-                      key={i}
-                      label={text}
-                      rowType="person"
-                      rowKey={initial}
-                      day={day}
-                      taskText={text}
-                      checks={checks}
-                      onToggle={onToggle}
-                      small
-                    />
-                  ))}
-                  {(!dayTasks[day] || dayTasks[day].length === 0) && (
-                    <span className="text-gray-600 text-xs">—</span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -206,7 +106,60 @@ function ByPersonTab({ personData, initialsMap, checks, onToggle }) {
   );
 }
 
-// ── Initials modal ────────────────────────────────────────────────────────────
+// ── By Person tab ──────────────────────────────────────────────────────────────
+function ByPersonTab({ people, weekStart, checksSet, onToggle, initialsMap }) {
+  if (!people.length) return <p className="text-gray-400 text-center py-8">No person data found in sheet.</p>;
+
+  return (
+    <div className="space-y-6">
+      {people.map(person => {
+        const totalTasks = DAYS.reduce((n, d) => n + (person.dayTasks[d]?.length || 0), 0);
+        const doneTasks = DAYS.reduce((n, d) =>
+          n + (person.dayTasks[d] || []).filter(t => isChecked(checksSet, weekStart, 'person', person.name, d, t)).length, 0);
+
+        return (
+          <div key={person.name} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-white font-semibold">{person.name}</h3>
+              {totalTasks > 0 && (
+                <span className="text-xs text-gray-400">{doneTasks}/{totalTasks} done</span>
+              )}
+            </div>
+            <div className="grid grid-cols-5 divide-x divide-gray-700">
+              {DAYS.map(day => {
+                const tasks = person.dayTasks[day] || [];
+                return (
+                  <div key={day} className="p-3">
+                    <div className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-2">
+                      {DAY_LABELS[day]}
+                    </div>
+                    {tasks.length ? tasks.map((t, i) => (
+                      <TaskRow
+                        key={i}
+                        text={t}
+                        rowType="person"
+                        rowKey={person.name}
+                        day={day}
+                        weekStart={weekStart}
+                        checksSet={checksSet}
+                        onToggle={onToggle}
+                        initialsMap={initialsMap}
+                      />
+                    )) : (
+                      <span className="text-gray-600 text-xs">—</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Initials modal ─────────────────────────────────────────────────────────────
 function InitialsModal({ entry, onSave, onClose }) {
   const [initials, setInitials] = useState(entry?.initials || '');
   const [displayName, setDisplayName] = useState(entry?.display_name || '');
@@ -226,12 +179,7 @@ function InitialsModal({ entry, onSave, onClose }) {
         credentials: 'include',
         body: JSON.stringify({ initials: initials.trim().toUpperCase(), display_name: displayName.trim() }),
       });
-      if (!resp.ok) {
-        const d = await resp.json();
-        setError(d.message || 'Error saving');
-        setSaving(false);
-        return;
-      }
+      if (!resp.ok) { const d = await resp.json(); setError(d.message || 'Error'); setSaving(false); return; }
       onSave();
     } catch { setError('Network error'); setSaving(false); }
   };
@@ -240,17 +188,17 @@ function InitialsModal({ entry, onSave, onClose }) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-sm p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold">{entry ? 'Edit Initials' : 'Add Initials'}</h3>
+          <h3 className="text-white font-semibold">{entry ? 'Edit Mapping' : 'Add Mapping'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
         </div>
         {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
         <div className="space-y-3">
           <div>
-            <label className="text-gray-400 text-xs mb-1 block">Initials (from sheet)</label>
+            <label className="text-gray-400 text-xs mb-1 block">Initials (as they appear in sheet)</label>
             <input
               value={initials}
               onChange={e => setInitials(e.target.value.toUpperCase())}
-              maxLength={4}
+              maxLength={8}
               className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
               placeholder="e.g. R"
             />
@@ -261,18 +209,13 @@ function InitialsModal({ entry, onSave, onClose }) {
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
-              placeholder="e.g. Ryan"
+              placeholder="e.g. Ron"
             />
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">Cancel</button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 text-sm text-white rounded-lg transition"
-            style={{ backgroundColor: '#F05A28' }}
-          >
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white rounded-lg transition" style={{ backgroundColor: '#F05A28' }}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -281,10 +224,10 @@ function InitialsModal({ entry, onSave, onClose }) {
   );
 }
 
-// ── Manage tab ────────────────────────────────────────────────────────────────
+// ── Manage tab ─────────────────────────────────────────────────────────────────
 function ManageTab({ canUpload }) {
   const [initials, setInitials] = useState([]);
-  const [modal, setModal] = useState(null); // null | 'add' | entry object
+  const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchInitials = useCallback(async () => {
@@ -297,55 +240,46 @@ function ManageTab({ canUpload }) {
   useEffect(() => { fetchInitials(); }, [fetchInitials]);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this initials mapping?')) return;
+    if (!window.confirm('Delete this mapping?')) return;
     await fetch(`${API}/api/prod-weekly/initials/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchInitials();
   };
 
   return (
     <div className="max-w-lg">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-semibold">Initials Mapping</h3>
         {canUpload && (
-          <button
-            onClick={() => setModal('add')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg transition"
-            style={{ backgroundColor: '#F05A28' }}
-          >
+          <button onClick={() => setModal('add')} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg" style={{ backgroundColor: '#F05A28' }}>
             <Plus size={14} /> Add
           </button>
         )}
       </div>
       <p className="text-gray-400 text-sm mb-4">
-        Map sheet initials (e.g. "R") to display names shown in the weekly board.
+        Map initials from the sheet (e.g. "R") to display names shown next to tasks.
       </p>
       {loading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
       ) : initials.length === 0 ? (
-        <p className="text-gray-400 text-sm">No mappings yet.</p>
+        <p className="text-gray-400 text-sm">No mappings yet. Add initials to show names on tasks.</p>
       ) : (
         <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700">
           {initials.map(entry => (
             <div key={entry.id} className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="text-orange-400 font-mono font-bold text-sm w-8">{entry.initials}</span>
+                <span className="text-orange-400 font-mono font-bold text-sm w-10">{entry.initials}</span>
                 <span className="text-white text-sm">{entry.display_name}</span>
               </div>
               {canUpload && (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setModal(entry)} className="text-gray-400 hover:text-white transition">
-                    <Pencil size={14} />
-                  </button>
-                  <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-400 transition">
-                    <Trash2 size={14} />
-                  </button>
+                  <button onClick={() => setModal(entry)} className="text-gray-400 hover:text-white transition"><Pencil size={14} /></button>
+                  <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-400 transition"><Trash2 size={14} /></button>
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
-
       {modal && (
         <InitialsModal
           entry={modal === 'add' ? null : modal}
@@ -357,27 +291,29 @@ function ManageTab({ canUpload }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main component ─────────────────────────────────────────────────────────────
 function ProductionWeekly({ user, canUpload, onBack }) {
   const [tab, setTab] = useState('section');
   const [sheetData, setSheetData] = useState(null);
-  const [checks, setChecks] = useState([]);
+  const [checksSet, setChecksSet] = useState(new Set());
+  const [checksRaw, setChecksRaw] = useState([]);
   const [initialsMap, setInitialsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async (spinner = true) => {
-    if (spinner) setLoading(true);
-    else setRefreshing(true);
+    if (spinner) setLoading(true); else setRefreshing(true);
     setError('');
     try {
       const r = await fetch(`${API}/api/prod-weekly/sheet`, { credentials: 'include' });
-      if (!r.ok) throw new Error((await r.json()).message || 'Failed to load sheet');
+      if (!r.ok) throw new Error((await r.json()).message || 'Failed to load');
       const data = await r.json();
       setSheetData(data);
-      setChecks(data.checks || []);
       setInitialsMap(data.initialsMap || {});
+      const raw = data.checks || [];
+      setChecksRaw(raw);
+      setChecksSet(new Set(raw.map(c => checkKey(data.weekStart, c.row_type, c.row_key, c.day, c.task_text))));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -391,39 +327,29 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const handleToggle = async (rowType, rowKey, day, taskText, currentlyChecked) => {
     const weekStart = sheetData?.weekStart;
     if (!weekStart) return;
+    const key = checkKey(weekStart, rowType, rowKey, day, taskText);
 
     // Optimistic update
-    if (currentlyChecked) {
-      setChecks(prev => prev.filter(c =>
-        !(c.row_type === rowType && c.row_key === rowKey &&
-          (day ? c.day === day : true) && c.task_text === taskText)
-      ));
-    } else {
-      setChecks(prev => [...prev, {
-        row_type: rowType, row_key: rowKey, day: day || null, task_text: taskText,
-        checked_by_name: user.name, checked_at: new Date().toISOString(),
-      }]);
-    }
+    setChecksSet(prev => {
+      const next = new Set(prev);
+      currentlyChecked ? next.delete(key) : next.add(key);
+      return next;
+    });
 
     try {
-      const method = currentlyChecked ? 'DELETE' : 'POST';
       await fetch(`${API}/api/prod-weekly/checks`, {
-        method,
+        method: currentlyChecked ? 'DELETE' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ week_start: weekStart, row_type: rowType, row_key: rowKey, day: day || null, task_text: taskText }),
       });
     } catch {
-      // revert on error
       loadData(false);
     }
   };
 
   const weekLabel = sheetData?.weekStart
-    ? (() => {
-        const d = new Date(sheetData.weekStart + 'T12:00:00');
-        return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-      })()
+    ? `Week of ${new Date(sheetData.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '';
 
   const tabs = [
@@ -437,23 +363,18 @@ function ProductionWeekly({ user, canUpload, onBack }) {
       <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white transition">
           <ChevronLeft size={20} />
-          <span className="text-sm">Dashboard</span>
+          <span className="text-sm hidden sm:inline">Dashboard</span>
         </button>
-        <div className="flex items-center gap-3">
-          <h1 className="text-cream font-bold text-lg">Production Weekly</h1>
-          {weekLabel && <span className="text-gray-400 text-sm hidden sm:inline">{weekLabel}</span>}
+        <div className="text-center">
+          <h1 className="text-cream font-bold text-lg leading-tight">Production Weekly</h1>
+          {weekLabel && <p className="text-gray-400 text-xs">{weekLabel}</p>}
         </div>
-        <button
-          onClick={() => loadData(false)}
-          disabled={refreshing}
-          className="text-gray-400 hover:text-white transition"
-        >
+        <button onClick={() => loadData(false)} disabled={refreshing} className="text-gray-400 hover:text-white transition">
           <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
         </button>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-        {/* Tabs */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex gap-1 mb-6 bg-gray-800 p-1 rounded-lg w-fit">
           {tabs.map(({ key, label, Icon }) => (
             <button
@@ -477,11 +398,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           <div className="bg-red-900/30 border border-red-700 rounded-xl p-6 text-center">
             <p className="text-red-400 font-medium mb-1">Failed to load sheet data</p>
             <p className="text-red-300 text-sm">{error}</p>
-            <button
-              onClick={() => loadData()}
-              className="mt-3 px-4 py-1.5 text-sm text-white rounded-lg"
-              style={{ backgroundColor: '#F05A28' }}
-            >
+            <button onClick={() => loadData()} className="mt-3 px-4 py-1.5 text-sm text-white rounded-lg" style={{ backgroundColor: '#F05A28' }}>
               Retry
             </button>
           </div>
@@ -490,17 +407,18 @@ function ProductionWeekly({ user, canUpload, onBack }) {
         ) : tab === 'section' ? (
           <BySectionTab
             sections={sheetData?.sections || []}
-            personData={sheetData?.personData || []}
-            initialsMap={initialsMap}
-            checks={checks}
+            weekStart={sheetData?.weekStart}
+            checksSet={checksSet}
             onToggle={handleToggle}
+            initialsMap={initialsMap}
           />
         ) : (
           <ByPersonTab
-            personData={sheetData?.personData || []}
-            initialsMap={initialsMap}
-            checks={checks}
+            people={sheetData?.people || []}
+            weekStart={sheetData?.weekStart}
+            checksSet={checksSet}
             onToggle={handleToggle}
+            initialsMap={initialsMap}
           />
         )}
       </main>
