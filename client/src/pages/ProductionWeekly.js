@@ -296,7 +296,6 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const [tab, setTab] = useState('section');
   const [sheetData, setSheetData] = useState(null);
   const [checksSet, setChecksSet] = useState(new Set());
-  const [checksRaw, setChecksRaw] = useState([]);
   const [initialsMap, setInitialsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -312,7 +311,6 @@ function ProductionWeekly({ user, canUpload, onBack }) {
       setSheetData(data);
       setInitialsMap(data.initialsMap || {});
       const raw = data.checks || [];
-      setChecksRaw(raw);
       setChecksSet(new Set(raw.map(c => checkKey(data.weekStart, c.row_type, c.row_key, c.day, c.task_text))));
     } catch (e) {
       setError(e.message);
