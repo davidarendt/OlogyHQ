@@ -1661,6 +1661,230 @@ app.delete('/api/packaging-log/:id', authenticateToken, checkPackagingManage, as
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Production Weekly ─────────────────────────────────────────────────────────
+
+const WEEKLY_SHEET_ID = '1Pk-ij63R4X5-X-7OVBgq8PKAsZ6DB51SzlHanPRplqk';
+const WEEKLY_TAB = 'Weekly Review';
+// 0-indexed columns: E=4,F=5,G=6,H=7,I=8 map to days
+const WEEKLY_DAY_COLS = { 4: 'monday', 5: 'tuesday', 6: 'wednesday', 7: 'thursday', 8: 'friday' };
+const WEEKLY_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
+function checkProdWeeklyView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'production-weekly' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkProdWeeklyManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'production-weekly' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+async function parseWeeklySheet() {
+  const token = await getGoogleAccessToken();
+  const range = encodeURIComponent(`'${WEEKLY_TAB}'!A1:I50`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WEEKLY_SHEET_ID}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!resp.ok) throw new Error(`Sheets API error: ${resp.status}`);
+  const data = await resp.json();
+  const rows = data.values || [];
+
+  // Find week_start from B16 (row index 15, col 1) — serial date
+  let weekStart = null;
+  if (rows[15] && rows[15][1] != null) {
+    const val = rows[15][1];
+    if (typeof val === 'number') {
+      weekStart = sheetSerialToYMD(val);
+    } else {
+      weekStart = String(val).slice(0, 10);
+    }
+  }
+
+  // Find initials from person header rows (rows 2, 9, 16 → 0-indexed 1, 8, 15)
+  const personHeaderIdxs = [1, 8, 15];
+  // Each person header row: col E-I each has an initial
+  // Between person rows, there are task rows
+
+  const sections = [];
+  // Parse person blocks: rows 2-8 (idx 1-7), 9-15 (idx 8-14), 16-22 (idx 15-21)
+  const personBlocks = [
+    { headerIdx: 1, taskIdxs: [2, 3, 4, 5, 6] },
+    { headerIdx: 8, taskIdxs: [9, 10, 11, 12, 13] },
+    { headerIdx: 15, taskIdxs: [16, 17, 18, 19, 20] },
+  ];
+
+  // Parse the three named sections from col A (Brews, Packaging, Time Off)
+  // and col B tasks within them, plus grid tasks from E-I
+  // Section structure discovered by scanning col A for section names
+  const sectionMeta = [];
+  let currentSection = null;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const colA = row?.[0] ? String(row[0]).trim() : '';
+    const colB = row?.[1] ? String(row[1]).trim() : '';
+
+    if (colA && colA.length > 0 && colA !== '') {
+      // Could be a section header
+      if (/brew/i.test(colA)) { currentSection = { key: 'brews', label: 'Brews', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
+      if (/pack/i.test(colA)) { currentSection = { key: 'packaging', label: 'Packaging', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
+      if (/time.?off/i.test(colA)) { currentSection = { key: 'timeoff', label: 'Time Off', rowIdx: i, tasks: [], gridRows: [] }; sectionMeta.push(currentSection); continue; }
+    }
+    if (currentSection) {
+      // B column task
+      if (colB) currentSection.tasks.push({ rowIdx: i, text: colB });
+      // Grid tasks E-I
+      for (const [colIdxStr, day] of Object.entries(WEEKLY_DAY_COLS)) {
+        const colIdx = parseInt(colIdxStr);
+        const cell = row?.[colIdx] ? String(row[colIdx]).trim() : '';
+        if (cell) currentSection.gridRows.push({ rowIdx: i, day, text: cell });
+      }
+    }
+  }
+
+  // Parse person blocks
+  const personData = [];
+  for (const block of personBlocks) {
+    const headerRow = rows[block.headerIdx] || [];
+    // Get initials from E-I (cols 4-8)
+    for (const [colIdxStr, day] of Object.entries(WEEKLY_DAY_COLS)) {
+      const colIdx = parseInt(colIdxStr);
+      const initial = headerRow[colIdx] ? String(headerRow[colIdx]).trim() : '';
+      if (!initial) continue;
+      // Collect tasks for this column from task rows
+      const tasks = [];
+      for (const tIdx of block.taskIdxs) {
+        const cell = rows[tIdx]?.[colIdx] ? String(rows[tIdx][colIdx]).trim() : '';
+        if (cell) tasks.push(cell);
+      }
+      if (tasks.length > 0) {
+        personData.push({ initial, day, tasks });
+      }
+    }
+  }
+
+  return { weekStart, sections: sectionMeta, personData };
+}
+
+// GET /api/prod-weekly/sheet
+app.get('/api/prod-weekly/sheet', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const sheetData = await parseWeeklySheet();
+
+    // Load initials mapping
+    const initialsRows = await pool.query('SELECT * FROM prod_weekly_initials ORDER BY sort_order ASC, id ASC');
+    const initialsMap = {};
+    for (const r of initialsRows.rows) initialsMap[r.initials] = r.display_name;
+
+    // Load checks for this week
+    const weekStart = sheetData.weekStart;
+    let checks = [];
+    if (weekStart) {
+      const cr = await pool.query('SELECT * FROM prod_weekly_checks WHERE week_start=$1', [weekStart]);
+      checks = cr.rows;
+    }
+
+    res.json({ ...sheetData, initialsMap, checks });
+  } catch (err) {
+    console.error('prod-weekly sheet error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/prod-weekly/checks — get checks for a week
+app.get('/api/prod-weekly/checks', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const { week_start } = req.query;
+    if (!week_start) return res.status(400).json({ message: 'week_start required' });
+    const r = await pool.query('SELECT * FROM prod_weekly_checks WHERE week_start=$1', [week_start]);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// POST /api/prod-weekly/checks — check a task
+app.post('/api/prod-weekly/checks', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const { week_start, row_type, row_key, day, task_text } = req.body;
+    if (!week_start || !row_type || !row_key || !task_text) return res.status(400).json({ message: 'Missing fields' });
+    const r = await pool.query(
+      `INSERT INTO prod_weekly_checks (week_start, row_type, row_key, day, task_text, checked_by_id, checked_by_name, checked_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+       ON CONFLICT (week_start, row_type, row_key, day, task_text) DO UPDATE
+         SET checked_by_id=$6, checked_by_name=$7, checked_at=NOW()
+       RETURNING *`,
+      [week_start, row_type, row_key, day || null, task_text, req.user.id, req.user.name]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// DELETE /api/prod-weekly/checks — uncheck a task
+app.delete('/api/prod-weekly/checks', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const { week_start, row_type, row_key, day, task_text } = req.body;
+    await pool.query(
+      `DELETE FROM prod_weekly_checks WHERE week_start=$1 AND row_type=$2 AND row_key=$3 AND (day=$4 OR (day IS NULL AND $4 IS NULL)) AND task_text=$5`,
+      [week_start, row_type, row_key, day || null, task_text]
+    );
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// GET /api/prod-weekly/initials
+app.get('/api/prod-weekly/initials', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM prod_weekly_initials ORDER BY sort_order ASC, id ASC');
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// POST /api/prod-weekly/initials
+app.post('/api/prod-weekly/initials', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { initials, display_name, user_id } = req.body;
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM prod_weekly_initials');
+    const r = await pool.query(
+      `INSERT INTO prod_weekly_initials (initials, display_name, user_id, sort_order) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, maxSort.rows[0].m + 1]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ message: 'Initials already exist' });
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PATCH /api/prod-weekly/initials/:id
+app.patch('/api/prod-weekly/initials/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { initials, display_name, user_id } = req.body;
+    const r = await pool.query(
+      `UPDATE prod_weekly_initials SET initials=$1, display_name=$2, user_id=$3 WHERE id=$4 RETURNING *`,
+      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ message: 'Initials already exist' });
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// DELETE /api/prod-weekly/initials/:id
+app.delete('/api/prod-weekly/initials/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_weekly_initials WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 // ── Label Inventory ───────────────────────────────────────────────────────────
 const mailer = nodemailer.createTransport({
   host: 'smtp.gmail.com',

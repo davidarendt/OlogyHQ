@@ -19,6 +19,7 @@ import EightySixedCustomers from './pages/EightySixedCustomers';
 import PackagingLog from './pages/PackagingLog';
 import CoffeeKeeper from './pages/CoffeeKeeper';
 import ProductionChecklists from './pages/ProductionChecklists';
+import ProductionWeekly from './pages/ProductionWeekly';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -92,6 +93,7 @@ function App() {
   if (page === 'packaging-log') return <PackagingLog user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'coffee-keeper') return <CoffeeKeeper user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'production-checklists') return <ProductionChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'production-weekly') return <ProductionWeekly user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }
