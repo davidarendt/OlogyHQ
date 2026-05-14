@@ -72,7 +72,7 @@ For all other behavior, admin goes through the normal permission system — no b
 **Protected user**: `david@ologybrewing.com` cannot be deleted — the delete endpoint checks the target email before proceeding.
 
 ### Two-Level Permission Tools
-HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Coffee Keeper, Sales CRM, Production Schedule, and 86ed Customers use two permission levels:
+HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Coffee Keeper, Sales CRM, Production Schedule, 86ed Customers, Production Checklists, Production Weekly, and Packaging Log use two permission levels:
 - `view` — can see the tool card and access the tool
 - `upload` — can access manage/upload areas within the tool (Manage tab, Edit/Delete, Send Order Email, etc.)
 
@@ -141,6 +141,14 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `coffee_settings` — singleton row (id=1), show_creator (boolean, default true)
 - `coffee_batched_items` — id, name, recipe_notes, yield_amount, yield_unit, linked_beverage_ids (INTEGER[]), sort_order, created_at, updated_at
 - `coffee_submissions` — id, type ('new'|'change'), beverage_id (nullable), submitted_by_id, submitted_by_name, beverage_name, description, status ('pending'|'reviewed'), created_at
+- `production_checklists` — id, name, category ('daily'|'cleaning'|'maintenance'|'weekly'|'monthly'|'other'), description, frequency ('daily'|'weekly'|'monthly'), sort_order, created_by_id, created_by_name
+- `production_checklist_roles` — checklist_id (→ production_checklists, cascade), role
+- `production_checklist_items` — id, checklist_id (→ production_checklists, cascade), text, sort_order
+- `production_checklist_runs` — id, checklist_id, checklist_name (denormalized), run_by_name, items_completed, items_total, run_date (DATE), frequency, auto_saved (bool)
+- `production_checklist_daily_state` — checklist_id, item_id, run_date (DATE), checked_by_name; in-progress state, auto-archived on next load
+- `prod_weekly_checks` — week_start (DATE), row_type (TEXT), row_key (TEXT), day (TEXT), task_text (TEXT), checked_by_id, checked_by_name, checked_at; UNIQUE on all five key columns
+- `prod_weekly_initials` — id, initials (TEXT), display_name (TEXT), sort_order, user_id
+- `packaging_logs` — id, beer_name, package_date (DATE), half_bbl, sixth_bbl, cases, notes, sheet_row_index (INT), submitted_by_id, submitted_by_name, created_at
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
@@ -356,3 +364,52 @@ Everything else — suggestion flow, ownership-based editing, ingredient autocom
 
 **Route ordering** in `server/index.js` (same pattern as cocktails):
 - `GET /api/coffee/settings`, `/ingredients`, `/catalog`, `/tag-definitions`, `/submissions`, `/batched` and `PATCH /api/coffee/reorder`, `/batched/reorder` must all be before `GET/PATCH/DELETE /api/coffee/:id`
+
+### Production Checklists Tool
+`ProductionChecklists.js` is a parallel to `Checklists.js` for production roles — same structure but no location filtering. Permission middleware: `checkProdChecklistView` / `checkProdChecklistManage`.
+
+**Tabs**: Checklists | History | Manage (`canUpload` only)
+
+**Categories**: `daily`, `cleaning`, `maintenance`, `weekly`, `monthly`, `other` — each has a fixed color in the `CATEGORIES` constant.
+
+**Key difference from Checklists**: No location column or location landing page — production checklists are global. The Checklists tab shows directly after load (no location selection step).
+
+**Running a checklist**: `RunModal` subscribes to `production_checklist_daily_state` via Supabase realtime (`postgres_changes`). Uses a `pendingRef` (useRef Set) to track in-flight checkbox toggling and ignore self-generated events — prevents double-toggle from network echo.
+
+**Auto-archive**: `autoArchiveProductionChecklists()` runs on every `GET /api/production-checklists` call. Same period-grouping logic as `Checklists`: daily=each day, weekly=ISO week, monthly=calendar month. Stale state rows become `production_checklist_runs` with `auto_saved=true`.
+
+**Role visibility**: `production_checklist_roles` join table. Non-manage users only see checklists where their role is listed.
+
+**Supabase realtime dependency**: `production_checklist_daily_state` must have RLS open policies and be published to `supabase_realtime` (same requirement as `inspections` / `inspection_ratings`).
+
+### Production Weekly Tool
+`ProductionWeekly.js` is a read-only dashboard of the current week's brewery tasks pulled from the "Brew/Production Schedule" Google Sheet (ID: `1Pk-ij63R4X5-X-7OVBgq8PKAsZ6DB51SzlHanPRplqk`). Staff can check off tasks; admins manage initials mappings. Permission middleware: `checkProdWeeklyView` / `checkProdWeeklyManage`.
+
+**Layout**: Three `SectionCard` components (Brews, Packaging, Time Off) followed by `PersonCard` components for individual assignments. Desktop shows a 5-column Mon–Fri grid; mobile shows one day at a time with a sticky scrollable day selector.
+
+**Sheet parsing** (`parseWeeklySheet()` in `server/index.js`):
+- Fetches `'Brew/Production Schedule'!A1:BH` with `UNFORMATTED_VALUE` (col B returns Excel serial dates)
+- Computes current week Mon–Fri as Excel serials (epoch = Dec 30, 1899 UTC)
+- **Brews/Packaging**: scans cols D:U (indices 3–20) for cells ending in `brew`/`pack`; extracts beer name via regex and prepends tank name from row 1 header → `[TS1] Ole Ole Ole`
+- **Time Off**: reads col AC (index 28) directly
+- **Individual tasks**: reads cols AZ:BH (indices 51–59); groups tasks by initials extracted from `(R, C)` patterns at end of cell text
+- Route handler resolves raw initials to display names from `prod_weekly_initials` before sending response
+
+**Check key**: `${weekStart}|${rowType}|${rowKey}|${day}|${taskText}` — stored in `prod_weekly_checks`, UNIQUE on all five columns. Toggling is optimistic (immediate local update), with silent reload on network error.
+
+**Initials mapping**: `prod_weekly_initials` table maps sheet initials (e.g., `"R"`) to display names (e.g., `"Ron"`). Managed via the Manage drawer (canUpload only). Initials in task text are also resolved to names and shown beneath the task label in each `TaskItem`.
+
+### Packaging Log Tool
+`PackagingLog.js` tracks kegs and cases packaged from each beer, with two-way sync to Google Sheets. Permission middleware: `checkPackagingView` / `checkPackagingManage`.
+
+**Sheet**: ID `1t_jz1Jr0x9hEmsekmGifotuS4lroqS1bARzTZ7hudQs`, tab "Schedule / Distro". Server reads cols A:AC; col D = planned date (serial), col J = beer name. Existing packaging counts live in cols Z–AC.
+
+**Beer dropdown** (new entry only): `GET /api/packaging-log/sheet-beers` returns rows with a planned date within ±10 days and no existing counts in cols Z–AC. Beer name is locked after creation — only date/counts/notes can be edited.
+
+**Sheet write-back**: On POST/PATCH/DELETE the server writes (or clears) cols Z–AC in `sheet_row_index` (1-based row number stored in DB). If the Sheets API call fails, the DB record is still saved and the response includes `_sheetError: true`. The client modal shows a warning but does not block the save.
+
+**Layout**: Single scrollable table (desktop) / card grid (mobile). Client-side case-insensitive search by beer name. Counts in mobile cards only show non-zero values.
+
+**Permission levels**:
+- `view` — read log entries
+- `upload` — add/edit/delete entries, write back to sheet
