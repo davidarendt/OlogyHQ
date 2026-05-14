@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -8,13 +8,13 @@ const DAY_LABELS = { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday
 const DAY_SHORT  = { monday: 'Mon',    tuesday: 'Tue',     wednesday: 'Wed',       thursday: 'Thu',      friday: 'Fri' };
 
 const SECTION_META = {
-  brews:     { label: 'Brews',     Icon: Beer,        accent: '#F59E0B', barClass: 'bg-amber-500',  bgClass: 'bg-amber-500/10',  borderClass: 'border-amber-500/30' },
-  packaging: { label: 'Packaging', Icon: Package,     accent: '#60A5FA', barClass: 'bg-blue-500',   bgClass: 'bg-blue-500/10',   borderClass: 'border-blue-500/30'  },
-  timeoff:   { label: 'Time Off',  Icon: CalendarOff, accent: '#34D399', barClass: 'bg-emerald-500', bgClass: 'bg-emerald-500/10', borderClass: 'border-emerald-500/30' },
+  brews:     { label: 'Brews',     Icon: Beer,        accent: '#F59E0B', bgClass: 'bg-amber-500/10',   borderClass: 'border-amber-500/30' },
+  packaging: { label: 'Packaging', Icon: Package,     accent: '#60A5FA', bgClass: 'bg-blue-500/10',    borderClass: 'border-blue-500/30'  },
+  timeoff:   { label: 'Time Off',  Icon: CalendarOff, accent: '#34D399', bgClass: 'bg-emerald-500/10', borderClass: 'border-emerald-500/30' },
 };
 
 function getTodayDay() {
-  const d = new Date().getDay(); // 0=Sun
+  const d = new Date().getDay();
   return ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][d];
 }
 
@@ -68,36 +68,40 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
   );
 }
 
-
-// ── Section card ───────────────────────────────────────────────────────────────
-function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
+// ── Section column (desktop portrait) ─────────────────────────────────────────
+function SectionColumn({ section, weekStart, checksSet, onToggle, initialsMap, weekOffset }) {
   const meta = SECTION_META[section.key] || {};
   const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
-
-  const sharedProps = { rowType: 'section', rowKey: section.key, weekStart, checksSet, onToggle, initialsMap };
+  const todayDay = weekOffset === 0 ? getTodayDay() : null;
 
   return (
     <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
-      {/* Header */}
       <div className={`px-4 py-3 ${bgClass}`}>
         <div className="flex items-center gap-2">
           <Icon size={16} style={{ color: accent }} />
           <h3 className="font-semibold text-white">{label}</h3>
         </div>
       </div>
-
-      {/* Desktop: 5-column grid */}
-      <div className="hidden md:grid grid-cols-5 divide-x divide-gray-700/60">
+      <div className="divide-y divide-gray-700/40">
         {DAYS.map(day => {
           const tasks = section.dayTasks[day] || [];
+          const isToday = day === todayDay;
           return (
-            <div key={day} className="p-3" style={{ borderTop: `2px solid ${accent}20` }}>
-              <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>
-                {DAY_SHORT[day]}
+            <div key={day} className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
+                  {DAY_SHORT[day]}
+                </span>
+                {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />}
               </div>
               {tasks.length ? (
                 <div className="space-y-1.5">
-                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} accentColor={accent} {...sharedProps} />)}
+                  {tasks.map((t, i) => (
+                    <TaskItem key={i} text={t} day={day} accentColor={accent}
+                      rowType="section" rowKey={section.key}
+                      weekStart={weekStart} checksSet={checksSet}
+                      onToggle={onToggle} initialsMap={initialsMap} />
+                  ))}
                 </div>
               ) : (
                 <p className="text-gray-600 text-xs">—</p>
@@ -106,9 +110,25 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      {/* Mobile: selected day only */}
-      <div className="md:hidden p-3">
+// ── Section card (mobile, one-day view) ───────────────────────────────────────
+function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
+  const meta = SECTION_META[section.key] || {};
+  const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
+  const sharedProps = { rowType: 'section', rowKey: section.key, weekStart, checksSet, onToggle, initialsMap };
+
+  return (
+    <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
+      <div className={`px-4 py-3 ${bgClass}`}>
+        <div className="flex items-center gap-2">
+          <Icon size={16} style={{ color: accent }} />
+          <h3 className="font-semibold text-white">{label}</h3>
+        </div>
+      </div>
+      <div className="p-3">
         <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>
           {DAY_LABELS[selectedDay]}
         </div>
@@ -132,7 +152,6 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
 
   return (
     <div className="rounded-xl border border-gray-700 overflow-hidden">
-      {/* Header */}
       <div className="px-4 py-3 bg-gray-700/40">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
@@ -322,6 +341,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const todayDay = getTodayDay();
   const defaultDay = DAYS.includes(todayDay) ? todayDay : 'monday';
   const [selectedDay, setSelectedDay] = useState(defaultDay);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [mobileTab, setMobileTab] = useState('sections');
   const [showManage, setShowManage] = useState(false);
   const [sheetData, setSheetData] = useState(null);
   const [checksSet, setChecksSet] = useState(new Set());
@@ -334,7 +355,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     if (spinner) setLoading(true); else setRefreshing(true);
     setError('');
     try {
-      const r = await fetch(`${API}/api/prod-weekly/sheet`, { credentials: 'include' });
+      const r = await fetch(`${API}/api/prod-weekly/sheet?weekOffset=${weekOffset}`, { credentials: 'include' });
       if (!r.ok) throw new Error((await r.json()).message || 'Failed to load');
       const data = await r.json();
       setSheetData(data);
@@ -347,7 +368,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [weekOffset]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -371,25 +392,46 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   };
 
   const weekLabel = sheetData?.weekStart
-    ? `Week of ${new Date(sheetData.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : '';
+    ? new Date(sheetData.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '…';
 
-  const sections = sheetData?.sections || [];
-  const people   = sheetData?.people   || [];
+  const sections  = sheetData?.sections || [];
+  const people    = sheetData?.people   || [];
   const weekStart = sheetData?.weekStart;
 
-  const sharedCardProps = { weekStart, checksSet, onToggle: handleToggle, initialsMap, selectedDay };
+  const sharedProps = { weekStart, checksSet, onToggle: handleToggle, initialsMap };
 
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center gap-3 sticky top-0 z-30">
+        {/* Back / Logo */}
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition flex-shrink-0">
           <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
-        <div className="flex items-center gap-3">
-          {weekLabel && <span className="text-gray-400 text-sm hidden sm:inline">{weekLabel}</span>}
+
+        {/* Week navigation — centered */}
+        <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2">
+          <button
+            onClick={() => setWeekOffset(w => w - 1)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-gray-300 text-sm font-medium min-w-[110px] text-center">
+            {weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`}
+          </span>
+          <button
+            onClick={() => setWeekOffset(w => w + 1)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {canUpload && (
             <button onClick={() => setShowManage(true)} className="text-gray-400 hover:text-white transition">
               <Settings size={18} />
@@ -398,27 +440,47 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           <button onClick={() => loadData(false)} disabled={refreshing} className="text-gray-400 hover:text-white transition">
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
-            ← Back to Dashboard
+          <button onClick={onBack} className="hidden sm:block text-sm text-gray-400 hover:text-white transition">
+            ← Back
           </button>
         </div>
       </nav>
 
-      {/* Mobile day selector — sticky below nav */}
-      <div className="md:hidden sticky top-[65px] z-20 bg-gray-900 border-b border-gray-700/60 px-4 py-2">
+      {/* Mobile: tab bar + day selector */}
+      <div className="md:hidden sticky top-[65px] z-20 bg-gray-900 border-b border-gray-700/60 px-4 pt-2 pb-2">
+        {/* Tab selector */}
+        <div className="flex gap-1.5 mb-2">
+          {[
+            { key: 'sections', label: 'Sections' },
+            { key: 'people',   label: 'People'   },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setMobileTab(tab.key)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                mobileTab === tab.key ? 'text-white' : 'text-gray-400 bg-gray-800 hover:text-white'
+              }`}
+              style={mobileTab === tab.key ? { backgroundColor: '#F05A28' } : {}}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {/* Day selector */}
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {DAYS.map(day => (
             <button
               key={day}
               onClick={() => setSelectedDay(day)}
-              className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                selectedDay === day
-                  ? 'text-white'
-                  : 'text-gray-400 bg-gray-800 hover:text-white'
+              className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                selectedDay === day ? 'text-white' : 'text-gray-400 bg-gray-800 hover:text-white'
               }`}
               style={selectedDay === day ? { backgroundColor: '#F05A28' } : {}}
             >
               {DAY_SHORT[day]}
+              {day === todayDay && weekOffset === 0 && (
+                <span className="ml-1 inline-block w-1 h-1 rounded-full bg-white align-middle" />
+              )}
             </button>
           ))}
         </div>
@@ -439,30 +501,18 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           </div>
         ) : (
           <>
-            {/* Desktop: day column headers */}
-            <div className="hidden md:grid grid-cols-5 mb-2 px-px">
-              {DAYS.map(day => (
-                <div key={day} className="text-center">
-                  <span className={`text-xs font-semibold uppercase tracking-widest ${
-                    day === todayDay ? 'text-orange-400' : 'text-gray-500'
-                  }`}>
-                    {DAY_LABELS[day]}
-                    {day === todayDay && <span className="ml-1 text-orange-500">•</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {/* ── Desktop layout ──────────────────────────────────────────── */}
 
-            {/* Sections */}
-            <div className="space-y-4 mb-6">
+            {/* 3-column portrait section board */}
+            <div className="hidden md:grid grid-cols-3 gap-4 mb-6">
               {sections.map(sec => (
-                <SectionCard key={sec.key} section={sec} {...sharedCardProps} />
+                <SectionColumn key={sec.key} section={sec} weekOffset={weekOffset} {...sharedProps} />
               ))}
             </div>
 
-            {/* People */}
+            {/* Desktop: people */}
             {people.length > 0 && (
-              <>
+              <div className="hidden md:block">
                 <div className="flex items-center gap-3 mb-3">
                   <User size={14} className="text-gray-400" />
                   <span className="text-gray-400 text-xs font-semibold uppercase tracking-widest">Individual Tasks</span>
@@ -470,10 +520,37 @@ function ProductionWeekly({ user, canUpload, onBack }) {
                 </div>
                 <div className="space-y-4">
                   {people.map(p => (
-                    <PersonCard key={p.name} person={p} {...sharedCardProps} />
+                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} {...sharedProps} />
                   ))}
                 </div>
-              </>
+              </div>
+            )}
+
+            {/* ── Mobile layout ───────────────────────────────────────────── */}
+
+            {/* Sections tab */}
+            {mobileTab === 'sections' && (
+              <div className="md:hidden space-y-4">
+                {sections.map(sec => (
+                  <SectionCard key={sec.key} section={sec} selectedDay={selectedDay} {...sharedProps} />
+                ))}
+              </div>
+            )}
+
+            {/* People tab */}
+            {mobileTab === 'people' && (
+              <div className="md:hidden space-y-4">
+                {people.length === 0 ? (
+                  <div className="text-center py-16">
+                    <User size={32} className="text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">No individual tasks this week</p>
+                  </div>
+                ) : (
+                  people.map(p => (
+                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} {...sharedProps} />
+                  ))
+                )}
+              </div>
             )}
           </>
         )}

@@ -1686,7 +1686,7 @@ function checkProdWeeklyManage(req, res, next) {
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
-async function parseWeeklySheet() {
+async function parseWeeklySheet(weekOffset = 0) {
   const token = await getGoogleAccessToken();
 
   // Fetch entire sheet with serial date numbers for col B date matching
@@ -1706,12 +1706,12 @@ async function parseWeeklySheet() {
     tankHeaders[ci] = headerRow[ci] ? String(headerRow[ci]).trim() : '';
   }
 
-  // Compute current week Mon–Fri as Excel serials (epoch = Dec 30, 1899 UTC)
+  // Compute target week Mon–Fri as Excel serials (epoch = Dec 30, 1899 UTC)
   const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
   const now = new Date();
   const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const dow = new Date(todayUTC).getUTCDay(); // 0=Sun
-  const mondayUTC = todayUTC + (dow === 0 ? -6 : 1 - dow) * 86400000;
+  const mondayUTC = todayUTC + (dow === 0 ? -6 : 1 - dow) * 86400000 + weekOffset * 7 * 86400000;
   const weekSerials = [];
   for (let i = 0; i < 5; i++) {
     weekSerials.push(Math.round((mondayUTC + i * 86400000 - EXCEL_EPOCH) / 86400000));
@@ -1800,7 +1800,8 @@ async function parseWeeklySheet() {
 // GET /api/prod-weekly/sheet
 app.get('/api/prod-weekly/sheet', authenticateToken, checkProdWeeklyView, async (req, res) => {
   try {
-    const sheetData = await parseWeeklySheet();
+    const weekOffset = parseInt(req.query.weekOffset) || 0;
+    const sheetData = await parseWeeklySheet(weekOffset);
 
     // Load initials mapping
     const initialsRows = await pool.query('SELECT * FROM prod_weekly_initials ORDER BY sort_order ASC, id ASC');
