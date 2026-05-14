@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -68,28 +68,11 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
   );
 }
 
-// ── Progress bar ───────────────────────────────────────────────────────────────
-function ProgressBar({ done, total, barClass }) {
-  if (!total) return null;
-  const pct = Math.round((done / total) * 100);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-300 ${barClass}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-gray-400 tabular-nums w-12 text-right">{done}/{total}</span>
-    </div>
-  );
-}
 
 // ── Section card ───────────────────────────────────────────────────────────────
 function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
   const meta = SECTION_META[section.key] || {};
-  const { Icon = Beer, label, barClass, bgClass, borderClass, accent } = meta;
-
-  const totalTasks = DAYS.reduce((n, d) => n + (section.dayTasks[d]?.length || 0), 0);
-  const doneTasks  = DAYS.reduce((n, d) =>
-    n + (section.dayTasks[d] || []).filter(t => isChecked(checksSet, weekStart, 'section', section.key, d, t)).length, 0);
+  const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
 
   const sharedProps = { rowType: 'section', rowKey: section.key, weekStart, checksSet, onToggle, initialsMap };
 
@@ -97,11 +80,10 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
     <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
       {/* Header */}
       <div className={`px-4 py-3 ${bgClass}`}>
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2">
           <Icon size={16} style={{ color: accent }} />
           <h3 className="font-semibold text-white">{label}</h3>
         </div>
-        <ProgressBar done={doneTasks} total={totalTasks} barClass={barClass} />
       </div>
 
       {/* Desktop: 5-column grid */}
@@ -146,24 +128,19 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
 
 // ── Person card ────────────────────────────────────────────────────────────────
 function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
-  const totalTasks = DAYS.reduce((n, d) => n + (person.dayTasks[d]?.length || 0), 0);
-  const doneTasks  = DAYS.reduce((n, d) =>
-    n + (person.dayTasks[d] || []).filter(t => isChecked(checksSet, weekStart, 'person', person.name, d, t)).length, 0);
-
   const sharedProps = { rowType: 'person', rowKey: person.name, weekStart, checksSet, onToggle, initialsMap };
 
   return (
     <div className="rounded-xl border border-gray-700 overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 bg-gray-700/40">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
                style={{ backgroundColor: '#F05A28' }}>
             {person.name.charAt(0).toUpperCase()}
           </div>
           <h3 className="font-semibold text-white">{person.name}</h3>
         </div>
-        <ProgressBar done={doneTasks} total={totalTasks} barClass="bg-orange-500" />
       </div>
 
       {/* Desktop: 5-column grid */}
@@ -206,42 +183,6 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
   );
 }
 
-// ── Week summary strip ─────────────────────────────────────────────────────────
-function WeekSummary({ sections, people, weekStart, checksSet }) {
-  let total = 0; let done = 0;
-  sections.forEach(sec => {
-    DAYS.forEach(d => {
-      const tasks = sec.dayTasks[d] || [];
-      total += tasks.length;
-      done  += tasks.filter(t => isChecked(checksSet, weekStart, 'section', sec.key, d, t)).length;
-    });
-  });
-  people.forEach(p => {
-    DAYS.forEach(d => {
-      const tasks = p.dayTasks[d] || [];
-      total += tasks.length;
-      done  += tasks.filter(t => isChecked(checksSet, weekStart, 'person', p.name, d, t)).length;
-    });
-  });
-  const pct = total ? Math.round((done / total) * 100) : 0;
-
-  return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-gray-400 text-sm">Week Progress</span>
-        <span className="text-white font-semibold text-sm">{pct}%</span>
-      </div>
-      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-500"
-             style={{ width: `${pct}%`, backgroundColor: '#F05A28' }} />
-      </div>
-      <div className="flex justify-between mt-2">
-        <span className="text-gray-500 text-xs">{done} of {total} tasks complete</span>
-        {pct === 100 && <span className="text-orange-400 text-xs font-medium">Week complete!</span>}
-      </div>
-    </div>
-  );
-}
 
 // ── Initials modal ─────────────────────────────────────────────────────────────
 function InitialsModal({ entry, onSave, onClose }) {
@@ -388,7 +329,6 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const dayBarRef = useRef(null);
 
   const loadData = useCallback(async (spinner = true) => {
     if (spinner) setLoading(true); else setRefreshing(true);
@@ -444,28 +384,28 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-gray-400 hover:text-white transition">
-          <ChevronLeft size={20} />
-          <span className="text-sm hidden sm:inline">Dashboard</span>
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
         </button>
-        <div className="text-center">
-          <h1 className="text-cream font-bold text-base sm:text-lg leading-tight">Production Weekly</h1>
-          {weekLabel && <p className="text-gray-400 text-xs">{weekLabel}</p>}
-        </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {weekLabel && <span className="text-gray-400 text-sm hidden sm:inline">{weekLabel}</span>}
           {canUpload && (
-            <button onClick={() => setShowManage(true)} className="text-gray-400 hover:text-white transition p-1">
+            <button onClick={() => setShowManage(true)} className="text-gray-400 hover:text-white transition">
               <Settings size={18} />
             </button>
           )}
-          <button onClick={() => loadData(false)} disabled={refreshing} className="text-gray-400 hover:text-white transition p-1">
+          <button onClick={() => loadData(false)} disabled={refreshing} className="text-gray-400 hover:text-white transition">
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={onBack} className="text-sm text-gray-400 hover:text-white transition">
+            ← Back to Dashboard
           </button>
         </div>
       </nav>
 
       {/* Mobile day selector — sticky below nav */}
-      <div className="md:hidden sticky top-[65px] z-20 bg-gray-900 border-b border-gray-700/60 px-4 py-2" ref={dayBarRef}>
+      <div className="md:hidden sticky top-[65px] z-20 bg-gray-900 border-b border-gray-700/60 px-4 py-2">
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {DAYS.map(day => (
             <button
@@ -499,9 +439,6 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           </div>
         ) : (
           <>
-            {/* Week progress summary */}
-            <WeekSummary sections={sections} people={people} weekStart={weekStart} checksSet={checksSet} />
-
             {/* Desktop: day column headers */}
             <div className="hidden md:grid grid-cols-5 mb-2 px-px">
               {DAYS.map(day => (
