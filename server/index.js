@@ -1663,9 +1663,7 @@ app.delete('/api/packaging-log/:id', authenticateToken, checkPackagingManage, as
 // ── Production Weekly ─────────────────────────────────────────────────────────
 
 const WEEKLY_SHEET_ID = '1Pk-ij63R4X5-X-7OVBgq8PKAsZ6DB51SzlHanPRplqk';
-const WEEKLY_TAB = 'Weekly Review';
-// 0-indexed columns: E=4,F=5,G=6,H=7,I=8 map to days
-const WEEKLY_DAY_COLS = { 4: 'monday', 5: 'tuesday', 6: 'wednesday', 7: 'thursday', 8: 'friday' };
+const WEEKLY_SCHED_TAB = 'Brew/Production Schedule';
 const WEEKLY_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 function checkProdWeeklyView(req, res, next) {
@@ -1690,79 +1688,111 @@ function checkProdWeeklyManage(req, res, next) {
 
 async function parseWeeklySheet() {
   const token = await getGoogleAccessToken();
-  // Use FORMATTED_VALUE so dates come back as "5/11/2026" strings, not serials
-  const range = encodeURIComponent(`'${WEEKLY_TAB}'!A1:I25`);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WEEKLY_SHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE`;
+
+  // Fetch entire sheet with serial date numbers for col B date matching
+  const range = encodeURIComponent(`'${WEEKLY_SCHED_TAB}'!A1:BH`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WEEKLY_SHEET_ID}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) throw new Error(`Sheets API error: ${resp.status}`);
   const data = await resp.json();
   const rows = data.values || [];
 
-  // Fixed sheet structure (0-indexed rows):
-  // Row 1  (idx 1):  Person 1 header — col D = name, E-I = their tasks per day
-  // Row 2  (idx 2):  "Brews" section label
-  // Rows 3-7 (idx 3-7): Brew day tasks — col B = task text
-  // Row 8  (idx 8):  Person 2 header — col D = name, E-I = their tasks
-  // Row 9  (idx 9):  "Packaging" section label, may also have E-I tasks
-  // Rows 10-14 (idx 10-14): Packaging day tasks — col B = task text
-  // Row 15 (idx 15): Person 3 header + "Week of: <date>" in A-B, col D = name, E-I = their tasks
-  // Row 16 (idx 16): "Time Off" section label, may also have E-I tasks
-  // Rows 17-21 (idx 17-21): Time Off day tasks — col B = task text
+  if (rows.length < 2) return { weekStart: null, sections: [], people: [] };
 
-  // Week start from row 16 col B ("5/11/2026")
-  let weekStart = null;
-  const weekRaw = rows[15]?.[1] != null ? String(rows[15][1]).trim() : '';
-  if (weekRaw) {
-    if (/^\d{5,}$/.test(weekRaw)) {
-      weekStart = sheetSerialToYMD(parseInt(weekRaw));
-    } else {
-      // Parse "M/D/YYYY" → "YYYY-MM-DD"
-      const d = new Date(weekRaw + ' 12:00:00');
-      if (!isNaN(d)) weekStart = d.toISOString().slice(0, 10);
+  // Row 0 = header: tank names at cols D:U (indices 3–20)
+  const headerRow = rows[0] || [];
+  const tankHeaders = {};
+  for (let ci = 3; ci <= 20; ci++) {
+    tankHeaders[ci] = headerRow[ci] ? String(headerRow[ci]).trim() : '';
+  }
+
+  // Compute current week Mon–Fri as Excel serials (epoch = Dec 30, 1899 UTC)
+  const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
+  const now = new Date();
+  const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const dow = new Date(todayUTC).getUTCDay(); // 0=Sun
+  const mondayUTC = todayUTC + (dow === 0 ? -6 : 1 - dow) * 86400000;
+  const weekSerials = [];
+  for (let i = 0; i < 5; i++) {
+    weekSerials.push(Math.round((mondayUTC + i * 86400000 - EXCEL_EPOCH) / 86400000));
+  }
+  const weekStart = sheetSerialToYMD(weekSerials[0]);
+
+  // Map serial → data row (col B = index 1 holds date serial)
+  const dayRowBySerial = {};
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const serial = row[1];
+    if (typeof serial === 'number') {
+      const s = Math.floor(serial);
+      if (weekSerials.includes(s)) dayRowBySerial[s] = row;
     }
   }
 
-  // Section B-column tasks (fixed day row positions, col B)
-  const DAYS = WEEKLY_DAYS;
-  const sectionDefs = [
-    { key: 'brews',     label: 'Brews',     dayRowIdxs: [3, 4, 5, 6, 7]   },
-    { key: 'packaging', label: 'Packaging', dayRowIdxs: [10, 11, 12, 13, 14] },
-    { key: 'timeoff',   label: 'Time Off',  dayRowIdxs: [17, 18, 19, 20, 21] },
-  ];
+  const brewDayTasks    = {};
+  const packDayTasks    = {};
+  const timeoffDayTasks = {};
+  WEEKLY_DAYS.forEach(d => { brewDayTasks[d] = []; packDayTasks[d] = []; timeoffDayTasks[d] = []; });
 
-  const sections = sectionDefs.map(sec => {
-    const dayTasks = {};
-    DAYS.forEach(d => { dayTasks[d] = []; });
-    sec.dayRowIdxs.forEach((rowIdx, i) => {
-      const day = DAYS[i];
-      const task = rows[rowIdx]?.[1] ? String(rows[rowIdx][1]).trim() : '';
-      if (task) dayTasks[day].push(task);
-    });
-    return { key: sec.key, label: sec.label, dayTasks };
-  });
+  // initials → { day → [taskText] } for person grouping
+  const personMap = {};
 
-  // Person blocks — fixed header rows, tasks from all rows in their area (E-I cols by day)
-  const personHeaderIdxs = [1, 8, 15];
-  const people = personHeaderIdxs.map((headerIdx, i) => {
-    const headerRow = rows[headerIdx] || [];
-    const name = headerRow[3] ? String(headerRow[3]).trim() : null; // col D
-    if (!name) return null;
+  weekSerials.forEach((serial, dayIdx) => {
+    const day = WEEKLY_DAYS[dayIdx];
+    const row = dayRowBySerial[serial];
+    if (!row) return;
 
-    const dayTasks = {};
-    DAYS.forEach(d => { dayTasks[d] = []; });
+    // Brews & Packaging: scan cols D:U (indices 3–20)
+    for (let ci = 3; ci <= 20; ci++) {
+      const cell = row[ci];
+      if (!cell) continue;
+      const text = String(cell).trim();
+      const tankName = tankHeaders[ci];
 
-    // Scan all rows in this person's area for E-I tasks
-    const endRowIdx = i < personHeaderIdxs.length - 1 ? personHeaderIdxs[i + 1] - 1 : rows.length - 1;
-    for (let rowIdx = headerIdx; rowIdx <= endRowIdx && rowIdx < rows.length; rowIdx++) {
-      const row = rows[rowIdx] || [];
-      for (const [colIdxStr, day] of Object.entries(WEEKLY_DAY_COLS)) {
-        const cell = row[parseInt(colIdxStr)];
-        if (cell && String(cell).trim()) dayTasks[day].push(String(cell).trim());
+      if (/brew\s*$/i.test(text)) {
+        const m = text.match(/^(.*?)\s*(?:-\s*)?brew\s*$/i);
+        const beerName = m ? m[1].trim() : text;
+        if (beerName) brewDayTasks[day].push(tankName ? `[${tankName}] ${beerName}` : beerName);
+      } else if (/pack\s*$/i.test(text)) {
+        const m = text.match(/^(.*?)\s*(?:-\s*)?pack\s*$/i);
+        const beerName = m ? m[1].trim() : text;
+        if (beerName) packDayTasks[day].push(tankName ? `[${tankName}] ${beerName}` : beerName);
       }
     }
 
-    return { name, dayTasks };
-  }).filter(Boolean);
+    // Time Off: col AC (index 28)
+    const timeoff = row[28];
+    if (timeoff && String(timeoff).trim()) timeoffDayTasks[day].push(String(timeoff).trim());
+
+    // Individual tasks: cols AZ:BH (indices 51–59)
+    for (let ci = 51; ci <= 59; ci++) {
+      const cell = row[ci];
+      if (!cell) continue;
+      const text = String(cell).trim();
+      if (!text) continue;
+      // Extract initials from "(R, C)" at end
+      const im = text.match(/\(([^)]+)\)\s*$/);
+      if (!im) continue;
+      im[1].split(',').map(s => s.trim()).filter(Boolean).forEach(initial => {
+        if (!personMap[initial]) personMap[initial] = {};
+        if (!personMap[initial][day]) personMap[initial][day] = [];
+        personMap[initial][day].push(text);
+      });
+    }
+  });
+
+  const sections = [
+    { key: 'brews',     label: 'Brews',     dayTasks: brewDayTasks    },
+    { key: 'packaging', label: 'Packaging', dayTasks: packDayTasks    },
+    { key: 'timeoff',   label: 'Time Off',  dayTasks: timeoffDayTasks },
+  ];
+
+  const people = Object.entries(personMap).map(([initial, byDay]) => {
+    const dayTasks = {};
+    WEEKLY_DAYS.forEach(d => { dayTasks[d] = byDay[d] || []; });
+    return { name: initial, dayTasks };
+  });
 
   return { weekStart, sections, people };
 }
@@ -1776,6 +1806,12 @@ app.get('/api/prod-weekly/sheet', authenticateToken, checkProdWeeklyView, async 
     const initialsRows = await pool.query('SELECT * FROM prod_weekly_initials ORDER BY sort_order ASC, id ASC');
     const initialsMap = {};
     for (const r of initialsRows.rows) initialsMap[r.initials] = r.display_name;
+
+    // Resolve person names from initials using the DB map
+    sheetData.people = sheetData.people.map(p => ({
+      ...p,
+      name: initialsMap[p.name] || p.name,
+    }));
 
     // Load checks for this week
     const weekStart = sheetData.weekStart;
