@@ -1319,7 +1319,7 @@ export default function ProductionSchedule({ user, canUpload, onBack }) {
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-2 flex items-center justify-between">
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-2 flex items-center justify-between sticky top-0 z-30">
         <button onClick={onBack} className="flex items-center gap-2 hover:opacity-80 transition">
           <span className="text-lg font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream text-lg font-bold">HQ</span>

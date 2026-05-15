@@ -256,7 +256,7 @@ export default function PackagingLog({ user, canUpload, onBack }) {
 
   return (
     <div className="min-h-screen bg-gray-900">
-      <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+      <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
         <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
           <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream font-semibold text-xl">HQ</span>
