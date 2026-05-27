@@ -713,9 +713,9 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     if (!ws) return;
     const channel = supabase
       .channel(`prod-weekly-checks-${ws}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks', filter: `week_start=eq.${ws}` }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks' }, (payload) => {
         const r = payload.eventType === 'DELETE' ? payload.old : payload.new;
-        if (!r?.week_start) return;
+        if (!r?.week_start || r.week_start !== ws) return;
         const key = checkKey(r.week_start, r.row_type, r.row_key, r.day, r.task_text);
         setChecksSet(prev => {
           const next = new Set(prev);
