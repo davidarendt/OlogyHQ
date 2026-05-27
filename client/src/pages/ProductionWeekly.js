@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, Fragment } from 'react';
-import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2, Bell, Send } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 const API = process.env.REACT_APP_API_URL || '';
@@ -251,11 +251,12 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
 function InitialsModal({ entry, onSave, onClose }) {
   const [initials, setInitials] = useState(entry?.initials || '');
   const [displayName, setDisplayName] = useState(entry?.display_name || '');
+  const [email, setEmail] = useState(entry?.email || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const handleSave = async () => {
-    if (!initials.trim() || !displayName.trim()) { setError('Both fields required'); return; }
+    if (!initials.trim() || !displayName.trim()) { setError('Initials and name required'); return; }
     setSaving(true); setError('');
     try {
       const method = entry ? 'PATCH' : 'POST';
@@ -263,7 +264,7 @@ function InitialsModal({ entry, onSave, onClose }) {
       const resp = await fetch(url, {
         method, credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initials: initials.trim().toUpperCase(), display_name: displayName.trim() }),
+        body: JSON.stringify({ initials: initials.trim().toUpperCase(), display_name: displayName.trim(), email: email.trim() || null }),
       });
       if (!resp.ok) { const d = await resp.json(); setError(d.message || 'Error'); setSaving(false); return; }
       onSave();
@@ -291,6 +292,81 @@ function InitialsModal({ entry, onSave, onClose }) {
               className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
               placeholder="e.g. Ron" />
           </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1 block">
+              Email <span className="text-gray-500">(optional — receives their own incomplete task emails)</span>
+            </label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+              className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
+              placeholder="e.g. ron@ologybrewing.com" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white rounded-lg" style={{ backgroundColor: '#F05A28' }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Recipient modal ────────────────────────────────────────────────────────────
+function RecipientModal({ entry, onSave, onClose }) {
+  const [name, setName] = useState(entry?.name || '');
+  const [email, setEmail] = useState(entry?.email || '');
+  const [active, setActive] = useState(entry?.active !== false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    if (!name.trim() || !email.trim()) { setError('Name and email required'); return; }
+    setSaving(true); setError('');
+    try {
+      const method = entry ? 'PATCH' : 'POST';
+      const url = entry
+        ? `${API}/api/prod-weekly/notification-recipients/${entry.id}`
+        : `${API}/api/prod-weekly/notification-recipients`;
+      const resp = await fetch(url, {
+        method, credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), active }),
+      });
+      if (!resp.ok) { const d = await resp.json(); setError(d.message || 'Error'); setSaving(false); return; }
+      onSave();
+    } catch { setError('Network error'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-semibold">{entry ? 'Edit Recipient' : 'Add Recipient'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
+        </div>
+        {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+        <div className="space-y-3">
+          <div>
+            <label className="text-gray-400 text-xs mb-1 block">Name</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
+              placeholder="e.g. David" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1 block">Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+              className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:border-orange-500 focus:outline-none"
+              placeholder="e.g. david@ologybrewing.com" />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <button onClick={() => setActive(a => !a)}
+              className="relative flex-shrink-0 w-10 h-5 rounded-full transition-colors"
+              style={{ backgroundColor: active ? '#F05A28' : '#4B5563' }}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-sm text-gray-300">Active</span>
+          </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
@@ -305,26 +381,29 @@ function InitialsModal({ entry, onSave, onClose }) {
 
 // ── Manage view ────────────────────────────────────────────────────────────────
 function ManageView({ canUpload, onClose }) {
+  const [manageTab, setManageTab] = useState('initials');
+
+  // ── Initials tab state ──
   const [initials, setInitials] = useState([]);
-  const [modal, setModal] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initialsLoading, setInitialsLoading] = useState(true);
+  const [initialsModal, setInitialsModal] = useState(null);
 
   const fetchInitials = useCallback(async () => {
-    setLoading(true);
+    setInitialsLoading(true);
     const r = await fetch(`${API}/api/prod-weekly/initials`, { credentials: 'include' });
     setInitials(await r.json());
-    setLoading(false);
+    setInitialsLoading(false);
   }, []);
 
   useEffect(() => { fetchInitials(); }, [fetchInitials]);
 
-  const handleDelete = async (id) => {
+  const handleDeleteInitial = async (id) => {
     if (!window.confirm('Delete this mapping?')) return;
     await fetch(`${API}/api/prod-weekly/initials/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchInitials();
   };
 
-  const handleReorder = async (id, direction) => {
+  const handleReorderInitial = async (id, direction) => {
     const idx = initials.findIndex(e => e.id === id);
     if (direction === 'up' && idx === 0) return;
     if (direction === 'down' && idx === initials.length - 1) return;
@@ -333,75 +412,222 @@ function ManageView({ canUpload, onClose }) {
     [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
     setInitials(newOrder);
     await fetch(`${API}/api/prod-weekly/initials/reorder`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ orderedIds: newOrder.map(e => e.id) }),
     });
   };
 
+  // ── Notifications tab state ──
+  const [recipients, setRecipients] = useState([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientModal, setRecipientModal] = useState(null);
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const fetchRecipients = useCallback(async () => {
+    setRecipientsLoading(true);
+    const r = await fetch(`${API}/api/prod-weekly/notification-recipients`, { credentials: 'include' });
+    setRecipients(await r.json());
+    setRecipientsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (manageTab === 'notifications') fetchRecipients();
+  }, [manageTab, fetchRecipients]);
+
+  const handleDeleteRecipient = async (id) => {
+    if (!window.confirm('Remove this recipient?')) return;
+    await fetch(`${API}/api/prod-weekly/notification-recipients/${id}`, { method: 'DELETE', credentials: 'include' });
+    fetchRecipients();
+  };
+
+  const handleToggleActive = async (entry) => {
+    await fetch(`${API}/api/prod-weekly/notification-recipients/${entry.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ name: entry.name, email: entry.email, active: !entry.active }),
+    });
+    fetchRecipients();
+  };
+
+  const handleSendTest = async () => {
+    setTestSending(true); setTestResult(null);
+    try {
+      const r = await fetch(`${API}/api/prod-weekly/send-test-reminder`, { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      setTestResult(r.ok ? { ok: true, msg: d.message || `Sent ${d.sent} email(s) for ${d.incomplete} incomplete task(s).` }
+                         : { ok: false, msg: d.message || 'Error sending.' });
+    } catch { setTestResult({ ok: false, msg: 'Network error.' }); }
+    setTestSending(false);
+  };
+
+  const TABS = [
+    { key: 'initials', label: 'Initials' },
+    { key: 'notifications', label: 'Notifications', icon: Bell },
+  ];
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-40 p-0 sm:p-4">
-      <div className="bg-gray-800 rounded-t-2xl sm:rounded-xl border border-gray-700 w-full sm:max-w-lg max-h-[85vh] flex flex-col">
+      <div className="bg-gray-800 rounded-t-2xl sm:rounded-xl border border-gray-700 w-full sm:max-w-lg max-h-[90vh] flex flex-col">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 flex-shrink-0">
-          <h2 className="text-white font-semibold">Initials Mapping</h2>
+          <h2 className="text-white font-semibold">Manage</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <p className="text-gray-400 text-sm mb-4">
-            Map sheet initials (e.g. "R") to full names shown next to tasks.
-          </p>
-          {canUpload && (
-            <button onClick={() => setModal('add')}
-              className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm text-white rounded-lg mb-4 transition"
-              style={{ backgroundColor: '#F05A28' }}>
-              <Plus size={15} /> Add Mapping
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-5 pt-3 pb-0 flex-shrink-0">
+          {TABS.map(tab => (
+            <button key={tab.key} onClick={() => setManageTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                manageTab === tab.key ? 'text-white' : 'text-gray-400 bg-gray-700/50 hover:text-white'
+              }`}
+              style={manageTab === tab.key ? { backgroundColor: '#F05A28' } : {}}>
+              {tab.icon && <tab.icon size={13} />}
+              {tab.label}
             </button>
-          )}
-          {loading ? (
-            <p className="text-gray-400 text-sm text-center py-4">Loading…</p>
-          ) : initials.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-4">No mappings yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {initials.map((entry, idx) => (
-                <div key={entry.id} className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    {canUpload && (
-                      <div className="flex flex-col">
-                        <button onClick={() => handleReorder(entry.id, 'up')} disabled={idx === 0}
-                          className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
-                          <ChevronUp size={14} />
-                        </button>
-                        <button onClick={() => handleReorder(entry.id, 'down')} disabled={idx === initials.length - 1}
-                          className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
-                          <ChevronDown size={14} />
-                        </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+
+          {/* ── Initials tab ── */}
+          {manageTab === 'initials' && (
+            <>
+              <p className="text-gray-400 text-sm mb-4">
+                Map sheet initials (e.g. "R") to display names. Optionally add an email so that person receives their own incomplete task notifications.
+              </p>
+              {canUpload && (
+                <button onClick={() => setInitialsModal('add')}
+                  className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm text-white rounded-lg mb-4"
+                  style={{ backgroundColor: '#F05A28' }}>
+                  <Plus size={15} /> Add Mapping
+                </button>
+              )}
+              {initialsLoading ? (
+                <p className="text-gray-400 text-sm text-center py-4">Loading…</p>
+              ) : initials.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">No mappings yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {initials.map((entry, idx) => (
+                    <div key={entry.id} className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {canUpload && (
+                          <div className="flex flex-col flex-shrink-0">
+                            <button onClick={() => handleReorderInitial(entry.id, 'up')} disabled={idx === 0}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
+                              <ChevronUp size={14} />
+                            </button>
+                            <button onClick={() => handleReorderInitial(entry.id, 'down')} disabled={idx === initials.length - 1}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
+                        )}
+                        <span className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
+                              style={{ backgroundColor: '#F05A28' }}>
+                          {entry.initials}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-white text-sm font-medium">{entry.display_name}</div>
+                          {entry.email && (
+                            <div className="text-gray-400 text-xs truncate">{entry.email}</div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                          style={{ backgroundColor: '#F05A28' }}>
-                      {entry.initials}
-                    </span>
-                    <span className="text-white text-sm font-medium">{entry.display_name}</span>
-                  </div>
-                  {canUpload && (
-                    <div className="flex gap-2">
-                      <button onClick={() => setModal(entry)} className="text-gray-400 hover:text-white p-1"><Pencil size={14} /></button>
-                      <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-400 p-1"><Trash2 size={14} /></button>
+                      {canUpload && (
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={() => setInitialsModal(entry)} className="text-gray-400 hover:text-white p-1"><Pencil size={14} /></button>
+                          <button onClick={() => handleDeleteInitial(entry.id)} className="text-gray-400 hover:text-red-400 p-1"><Trash2 size={14} /></button>
+                        </div>
+                      )}
                     </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Notifications tab ── */}
+          {manageTab === 'notifications' && (
+            <>
+              <div className="bg-gray-700/40 rounded-lg p-3 mb-4 text-xs text-gray-400 space-y-1">
+                <p><span className="text-gray-300 font-medium">Global recipients</span> get a full list of all incomplete tasks every weekday at 7 am.</p>
+                <p><span className="text-gray-300 font-medium">Individual notifications</span> — add an email on the Initials tab to send each person only their own incomplete tasks.</p>
+                <p>Tasks from up to 4 weeks back are included.</p>
+              </div>
+
+              {canUpload && (
+                <button onClick={() => setRecipientModal('add')}
+                  className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm text-white rounded-lg mb-4"
+                  style={{ backgroundColor: '#F05A28' }}>
+                  <Plus size={15} /> Add Recipient
+                </button>
+              )}
+
+              {recipientsLoading ? (
+                <p className="text-gray-400 text-sm text-center py-4">Loading…</p>
+              ) : recipients.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">No global recipients yet.</p>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {recipients.map(entry => (
+                    <div key={entry.id} className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <button onClick={() => handleToggleActive(entry)}
+                          className="relative flex-shrink-0 w-9 h-5 rounded-full transition-colors"
+                          style={{ backgroundColor: entry.active ? '#F05A28' : '#4B5563' }}>
+                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${entry.active ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                        <div className="min-w-0">
+                          <div className="text-white text-sm font-medium">{entry.name}</div>
+                          <div className="text-gray-400 text-xs truncate">{entry.email}</div>
+                        </div>
+                      </div>
+                      {canUpload && (
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={() => setRecipientModal(entry)} className="text-gray-400 hover:text-white p-1"><Pencil size={14} /></button>
+                          <button onClick={() => handleDeleteRecipient(entry.id)} className="text-gray-400 hover:text-red-400 p-1"><Trash2 size={14} /></button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canUpload && (
+                <div className="border-t border-gray-700 pt-4">
+                  <button onClick={handleSendTest} disabled={testSending}
+                    className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm rounded-lg border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition disabled:opacity-50">
+                    <Send size={14} />
+                    {testSending ? 'Sending…' : 'Send Test Email Now'}
+                  </button>
+                  {testResult && (
+                    <p className={`text-xs mt-2 text-center ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                      {testResult.msg}
+                    </p>
                   )}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
-      {modal && (
+
+      {initialsModal && (
         <InitialsModal
-          entry={modal === 'add' ? null : modal}
-          onSave={() => { setModal(null); fetchInitials(); }}
-          onClose={() => setModal(null)}
+          entry={initialsModal === 'add' ? null : initialsModal}
+          onSave={() => { setInitialsModal(null); fetchInitials(); }}
+          onClose={() => setInitialsModal(null)}
+        />
+      )}
+      {recipientModal && (
+        <RecipientModal
+          entry={recipientModal === 'add' ? null : recipientModal}
+          onSave={() => { setRecipientModal(null); fetchRecipients(); }}
+          onClose={() => setRecipientModal(null)}
         />
       )}
     </div>

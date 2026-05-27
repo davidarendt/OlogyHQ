@@ -1911,11 +1911,11 @@ app.get('/api/prod-weekly/initials', authenticateToken, checkProdWeeklyView, asy
 // POST /api/prod-weekly/initials
 app.post('/api/prod-weekly/initials', authenticateToken, checkProdWeeklyManage, async (req, res) => {
   try {
-    const { initials, display_name, user_id } = req.body;
+    const { initials, display_name, user_id, email } = req.body;
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM prod_weekly_initials');
     const r = await pool.query(
-      `INSERT INTO prod_weekly_initials (initials, display_name, user_id, sort_order) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, maxSort.rows[0].m + 1]
+      `INSERT INTO prod_weekly_initials (initials, display_name, user_id, sort_order, email) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, maxSort.rows[0].m + 1, email || null]
     );
     res.json(r.rows[0]);
   } catch (err) {
@@ -1939,10 +1939,10 @@ app.patch('/api/prod-weekly/initials/reorder', authenticateToken, checkProdWeekl
 // PATCH /api/prod-weekly/initials/:id
 app.patch('/api/prod-weekly/initials/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
   try {
-    const { initials, display_name, user_id } = req.body;
+    const { initials, display_name, user_id, email } = req.body;
     const r = await pool.query(
-      `UPDATE prod_weekly_initials SET initials=$1, display_name=$2, user_id=$3 WHERE id=$4 RETURNING *`,
-      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, req.params.id]
+      `UPDATE prod_weekly_initials SET initials=$1, display_name=$2, user_id=$3, email=$4 WHERE id=$5 RETURNING *`,
+      [initials.trim().toUpperCase(), display_name.trim(), user_id || null, email || null, req.params.id]
     );
     res.json(r.rows[0]);
   } catch (err) {
@@ -1957,6 +1957,65 @@ app.delete('/api/prod-weekly/initials/:id', authenticateToken, checkProdWeeklyMa
     await pool.query('DELETE FROM prod_weekly_initials WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Prod Weekly: notification recipients ──────────────────────────────────────
+
+app.get('/api/prod-weekly/notification-recipients', authenticateToken, checkProdWeeklyView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM prod_weekly_notification_recipients ORDER BY sort_order ASC, id ASC');
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/prod-weekly/notification-recipients', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { name, email, active } = req.body;
+    if (!name || !email) return res.status(400).json({ message: 'name and email required' });
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM prod_weekly_notification_recipients');
+    const r = await pool.query(
+      `INSERT INTO prod_weekly_notification_recipients (name, email, active, sort_order) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [name.trim(), email.trim(), active !== false, maxSort.rows[0].m + 1]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/prod-weekly/notification-recipients/reorder', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds)) return res.status(400).json({ message: 'orderedIds required' });
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE prod_weekly_notification_recipients SET sort_order=$1 WHERE id=$2', [i + 1, orderedIds[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/prod-weekly/notification-recipients/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { name, email, active } = req.body;
+    const r = await pool.query(
+      `UPDATE prod_weekly_notification_recipients SET name=$1, email=$2, active=$3 WHERE id=$4 RETURNING *`,
+      [name.trim(), email.trim(), active, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/prod-weekly/notification-recipients/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM prod_weekly_notification_recipients WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/prod-weekly/send-test-reminder', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { sendDailyProdWeeklyReminder } = require('./prodWeeklyEmail');
+    const result = await sendDailyProdWeeklyReminder();
+    res.json(result);
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ── Label Inventory ───────────────────────────────────────────────────────────

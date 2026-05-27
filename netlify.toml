@@ -10,6 +10,9 @@
 [functions."label-reminder"]
   schedule = "0 12 * * *"
 
+[functions."prod-weekly-reminder"]
+  schedule = "0 12 * * 1-5"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
