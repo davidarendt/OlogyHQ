@@ -714,8 +714,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     const channel = supabase
       .channel(`prod-weekly-checks-${ws}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks', filter: `week_start=eq.${ws}` }, (payload) => {
-        const r = payload.new || payload.old;
-        if (!r) return;
+        const r = payload.eventType === 'DELETE' ? payload.old : payload.new;
+        if (!r?.week_start) return;
         const key = checkKey(r.week_start, r.row_type, r.row_key, r.day, r.task_text);
         setChecksSet(prev => {
           const next = new Set(prev);
@@ -737,19 +737,36 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const handleToggle = async (rowType, rowKey, day, taskText, currentlyChecked) => {
     const weekStart = sheetData?.weekStart;
     if (!weekStart) return;
-    const key = checkKey(weekStart, rowType, rowKey, day, taskText);
+
+    // For person tasks, find all people sharing the exact same task text on this day
+    // so checking/unchecking one updates all of them together
+    const targets = rowType === 'person'
+      ? people
+          .filter(p => (p.dayTasks[day] || []).includes(taskText))
+          .map(p => ({ rowType, rowKey: p.name, day, taskText }))
+      : [{ rowType, rowKey, day, taskText }];
+
+    // Fall back to the original rowKey if no matches found in people list
+    const entries = targets.length > 0 ? targets : [{ rowType, rowKey, day, taskText }];
+
     setChecksSet(prev => {
       const next = new Set(prev);
-      currentlyChecked ? next.delete(key) : next.add(key);
+      entries.forEach(e => {
+        const k = checkKey(weekStart, e.rowType, e.rowKey, e.day, e.taskText);
+        currentlyChecked ? next.delete(k) : next.add(k);
+      });
       return next;
     });
+
     try {
-      await fetch(`${API}/api/prod-weekly/checks`, {
-        method: currentlyChecked ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ week_start: weekStart, row_type: rowType, row_key: rowKey, day: day || null, task_text: taskText }),
-      });
+      await Promise.all(entries.map(e =>
+        fetch(`${API}/api/prod-weekly/checks`, {
+          method: currentlyChecked ? 'DELETE' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ week_start: weekStart, row_type: e.rowType, row_key: e.rowKey, day: e.day || null, task_text: e.taskText }),
+        })
+      ));
     } catch { loadData(false); }
   };
 
