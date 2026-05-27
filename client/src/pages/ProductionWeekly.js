@@ -528,7 +528,7 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
       {/* Column grid: schedule | [divider] | person... */}
       <div style={{
         flex: 1, display: 'grid',
-        gridTemplateColumns: `1fr 2vw ${people.map(() => '1fr').join(' ')}`,
+        gridTemplateColumns: `1fr 3.5vw ${people.map(() => '1fr').join(' ')}`,
         gap: '0 0', padding: '0.6vw', overflow: 'hidden', minHeight: 0,
       }}>
 
@@ -585,9 +585,27 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
           })}
         </div>
 
-        {/* ── Vertical divider ── */}
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <div style={{ width: '1px', background: '#2D3748', height: '100%' }} />
+        {/* ── Day labels strip ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4vh' }}>
+          {/* Spacer matching person name header height (2.8vh avatar + 1vh padding) + one gap */}
+          <div style={{ height: '4.2vh', flexShrink: 0 }} />
+          {DAYS.map(day => {
+            const isToday = day === todayDay;
+            return (
+              <div key={day} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{
+                  writingMode: 'vertical-lr',
+                  transform: 'rotate(180deg)',
+                  fontSize: '1.3vh', fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.08em',
+                  whiteSpace: 'nowrap', userSelect: 'none',
+                  color: isToday ? '#F05A28' : '#6B7280',
+                }}>
+                  {DAY_LABELS[day]}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Person columns ── */}
