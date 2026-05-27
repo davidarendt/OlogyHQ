@@ -43,16 +43,21 @@ function isChecked(checksSet, weekStart, rowType, rowKey, day, taskText) {
 }
 
 // ── Task item ──────────────────────────────────────────────────────────────────
-function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28' }) {
+function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28', bgColor }) {
   const { label, initials } = parseInitials(text);
   const checked = isChecked(checksSet, weekStart, rowType, rowKey, day, text);
   const assignedNames = initials.length ? resolveInitials(initials, initialsMap) : null;
+
+  const bgStyle = bgColor
+    ? { backgroundColor: checked ? `${bgColor}40` : `${bgColor}22` }
+    : undefined;
 
   return (
     <div
       onClick={() => onToggle(rowType, rowKey, day, text, checked)}
       className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors group
-        ${checked ? 'bg-gray-700/40' : 'bg-gray-700/60 hover:bg-gray-700'}`}
+        ${!bgColor && (checked ? 'bg-gray-700/40' : 'bg-gray-700/60 hover:bg-gray-700')}`}
+      style={bgStyle}
     >
       <span
         className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all"
@@ -178,18 +183,13 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
       <div className="space-y-1.5 mb-1.5">
         {items.map(({ task, sectionKey }, i) => {
           const meta = SECTION_META[sectionKey] || {};
-          const typeLabel = sectionKey === 'brews' ? 'Brew' : 'Pack';
           return (
-            <div key={i}>
-              <span className="text-xs font-bold uppercase tracking-wider block mb-0.5" style={{ color: meta.accent }}>
-                {typeLabel}
-              </span>
-              <TaskItem
-                text={task} day={day} accentColor={meta.accent}
-                rowType="section" rowKey={sectionKey}
-                weekStart={weekStart} checksSet={checksSet} onToggle={onToggle} initialsMap={initialsMap}
-              />
-            </div>
+            <TaskItem
+              key={i}
+              text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+              rowType="section" rowKey={sectionKey}
+              weekStart={weekStart} checksSet={checksSet} onToggle={onToggle} initialsMap={initialsMap}
+            />
           );
         })}
       </div>
