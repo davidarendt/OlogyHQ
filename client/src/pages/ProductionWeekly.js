@@ -984,7 +984,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
                               <div key={day} className="rounded-xl overflow-hidden"
                                 style={{ border: `1px solid ${isToday ? '#F05A28' : '#374151'}` }}>
                                 <div className="px-4 py-2.5 flex items-center gap-2"
-                                  style={{ backgroundColor: isToday ? '#F05A28' + '22' : '#1F2937' }}>
+                                  style={{ backgroundColor: isToday ? '#F05A2822' : '#1F2937' }}>
                                   <span className="text-sm font-semibold" style={{ color: isToday ? '#F05A28' : '#9CA3AF' }}>
                                     {DAY_LABELS[day]}
                                   </span>
