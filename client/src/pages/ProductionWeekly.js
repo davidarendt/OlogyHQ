@@ -481,7 +481,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
         {/* Week navigation — centered */}
         <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2">
           <button
-            onClick={() => setWeekOffset(w => w - 1)}
+            onClick={() => { setWeekOffset(w => w - 1); setSelectedDay('monday'); }}
             className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition"
           >
             <ChevronLeft size={16} />
@@ -490,7 +490,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
             {weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`}
           </span>
           <button
-            onClick={() => setWeekOffset(w => w + 1)}
+            onClick={() => { setWeekOffset(w => w + 1); setSelectedDay('monday'); }}
             className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition"
           >
             <ChevronRight size={16} />
