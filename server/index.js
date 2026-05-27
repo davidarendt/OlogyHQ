@@ -1835,13 +1835,16 @@ app.get('/api/prod-weekly/sheet', authenticateToken, checkProdWeeklyView, async 
     // Load initials mapping
     const initialsRows = await pool.query('SELECT * FROM prod_weekly_initials ORDER BY sort_order ASC, id ASC');
     const initialsMap = {};
-    for (const r of initialsRows.rows) initialsMap[r.initials] = r.display_name;
+    const initialsOrder = {};
+    for (const r of initialsRows.rows) {
+      initialsMap[r.initials] = r.display_name;
+      initialsOrder[r.initials] = r.sort_order;
+    }
 
-    // Resolve person names from initials using the DB map
-    sheetData.people = sheetData.people.map(p => ({
-      ...p,
-      name: initialsMap[p.name] || p.name,
-    }));
+    // Sort people by initials sort_order (stable across weeks), then resolve display names
+    sheetData.people = sheetData.people
+      .sort((a, b) => (initialsOrder[a.name] ?? 9999) - (initialsOrder[b.name] ?? 9999))
+      .map(p => ({ ...p, name: initialsMap[p.name] || p.name }));
 
     // Load checks for this week
     const weekStart = sheetData.weekStart;
