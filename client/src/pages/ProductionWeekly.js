@@ -403,28 +403,98 @@ function ManageView({ canUpload, onClose }) {
 }
 
 // ── Display view (kiosk/office board) ─────────────────────────────────────────
+
+// Splits "Task title - note detail" into { title, note }
+function splitTaskLabel(label) {
+  const idx = label.indexOf(' - ');
+  if (idx === -1) return { title: label, note: null };
+  return { title: label.slice(0, idx), note: label.slice(idx + 3) };
+}
+
+// Small assignee pill chip
+function AssigneeChip({ name, accent }) {
+  return (
+    <span style={{
+      display: 'inline-block', fontSize: '1.05vh', lineHeight: 1,
+      padding: '0.15vh 0.4vw', borderRadius: '999px',
+      background: `${accent}20`, color: accent,
+      border: `1px solid ${accent}45`, fontWeight: 700,
+    }}>
+      {name}
+    </span>
+  );
+}
+
 function DisplayTaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28', bgColor }) {
   const { label, initials } = parseInitials(text);
   const checked = isChecked(checksSet, weekStart, rowType, rowKey, day, text);
-  const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-  const bg = bgColor
-    ? { backgroundColor: checked ? `${bgColor}40` : `${bgColor}22` }
-    : { backgroundColor: checked ? 'rgba(55,65,81,0.5)' : 'rgba(55,65,81,0.7)' };
+  const assignees = initials.map(i => initialsMap[i] || i);
+  const { title, note } = splitTaskLabel(label);
+
   return (
     <div onClick={() => onToggle(rowType, rowKey, day, text, checked)}
-      style={{ ...bg, display: 'flex', alignItems: 'flex-start', gap: '0.5vw', padding: '0.35vh 0.5vw', borderRadius: '0.4vw', cursor: 'pointer', marginBottom: '0.3vh' }}>
-      <span style={{
-        flexShrink: 0, width: '1.7vh', height: '1.7vh', borderRadius: '0.3vh',
-        border: `0.2vh solid ${accentColor}`, backgroundColor: checked ? accentColor : 'transparent',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '0.15vh',
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: '0.5vw',
+        padding: '0.4vh 0.5vw 0.4vh 0.6vw', borderRadius: '0.35vw',
+        cursor: 'pointer', marginBottom: '0.3vh',
+        background: bgColor ? (checked ? `${bgColor}28` : `${bgColor}14`) : (checked ? '#1c2232' : '#1a2030'),
+        borderLeft: `2px solid ${checked ? '#374151' : (bgColor || accentColor)}`,
       }}>
-        {checked && <Check size={10} style={{ color: 'white' }} strokeWidth={3} />}
+      {/* Checkbox */}
+      <span style={{
+        flexShrink: 0, width: '1.6vh', height: '1.6vh', borderRadius: '0.25vh', marginTop: '0.2vh',
+        border: `2px solid ${checked ? '#4B5563' : accentColor}`,
+        backgroundColor: checked ? '#4B5563' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {checked && <Check size={9} style={{ color: '#9CA3AF' }} strokeWidth={3} />}
       </span>
-      <span style={{ fontSize: '1.55vh', lineHeight: 1.3, color: checked ? '#6B7280' : '#F3F4F6', textDecoration: checked ? 'line-through' : 'none' }}>
-        {label}
-        {names && <span style={{ fontSize: '1.25vh', marginLeft: '0.4vw', color: accentColor, fontWeight: 600 }}>{names}</span>}
-      </span>
+      {/* Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '1.5vh', fontWeight: 500, lineHeight: 1.3, color: checked ? '#4B5563' : '#F3F4F6', textDecoration: checked ? 'line-through' : 'none' }}>
+          {title}
+        </div>
+        {note && (
+          <div style={{ fontSize: '1.15vh', color: checked ? '#374151' : '#64748B', marginTop: '0.1vh', fontStyle: 'italic' }}>
+            {note}
+          </div>
+        )}
+        {assignees.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25vw', marginTop: '0.25vh' }}>
+            {assignees.map((name, i) => <AssigneeChip key={i} name={name} accent={accentColor} />)}
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+// Read-only task row for schedule column (no checkbox)
+function DisplayScheduleTask({ label: rawLabel, initials, accent }) {
+  const { title, note } = splitTaskLabel(rawLabel);
+  const assignees = initials;
+  return (
+    <div style={{ marginBottom: '0.3vh', paddingLeft: '0.3vw', borderLeft: `2px solid ${accent}40` }}>
+      <div style={{ fontSize: '1.45vh', fontWeight: 500, color: '#E5E7EB', lineHeight: 1.3 }}>{title}</div>
+      {note && <div style={{ fontSize: '1.1vh', color: '#5B6880', fontStyle: 'italic', marginTop: '0.1vh' }}>{note}</div>}
+      {assignees.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2vw', marginTop: '0.2vh' }}>
+          {assignees.map((name, i) => <AssigneeChip key={i} name={name} accent={accent} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Today badge
+function TodayBadge() {
+  return (
+    <span style={{
+      fontSize: '0.95vh', padding: '0.1vh 0.4vw', borderRadius: '999px',
+      background: '#F05A28', color: 'white', fontWeight: 800, letterSpacing: '0.06em',
+    }}>
+      TODAY
+    </span>
   );
 }
 
@@ -436,34 +506,45 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
   const sharedCheck = { weekStart, checksSet, onToggle, initialsMap };
 
   const wkLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`;
-
-  // Section column: one block per section (Brews / Packaging / Time Off), each with 5 day rows
   const SECTION_ORDER = ['brews', 'packaging', 'timeoff'];
+
+  // Shared cell style — today gets an orange tint + left stripe, non-today is nearly invisible
+  const cellStyle = (isToday) => ({
+    flex: 1, minHeight: 0, overflow: 'hidden',
+    borderRadius: '0.4vw', padding: '0.45vh 0.6vw',
+    background: isToday ? 'rgba(240,90,40,0.08)' : '#161b27',
+    border: `1px solid ${isToday ? 'rgba(240,90,40,0.45)' : '#1e2535'}`,
+    borderLeft: isToday ? '3px solid #F05A28' : '1px solid #1e2535',
+  });
+
+  const dayHeaderStyle = (isToday) => ({
+    display: 'flex', alignItems: 'center', gap: '0.4vw', marginBottom: '0.35vh',
+  });
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0d1117', zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: 'inherit' }}>
 
       {/* Top bar */}
-      <div style={{ height: '4.5vh', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.5vw', borderBottom: '1px solid #374151' }}>
+      <div style={{ height: '4.5vh', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.5vw', borderBottom: '1px solid #1e2535' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8vw' }}>
           <span style={{ fontSize: '2.4vh', fontWeight: 800, color: '#F05A28', letterSpacing: '-0.02em' }}>OLOGY</span>
           <span style={{ fontSize: '2.4vh', fontWeight: 600, color: '#F2EDE4' }}>Production Weekly</span>
-          <span style={{ fontSize: '1.8vh', color: '#9CA3AF', marginLeft: '0.5vw' }}>{wkLabel}</span>
+          <span style={{ fontSize: '1.8vh', color: '#4B5563', marginLeft: '0.5vw' }}>{wkLabel}</span>
         </div>
         <button onClick={onExit}
-          style={{ fontSize: '1.5vh', color: '#9CA3AF', padding: '0.4vh 1vw', border: '1px solid #4B5563', borderRadius: '0.4vw', background: 'none', cursor: 'pointer' }}>
+          style={{ fontSize: '1.4vh', color: '#4B5563', padding: '0.35vh 0.9vw', border: '1px solid #2D3748', borderRadius: '0.4vw', background: 'none', cursor: 'pointer' }}>
           Exit Display
         </button>
       </div>
 
-      {/* Column grid: schedule | [divider] | person... */}
+      {/* Column grid */}
       <div style={{
         flex: 1, display: 'grid',
-        gridTemplateColumns: `1fr 2px ${people.map(() => '1fr').join(' ')}`,
-        gap: '0 0.6vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0,
+        gridTemplateColumns: `1fr 1px ${people.map(() => '1fr').join(' ')}`,
+        gap: '0 0.7vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0,
       }}>
 
-        {/* ── Schedule column: 3 sections stacked ── */}
+        {/* ── Schedule column ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5vh', overflow: 'hidden' }}>
           {SECTION_ORDER.map(sectionKey => {
             const sec = sections.find(s => s.key === sectionKey);
@@ -471,37 +552,31 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
             const { label: secLabel, accent } = meta;
             return (
               <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden' }}>
-                {/* Section header */}
-                <div style={{
-                  flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
-                  background: `${accent}22`, border: `1px solid ${accent}44`,
-                  display: 'flex', alignItems: 'center', gap: '0.5vw',
-                }}>
-                  <span style={{ fontSize: '1.9vh', fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{secLabel}</span>
+                {/* Section header — accent left stripe, white label */}
+                <div style={{ flexShrink: 0, borderRadius: '0.4vw', padding: '0.45vh 0.7vw', background: '#161b27', borderLeft: `3px solid ${accent}`, display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontSize: '1.8vh', fontWeight: 700, color: '#F2EDE4', letterSpacing: '0.02em' }}>{secLabel}</span>
+                  <span style={{ fontSize: '1.2vh', color: accent, fontWeight: 600, marginLeft: '0.5vw', opacity: 0.8 }}>
+                    {DAYS.reduce((n, d) => n + (sec?.dayTasks[d]?.length || 0), 0) || ''}
+                  </span>
                 </div>
                 {/* 5 day rows */}
                 {DAYS.map(day => {
                   const isToday = day === todayDay;
                   const tasks = sec ? (sec.dayTasks[day] || []) : [];
                   return (
-                    <div key={day} style={{
-                      flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
-                      border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
-                    }}>
-                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh' }}>
-                        {DAY_SHORT[day]}
+                    <div key={day} style={cellStyle(isToday)}>
+                      <div style={dayHeaderStyle(isToday)}>
+                        <span style={{ fontSize: '1.25vh', fontWeight: 800, color: isToday ? '#F05A28' : '#374151', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                          {DAY_SHORT[day]}
+                        </span>
+                        {isToday && <TodayBadge />}
                       </div>
                       {tasks.length === 0
-                        ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
+                        ? <span style={{ color: '#2D3748', fontSize: '1.2vh' }}>—</span>
                         : tasks.map((task, i) => {
                             const { label, initials } = parseInitials(task);
-                            const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-                            return (
-                              <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
-                                {label}
-                                {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
-                              </div>
-                            );
+                            const assignees = initials.map(ini => initialsMap[ini] || ini);
+                            return <DisplayScheduleTask key={i} label={label} initials={assignees} accent={accent} />;
                           })
                       }
                     </div>
@@ -513,33 +588,35 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </div>
 
         {/* ── Vertical divider ── */}
-        <div style={{ background: '#2D3748', borderRadius: '1px', margin: '0' }} />
+        <div style={{ background: '#1e2535' }} />
 
         {/* ── Person columns ── */}
         {people.map(person => {
           const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
           return (
             <div key={person.name} style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden' }}>
-              <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.5vh 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6vw' }}>
-                <div style={{ width: '2.8vh', height: '2.8vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
+              {/* Column header */}
+              <div style={{ flexShrink: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.55vh 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6vw', borderBottom: '2px solid #F05A28' }}>
+                <div style={{ width: '2.6vh', height: '2.6vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3vh', fontWeight: 800, color: 'white', flexShrink: 0 }}>
                   {person.name.charAt(0)}
                 </div>
-                <span style={{ fontSize: '2.2vh', fontWeight: 700, color: '#F2EDE4' }}>{person.name}</span>
+                <span style={{ fontSize: '2.1vh', fontWeight: 700, color: '#F2EDE4' }}>{person.name}</span>
               </div>
+              {/* Day cells */}
               {DAYS.map(day => {
                 const isToday = day === todayDay;
                 const tasks = person.dayTasks[day] || [];
                 const brewPack = getBrewPackTasks(day, sections, personInitial);
                 const hasAnything = tasks.length > 0 || brewPack.length > 0;
                 return (
-                  <div key={day} style={{
-                    flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
-                    border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
-                  }}>
-                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh' }}>
-                      {DAY_LABELS[day]}
+                  <div key={day} style={cellStyle(isToday)}>
+                    <div style={dayHeaderStyle(isToday)}>
+                      <span style={{ fontSize: '1.25vh', fontWeight: 800, color: isToday ? '#F05A28' : '#374151', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        {DAY_SHORT[day]}
+                      </span>
+                      {isToday && <TodayBadge />}
                     </div>
-                    {!hasAnything && <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>}
+                    {!hasAnything && <span style={{ color: '#2D3748', fontSize: '1.2vh' }}>—</span>}
                     {brewPack.map(({ task, sectionKey }, i) => {
                       const meta = SECTION_META[sectionKey] || {};
                       return (
@@ -548,7 +625,7 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                       );
                     })}
                     {brewPack.length > 0 && tasks.length > 0 && (
-                      <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
+                      <div style={{ height: '1px', background: '#1e2535', margin: '0.3vh 0' }} />
                     )}
                     {tasks.map((task, i) => (
                       <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
