@@ -1924,6 +1924,18 @@ app.post('/api/prod-weekly/initials', authenticateToken, checkProdWeeklyManage, 
   }
 });
 
+// PATCH /api/prod-weekly/initials/reorder
+app.patch('/api/prod-weekly/initials/reorder', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds)) return res.status(400).json({ message: 'orderedIds required' });
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE prod_weekly_initials SET sort_order=$1 WHERE id=$2', [i + 1, orderedIds[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 // PATCH /api/prod-weekly/initials/:id
 app.patch('/api/prod-weekly/initials/:id', authenticateToken, checkProdWeeklyManage, async (req, res) => {
   try {

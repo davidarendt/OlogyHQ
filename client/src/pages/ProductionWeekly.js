@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -346,6 +346,22 @@ function ManageView({ canUpload, onClose }) {
     fetchInitials();
   };
 
+  const handleReorder = async (id, direction) => {
+    const idx = initials.findIndex(e => e.id === id);
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === initials.length - 1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const newOrder = [...initials];
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    setInitials(newOrder);
+    await fetch(`${API}/api/prod-weekly/initials/reorder`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ orderedIds: newOrder.map(e => e.id) }),
+    });
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-40 p-0 sm:p-4">
       <div className="bg-gray-800 rounded-t-2xl sm:rounded-xl border border-gray-700 w-full sm:max-w-lg max-h-[85vh] flex flex-col">
@@ -370,9 +386,21 @@ function ManageView({ canUpload, onClose }) {
             <p className="text-gray-400 text-sm text-center py-4">No mappings yet.</p>
           ) : (
             <div className="space-y-2">
-              {initials.map(entry => (
+              {initials.map((entry, idx) => (
                 <div key={entry.id} className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3">
                   <div className="flex items-center gap-3">
+                    {canUpload && (
+                      <div className="flex flex-col">
+                        <button onClick={() => handleReorder(entry.id, 'up')} disabled={idx === 0}
+                          className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
+                          <ChevronUp size={14} />
+                        </button>
+                        <button onClick={() => handleReorder(entry.id, 'down')} disabled={idx === initials.length - 1}
+                          className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none">
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                    )}
                     <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                           style={{ backgroundColor: '#F05A28' }}>
                       {entry.initials}
