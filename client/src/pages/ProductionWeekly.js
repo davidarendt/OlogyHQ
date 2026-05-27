@@ -468,7 +468,7 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
           {SECTION_ORDER.map(sectionKey => {
             const sec = sections.find(s => s.key === sectionKey);
             const meta = SECTION_META[sectionKey] || {};
-            const { Icon = Beer, label: secLabel, accent, bgClass } = meta;
+            const { label: secLabel, accent } = meta;
             return (
               <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden' }}>
                 {/* Section header */}
