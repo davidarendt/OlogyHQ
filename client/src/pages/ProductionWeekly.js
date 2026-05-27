@@ -528,7 +528,7 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
       {/* Column grid: schedule | [divider] | person... */}
       <div style={{
         flex: 1, display: 'grid',
-        gridTemplateColumns: `1fr 3.5vw ${people.map(() => '1fr').join(' ')}`,
+        gridTemplateColumns: `1fr 2vw ${people.map(() => '1fr').join(' ')}`,
         gap: '0 0', padding: '0.6vw', overflow: 'hidden', minHeight: 0,
       }}>
 
@@ -555,17 +555,17 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                   const tasks = sec ? (sec.dayTasks[day] || []) : [];
                   return (
                     <div key={day} style={{
-                      flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
+                      flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.3vh 0.4vw',
                       border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
-                      display: 'flex', flexDirection: 'column',
+                      display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.4vw',
                     }}>
-                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh', flexShrink: 0 }}>
+                      <span style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)', flexShrink: 0, fontSize: '1vh', fontWeight: 700, color: isToday ? accent : '#4B5563', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
                         {DAY_SHORT[day]}
-                      </div>
-                      {tasks.length === 0
-                        ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
-                        : <AutoScaleContainer contentKey={`${sectionKey}-${day}-${weekStart}-${tasks.length}`}>
-                            <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        {tasks.length === 0
+                          ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
+                          : <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.35, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
                               {tasks.map((task, i) => {
                                 const { label, initials } = parseInitials(task);
                                 const names = initials.length ? resolveInitials(initials, initialsMap) : null;
@@ -580,8 +580,8 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                                 );
                               })}
                             </div>
-                          </AutoScaleContainer>
-                      }
+                        }
+                      </div>
                     </div>
                   );
                 })}
@@ -591,13 +591,13 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </div>
 
         {/* ── Day labels strip ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4vh' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh' }}>
           {/* Spacer matching person name header height (2.8vh avatar + 1vh padding) + one gap */}
           <div style={{ height: '4.2vh', flexShrink: 0 }} />
           {DAYS.map(day => {
             const isToday = day === todayDay;
             return (
-              <div key={day} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.4vw' }}>
+              <div key={day} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                 <span style={{
                   writingMode: 'vertical-lr',
                   transform: 'rotate(180deg)',
