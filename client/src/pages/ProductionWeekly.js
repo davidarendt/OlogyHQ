@@ -673,6 +673,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const [selectedDay, setSelectedDay] = useState(defaultDay);
   const [weekOffset, setWeekOffset] = useState(0);
   const [mobileTab, setMobileTab] = useState('people');
+  const [selectedPerson, setSelectedPerson] = useState(null);
   const [showManage, setShowManage] = useState(false);
   const [showDisplay, setShowDisplay] = useState(false);
   const [sheetData, setSheetData] = useState(null);
@@ -825,7 +826,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
         <div className="flex gap-1.5 mb-2">
           {[
             { key: 'sections', label: 'Brews/Packaging' },
-            { key: 'people',   label: 'People'          },
+            { key: 'people',   label: 'By Day'          },
+            { key: 'byPerson', label: 'By Person'       },
           ].map(tab => (
             <button
               key={tab.key}
@@ -839,8 +841,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
             </button>
           ))}
         </div>
-        {/* Day selector */}
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        {/* Day selector — hidden when viewing by person */}
+        <div className={`flex gap-1.5 overflow-x-auto no-scrollbar${mobileTab === 'byPerson' ? ' hidden' : ''}`}>
           {DAYS.map(day => (
             <button
               key={day}
@@ -910,7 +912,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
               </div>
             )}
 
-            {/* People tab */}
+            {/* By Day tab */}
             {mobileTab === 'people' && (
               <div className="md:hidden space-y-4">
                 {people.length === 0 ? (
@@ -922,6 +924,94 @@ function ProductionWeekly({ user, canUpload, onBack }) {
                   people.map(p => (
                     <PersonCard key={p.name} person={p} selectedDay={selectedDay} weekOffset={weekOffset} {...sharedProps} />
                   ))
+                )}
+              </div>
+            )}
+
+            {/* By Person tab */}
+            {mobileTab === 'byPerson' && (
+              <div className="md:hidden">
+                {!selectedPerson ? (
+                  // Person picker
+                  <div className="space-y-2">
+                    {people.length === 0 ? (
+                      <div className="text-center py-16">
+                        <User size={32} className="text-gray-600 mx-auto mb-3" />
+                        <p className="text-gray-500 text-sm">No individual tasks this week</p>
+                      </div>
+                    ) : people.map(p => (
+                      <button key={p.name} onClick={() => setSelectedPerson(p.name)}
+                        className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-700 bg-gray-800 hover:bg-gray-700 text-left transition">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                          style={{ backgroundColor: '#F05A28' }}>
+                          {p.name.charAt(0)}
+                        </div>
+                        <span className="font-semibold text-white">{p.name}</span>
+                        <span className="ml-auto text-gray-500 text-sm">›</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  // All-week view for selected person
+                  (() => {
+                    const person = people.find(p => p.name === selectedPerson);
+                    if (!person) return null;
+                    const personInitial = reverseInitialsMap[selectedPerson] || selectedPerson;
+                    return (
+                      <div>
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <button onClick={() => setSelectedPerson(null)}
+                            className="text-gray-400 hover:text-white text-sm transition">
+                            ← People
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                              style={{ backgroundColor: '#F05A28' }}>
+                              {selectedPerson.charAt(0)}
+                            </div>
+                            <span className="text-white font-semibold">{selectedPerson}</span>
+                          </div>
+                        </div>
+                        {/* All 5 days */}
+                        <div className="space-y-3">
+                          {DAYS.map(day => {
+                            const tasks = person.dayTasks[day] || [];
+                            const brewPackItems = getBrewPackTasks(day, sections, personInitial);
+                            const hasAnything = tasks.length > 0 || brewPackItems.length > 0;
+                            const isToday = day === todayDay && weekOffset === 0;
+                            return (
+                              <div key={day} className="rounded-xl overflow-hidden"
+                                style={{ border: `1px solid ${isToday ? '#F05A28' : '#374151'}` }}>
+                                <div className="px-4 py-2.5 flex items-center gap-2"
+                                  style={{ backgroundColor: isToday ? '#F05A28' + '22' : '#1F2937' }}>
+                                  <span className="text-sm font-semibold" style={{ color: isToday ? '#F05A28' : '#9CA3AF' }}>
+                                    {DAY_LABELS[day]}
+                                  </span>
+                                  {isToday && <span className="text-xs font-medium" style={{ color: '#F05A28' }}>Today</span>}
+                                </div>
+                                {!hasAnything ? (
+                                  <p className="text-gray-500 text-sm px-4 py-3">Nothing scheduled</p>
+                                ) : (
+                                  <div className="px-3 py-2.5 space-y-1.5">
+                                    {brewPackItems.map(({ task, sectionKey }, i) => {
+                                      const meta = SECTION_META[sectionKey] || {};
+                                      return <TaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+                                        rowType="section" rowKey={sectionKey} {...sharedProps} />;
+                                    })}
+                                    {tasks.map((t, i) => (
+                                      <TaskItem key={i} text={t} day={day} accentColor="#F05A28"
+                                        rowType="person" rowKey={selectedPerson} {...sharedProps} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             )}
