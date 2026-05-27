@@ -486,7 +486,7 @@ function DisplayTaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onT
   );
 }
 
-function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseInitialsMap, weekOffset, weekLabel, onExit }) {
+function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseInitialsMap, weekOffset, weekLabel, onWeekChange, onExit }) {
   const sections  = sheetData?.sections || [];
   const people    = sheetData?.people   || [];
   const weekStart = sheetData?.weekStart || '';
@@ -506,7 +506,18 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8vw' }}>
           <span style={{ fontSize: '2.4vh', fontWeight: 800, color: '#F05A28', letterSpacing: '-0.02em' }}>OLOGY</span>
           <span style={{ fontSize: '2.4vh', fontWeight: 600, color: '#F2EDE4' }}>Production Weekly</span>
-          <span style={{ fontSize: '1.8vh', color: '#9CA3AF', marginLeft: '0.5vw' }}>{wkLabel}</span>
+        </div>
+        {/* Week navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6vw' }}>
+          <button onClick={() => onWeekChange(w => w - 1)}
+            style={{ background: 'none', border: '1px solid #374151', borderRadius: '0.4vw', padding: '0.3vh 0.5vw', cursor: 'pointer', color: '#9CA3AF', display: 'flex', alignItems: 'center' }}>
+            <ChevronLeft size={16} />
+          </button>
+          <span style={{ fontSize: '1.8vh', color: '#F2EDE4', fontWeight: 600, minWidth: '8vw', textAlign: 'center' }}>{wkLabel}</span>
+          <button onClick={() => onWeekChange(w => w + 1)}
+            style={{ background: 'none', border: '1px solid #374151', borderRadius: '0.4vw', padding: '0.3vh 0.5vw', cursor: 'pointer', color: '#9CA3AF', display: 'flex', alignItems: 'center' }}>
+            <ChevronRight size={16} />
+          </button>
         </div>
         <button onClick={onExit}
           style={{ fontSize: '1.5vh', color: '#9CA3AF', padding: '0.4vh 1vw', border: '1px solid #4B5563', borderRadius: '0.4vw', background: 'none', cursor: 'pointer' }}>
@@ -867,6 +878,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           sheetData={sheetData} checksSet={checksSet} onToggle={handleToggle}
           initialsMap={initialsMap} reverseInitialsMap={reverseInitialsMap}
           weekOffset={weekOffset} weekLabel={weekLabel}
+          onWeekChange={setWeekOffset}
           onExit={() => setShowDisplay(false)}
         />
       )}
