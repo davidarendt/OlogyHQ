@@ -2018,6 +2018,14 @@ app.post('/api/prod-weekly/send-test-reminder', authenticateToken, checkProdWeek
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+app.post('/api/prod-weekly/auto-complete', authenticateToken, checkProdWeeklyManage, async (req, res) => {
+  try {
+    const { autoCompleteOldTasks } = require('./prodWeeklyEmail');
+    const count = await autoCompleteOldTasks();
+    res.json({ count, message: `Auto-completed ${count} past task${count !== 1 ? 's' : ''}.` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // ── Label Inventory ───────────────────────────────────────────────────────────
 const mailer = nodemailer.createTransport({
   host: 'smtp.gmail.com',

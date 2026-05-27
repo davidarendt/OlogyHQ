@@ -271,4 +271,62 @@ async function sendDailyProdWeeklyReminder() {
   return { sent, incomplete: incomplete.length };
 }
 
-module.exports = { sendDailyProdWeeklyReminder };
+async function autoCompleteOldTasks() {
+  const now      = new Date();
+  const todayYMD = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+
+  const initialsRows = await pool.query('SELECT initials, display_name FROM prod_weekly_initials');
+  const nameByInitial = {};
+  for (const r of initialsRows.rows) nameByInitial[r.initials] = r.display_name;
+
+  let count = 0;
+
+  for (let weekOff = 0; weekOff >= -3; weekOff--) {
+    const { weekStart, sections, people, weekDates } = await parseSheet(weekOff);
+    if (!weekStart) continue;
+
+    const { rows: checkRows } = await pool.query(
+      'SELECT row_type, row_key, day, task_text FROM prod_weekly_checks WHERE week_start=$1',
+      [weekStart]
+    );
+    const checked = new Set(checkRows.map(c => `${c.row_type}|${c.row_key}|${c.day || ''}|${c.task_text}`));
+
+    for (let dayIdx = 0; dayIdx < WEEKLY_DAYS.length; dayIdx++) {
+      const day = WEEKLY_DAYS[dayIdx];
+      if (!weekDates[dayIdx] || weekDates[dayIdx] >= todayYMD) continue;
+
+      for (const sec of sections) {
+        for (const task of (sec.dayTasks[day] || [])) {
+          if (!checked.has(`section|${sec.key}|${day}|${task}`)) {
+            await pool.query(
+              `INSERT INTO prod_weekly_checks
+                 (week_start, row_type, row_key, day, task_text, checked_by_id, checked_by_name, checked_at)
+               VALUES ($1,$2,$3,$4,$5,NULL,'Auto',NOW()) ON CONFLICT DO NOTHING`,
+              [weekStart, 'section', sec.key, day, task]
+            );
+            count++;
+          }
+        }
+      }
+
+      for (const person of people) {
+        const displayName = nameByInitial[person.initial] || person.initial;
+        for (const task of (person.dayTasks[day] || [])) {
+          if (!checked.has(`person|${displayName}|${day}|${task}`)) {
+            await pool.query(
+              `INSERT INTO prod_weekly_checks
+                 (week_start, row_type, row_key, day, task_text, checked_by_id, checked_by_name, checked_at)
+               VALUES ($1,$2,$3,$4,$5,NULL,'Auto',NOW()) ON CONFLICT DO NOTHING`,
+              [weekStart, 'person', displayName, day, task]
+            );
+            count++;
+          }
+        }
+      }
+    }
+  }
+
+  return count;
+}
+
+module.exports = { sendDailyProdWeeklyReminder, autoCompleteOldTasks };

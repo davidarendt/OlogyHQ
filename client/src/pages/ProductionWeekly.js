@@ -423,6 +423,8 @@ function ManageView({ canUpload, onClose }) {
   const [recipientModal, setRecipientModal] = useState(null);
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [autoCompleting, setAutoCompleting] = useState(false);
+  const [autoCompleteResult, setAutoCompleteResult] = useState(null);
 
   const fetchRecipients = useCallback(async () => {
     setRecipientsLoading(true);
@@ -458,6 +460,17 @@ function ManageView({ canUpload, onClose }) {
                          : { ok: false, msg: d.message || 'Error sending.' });
     } catch { setTestResult({ ok: false, msg: 'Network error.' }); }
     setTestSending(false);
+  };
+
+  const handleAutoComplete = async () => {
+    if (!window.confirm('This will mark all tasks from yesterday and earlier as completed. Continue?')) return;
+    setAutoCompleting(true); setAutoCompleteResult(null);
+    try {
+      const r = await fetch(`${API}/api/prod-weekly/auto-complete`, { method: 'POST', credentials: 'include' });
+      const d = await r.json();
+      setAutoCompleteResult(r.ok ? { ok: true, msg: d.message } : { ok: false, msg: d.message || 'Error.' });
+    } catch { setAutoCompleteResult({ ok: false, msg: 'Network error.' }); }
+    setAutoCompleting(false);
   };
 
   const TABS = [
@@ -598,14 +611,24 @@ function ManageView({ canUpload, onClose }) {
               )}
 
               {canUpload && (
-                <div className="border-t border-gray-700 pt-4">
+                <div className="border-t border-gray-700 pt-4 space-y-2">
+                  <button onClick={handleAutoComplete} disabled={autoCompleting}
+                    className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm rounded-lg border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition disabled:opacity-50">
+                    <Check size={14} />
+                    {autoCompleting ? 'Working…' : 'Auto-complete Past Tasks Now'}
+                  </button>
+                  {autoCompleteResult && (
+                    <p className={`text-xs text-center ${autoCompleteResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                      {autoCompleteResult.msg}
+                    </p>
+                  )}
                   <button onClick={handleSendTest} disabled={testSending}
                     className="flex items-center gap-2 w-full justify-center px-4 py-2.5 text-sm rounded-lg border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition disabled:opacity-50">
                     <Send size={14} />
                     {testSending ? 'Sending…' : 'Send Test Email Now'}
                   </button>
                   {testResult && (
-                    <p className={`text-xs mt-2 text-center ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    <p className={`text-xs text-center ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
                       {testResult.msg}
                     </p>
                   )}
