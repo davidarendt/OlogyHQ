@@ -539,8 +539,8 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
             const meta = SECTION_META[sectionKey] || {};
             const { label: secLabel, accent } = meta;
             return (
-              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden', paddingTop: si > 0 ? '1vh' : 0 }}>
-                {si > 0 && <div style={{ height: '1px', background: '#2D3748', marginBottom: '0.7vh', flexShrink: 0 }} />}
+              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden', paddingTop: si > 0 ? '2vh' : 0 }}>
+                {si > 0 && <div style={{ height: '1px', background: '#2D3748', marginBottom: '1vh', flexShrink: 0 }} />}
                 {/* Section header */}
                 <div style={{
                   flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
@@ -592,7 +592,7 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
           {DAYS.map(day => {
             const isToday = day === todayDay;
             return (
-              <div key={day} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div key={day} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.4vw' }}>
                 <span style={{
                   writingMode: 'vertical-lr',
                   transform: 'rotate(180deg)',
