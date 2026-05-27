@@ -415,10 +415,9 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const [initialsMap, setInitialsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async (spinner = true) => {
-    if (spinner) setLoading(true); else setRefreshing(true);
+    if (spinner) setLoading(true);
     setError('');
     try {
       const r = await fetch(`${API}/api/prod-weekly/sheet?weekOffset=${weekOffset}`, { credentials: 'include' });
@@ -432,7 +431,6 @@ function ProductionWeekly({ user, canUpload, onBack }) {
       setError(e.message);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [weekOffset]);
 
@@ -510,9 +508,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
               <Settings size={18} />
             </button>
           )}
-          <button onClick={() => loadData(false)} disabled={refreshing} className="text-gray-400 hover:text-white transition">
-            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+
           <button onClick={onBack} className="hidden sm:block text-sm text-gray-400 hover:text-white transition">
             ← Back
           </button>
