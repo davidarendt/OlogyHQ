@@ -707,25 +707,17 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [loadData]);
 
-  // Supabase realtime: sync checkbox changes made by others
+  // Supabase realtime: reload checks silently whenever any checkbox changes
   useEffect(() => {
-    const ws = sheetData?.weekStart;
-    if (!ws) return;
+    if (!sheetData?.weekStart) return;
     const channel = supabase
-      .channel(`prod-weekly-checks-${ws}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks' }, (payload) => {
-        const r = payload.eventType === 'DELETE' ? payload.old : payload.new;
-        if (!r?.week_start || r.week_start !== ws) return;
-        const key = checkKey(r.week_start, r.row_type, r.row_key, r.day, r.task_text);
-        setChecksSet(prev => {
-          const next = new Set(prev);
-          payload.eventType === 'INSERT' ? next.add(key) : next.delete(key);
-          return next;
-        });
+      .channel('prod-weekly-checks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks' }, () => {
+        loadData(false);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sheetData?.weekStart]);
+  }, [sheetData?.weekStart, loadData]);
 
   // 5-minute polling while display mode is active
   useEffect(() => {
