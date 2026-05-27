@@ -146,9 +146,35 @@ function SectionCard({ section, initialsMap, selectedDay }) {
 }
 
 // ── Person card ────────────────────────────────────────────────────────────────
-function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selectedDay, weekOffset }) {
+function getBrewPackTasks(day, sections, personInitial) {
+  const result = [];
+  for (const s of (sections || [])) {
+    if (s.key !== 'brews' && s.key !== 'packaging') continue;
+    for (const task of (s.dayTasks[day] || [])) {
+      const { initials } = parseInitials(task);
+      if (initials.some(i => i === personInitial)) result.push({ task, sectionKey: s.key });
+    }
+  }
+  return result;
+}
+
+function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selectedDay, weekOffset, sections, reverseInitialsMap }) {
   const sharedProps = { rowType: 'person', rowKey: person.name, weekStart, checksSet, onToggle, initialsMap };
   const todayDay = weekOffset === 0 ? getTodayDay() : null;
+  const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
+
+  const renderBrewPack = (day) => {
+    const items = getBrewPackTasks(day, sections, personInitial);
+    if (!items.length) return null;
+    return (
+      <div className="space-y-0.5 mb-1.5">
+        {items.map(({ task, sectionKey }, i) => {
+          const meta = SECTION_META[sectionKey] || {};
+          return <SectionItem key={i} text={task} initialsMap={initialsMap} accentColor={meta.accent} />;
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="rounded-xl border border-gray-700 overflow-hidden">
@@ -166,7 +192,9 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
       <div className="hidden md:block divide-y divide-gray-700/40">
         {DAYS.map(day => {
           const tasks = person.dayTasks[day] || [];
+          const brewPack = renderBrewPack(day);
           const isToday = day === todayDay;
+          const hasAnything = tasks.length > 0 || brewPack;
           return (
             <div key={day} className="p-3">
               <div className="flex items-center gap-1.5 mb-2">
@@ -175,10 +203,15 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
                 </span>
                 {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F05A28' }} />}
               </div>
-              {tasks.length ? (
-                <div className="space-y-1.5">
-                  {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} accentColor="#F05A28" {...sharedProps} />)}
-                </div>
+              {hasAnything ? (
+                <>
+                  {brewPack}
+                  {tasks.length > 0 && (
+                    <div className={`space-y-1.5${brewPack ? ' pt-1.5 border-t border-gray-700/40' : ''}`}>
+                      {tasks.map((t, i) => <TaskItem key={i} text={t} day={day} accentColor="#F05A28" {...sharedProps} />)}
+                    </div>
+                  )}
+                </>
               ) : (
                 <p className="text-gray-600 text-xs">—</p>
               )}
@@ -192,15 +225,24 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
         <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#F05A28' }}>
           {DAY_LABELS[selectedDay]}
         </div>
-        {(person.dayTasks[selectedDay] || []).length ? (
-          <div className="space-y-1.5">
-            {(person.dayTasks[selectedDay] || []).map((t, i) => (
-              <TaskItem key={i} text={t} day={selectedDay} accentColor="#F05A28" {...sharedProps} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 text-sm">Nothing scheduled</p>
-        )}
+        {(() => {
+          const tasks = person.dayTasks[selectedDay] || [];
+          const brewPack = renderBrewPack(selectedDay);
+          return (tasks.length > 0 || brewPack) ? (
+            <>
+              {brewPack}
+              {tasks.length > 0 && (
+                <div className={`space-y-1.5${brewPack ? ' pt-1.5 border-t border-gray-700/40' : ''}`}>
+                  {tasks.map((t, i) => (
+                    <TaskItem key={i} text={t} day={selectedDay} accentColor="#F05A28" {...sharedProps} />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-gray-500 text-sm">Nothing scheduled</p>
+          );
+        })()}
       </div>
     </div>
   );
@@ -403,7 +445,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const people    = sheetData?.people   || [];
   const weekStart = sheetData?.weekStart;
 
-  const sharedProps = { weekStart, checksSet, onToggle: handleToggle, initialsMap };
+  const reverseInitialsMap = Object.fromEntries(Object.entries(initialsMap).map(([k, v]) => [v, k]));
+  const sharedProps = { weekStart, checksSet, onToggle: handleToggle, initialsMap, sections, reverseInitialsMap };
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -455,8 +498,8 @@ function ProductionWeekly({ user, canUpload, onBack }) {
         {/* Tab selector */}
         <div className="flex gap-1.5 mb-2">
           {[
-            { key: 'sections', label: 'Sections' },
-            { key: 'people',   label: 'People'   },
+            { key: 'sections', label: 'Brews/Packaging' },
+            { key: 'people',   label: 'People'          },
           ].map(tab => (
             <button
               key={tab.key}
