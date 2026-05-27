@@ -136,29 +136,6 @@ function SectionColumn({ section, initialsMap, weekOffset }) {
   );
 }
 
-// ── Section card (mobile, one-day view, read-only condensed) ──────────────────
-function SectionCard({ section, initialsMap, selectedDay }) {
-  const meta = SECTION_META[section.key] || {};
-  const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
-  const tasks = section.dayTasks[selectedDay] || [];
-
-  if (tasks.length === 0) return null;
-
-  return (
-    <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
-      <div className={`px-4 py-2.5 ${bgClass} flex items-center gap-2`}>
-        <Icon size={14} style={{ color: accent }} />
-        <h3 className="font-semibold text-white text-sm">{label}</h3>
-      </div>
-      <div className="px-4 py-3 space-y-0.5">
-        {tasks.map((t, i) => (
-          <SectionItem key={i} text={t} initialsMap={initialsMap} accentColor={accent} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Person card ────────────────────────────────────────────────────────────────
 function getBrewPackTasks(day, sections, personInitial) {
   const result = [];
@@ -842,7 +819,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
           ))}
         </div>
         {/* Day selector — hidden when viewing by person */}
-        <div className={`flex gap-1.5 overflow-x-auto no-scrollbar${mobileTab === 'byPerson' ? ' hidden' : ''}`}>
+        <div className={`flex gap-1.5 overflow-x-auto no-scrollbar${mobileTab === 'byPerson' || mobileTab === 'sections' ? ' hidden' : ''}`}>
           {DAYS.map(day => (
             <button
               key={day}
@@ -903,11 +880,11 @@ function ProductionWeekly({ user, canUpload, onBack }) {
 
             {/* ── Mobile layout ───────────────────────────────────────────── */}
 
-            {/* Sections tab */}
+            {/* Sections tab — full week */}
             {mobileTab === 'sections' && (
               <div className="md:hidden space-y-4">
                 {sections.map(sec => (
-                  <SectionCard key={sec.key} section={sec} selectedDay={selectedDay} {...sharedProps} />
+                  <SectionColumn key={sec.key} section={sec} initialsMap={initialsMap} weekOffset={weekOffset} />
                 ))}
               </div>
             )}
