@@ -429,14 +429,16 @@ function DisplayTaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onT
 }
 
 function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseInitialsMap, weekOffset, weekLabel, onExit }) {
-  const sections = sheetData?.sections || [];
-  const people   = sheetData?.people   || [];
+  const sections  = sheetData?.sections || [];
+  const people    = sheetData?.people   || [];
   const weekStart = sheetData?.weekStart || '';
   const todayDay  = weekOffset === 0 ? getTodayDay() : null;
   const sharedCheck = { weekStart, checksSet, onToggle, initialsMap };
 
   const wkLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`;
-  const totalCols = 1 + Math.max(people.length, 1);
+
+  // Section column: one block per section (Brews / Packaging / Time Off), each with 5 day rows
+  const SECTION_ORDER = ['brews', 'packaging', 'timeoff'];
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0d1117', zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: 'inherit' }}>
@@ -454,52 +456,64 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </button>
       </div>
 
-      {/* Column grid */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${totalCols}, 1fr)`, gap: '0.5vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0 }}>
+      {/* Column grid: schedule | [divider] | person... */}
+      <div style={{
+        flex: 1, display: 'grid',
+        gridTemplateColumns: `1fr 2px ${people.map(() => '1fr').join(' ')}`,
+        gap: '0 0.6vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0,
+      }}>
 
-        {/* ── Sections column ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden' }}>
-          <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.7vh 0', textAlign: 'center' }}>
-            <span style={{ fontSize: '2.2vh', fontWeight: 700, color: '#F2EDE4' }}>Schedule</span>
-          </div>
-          {DAYS.map(day => {
-            const isToday = day === todayDay;
-            const daySections = sections.filter(s => (s.dayTasks[day] || []).length > 0);
+        {/* ── Schedule column: 3 sections stacked ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5vh', overflow: 'hidden' }}>
+          {SECTION_ORDER.map(sectionKey => {
+            const sec = sections.find(s => s.key === sectionKey);
+            const meta = SECTION_META[sectionKey] || {};
+            const { Icon = Beer, label: secLabel, accent, bgClass } = meta;
             return (
-              <div key={day} style={{
-                flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
-                border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
-              }}>
-                <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh' }}>
-                  {DAY_LABELS[day]}
+              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden' }}>
+                {/* Section header */}
+                <div style={{
+                  flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
+                  background: `${accent}22`, border: `1px solid ${accent}44`,
+                  display: 'flex', alignItems: 'center', gap: '0.5vw',
+                }}>
+                  <span style={{ fontSize: '1.9vh', fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{secLabel}</span>
                 </div>
-                {daySections.length === 0
-                  ? <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>
-                  : daySections.map(sec => {
-                      const meta = SECTION_META[sec.key] || {};
-                      return (
-                        <div key={sec.key} style={{ marginBottom: '0.4vh' }}>
-                          <div style={{ fontSize: '1.15vh', fontWeight: 700, color: meta.accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.15vh' }}>
-                            {meta.label}
-                          </div>
-                          {(sec.dayTasks[day] || []).map((task, i) => {
+                {/* 5 day rows */}
+                {DAYS.map(day => {
+                  const isToday = day === todayDay;
+                  const tasks = sec ? (sec.dayTasks[day] || []) : [];
+                  return (
+                    <div key={day} style={{
+                      flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
+                      border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
+                    }}>
+                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh' }}>
+                        {DAY_SHORT[day]}
+                      </div>
+                      {tasks.length === 0
+                        ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
+                        : tasks.map((task, i) => {
                             const { label, initials } = parseInitials(task);
                             const names = initials.length ? resolveInitials(initials, initialsMap) : null;
                             return (
                               <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
                                 {label}
-                                {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: meta.accent, fontWeight: 600 }}>{names}</span>}
+                                {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
                               </div>
                             );
-                          })}
-                        </div>
-                      );
-                    })
-                }
+                          })
+                      }
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
         </div>
+
+        {/* ── Vertical divider ── */}
+        <div style={{ background: '#2D3748', borderRadius: '1px', margin: '0' }} />
 
         {/* ── Person columns ── */}
         {people.map(person => {
@@ -533,6 +547,9 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                           rowType="section" rowKey={sectionKey} {...sharedCheck} />
                       );
                     })}
+                    {brewPack.length > 0 && tasks.length > 0 && (
+                      <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
+                    )}
                     {tasks.map((task, i) => (
                       <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
                         rowType="person" rowKey={person.name} {...sharedCheck} />
