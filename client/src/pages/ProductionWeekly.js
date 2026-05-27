@@ -459,12 +459,12 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
       {/* Column grid: schedule | [divider] | person... */}
       <div style={{
         flex: 1, display: 'grid',
-        gridTemplateColumns: `1fr 2px ${people.map(() => '1fr').join(' ')}`,
-        gap: '0 0.6vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0,
+        gridTemplateColumns: `1fr 2vw ${people.map(() => '1fr').join(' ')}`,
+        gap: '0 0', padding: '0.6vw', overflow: 'hidden', minHeight: 0,
       }}>
 
         {/* ── Schedule column: 3 sections stacked ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5vh', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5vh', overflow: 'hidden', paddingRight: '0.8vw' }}>
           {SECTION_ORDER.map(sectionKey => {
             const sec = sections.find(s => s.key === sectionKey);
             const meta = SECTION_META[sectionKey] || {};
@@ -513,13 +513,15 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </div>
 
         {/* ── Vertical divider ── */}
-        <div style={{ background: '#2D3748', borderRadius: '1px', margin: '0' }} />
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '1px', background: '#2D3748', height: '100%' }} />
+        </div>
 
         {/* ── Person columns ── */}
-        {people.map(person => {
+        {people.map((person, pi) => {
           const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
           return (
-            <div key={person.name} style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden' }}>
+            <div key={person.name} style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden', paddingLeft: pi === 0 ? '0.8vw' : '0', paddingRight: pi < people.length - 1 ? '0.4vw' : '0' }}>
               <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.5vh 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6vw' }}>
                 <div style={{ width: '2.8vh', height: '2.8vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
                   {person.name.charAt(0)}
