@@ -21,6 +21,17 @@ import CoffeeKeeper from './pages/CoffeeKeeper';
 import ProductionChecklists from './pages/ProductionChecklists';
 import ProductionWeekly from './pages/ProductionWeekly';
 
+const API = process.env.REACT_APP_API_URL || '';
+
+function pageNameFromPath(pathname) {
+  const slug = pathname.replace(/^\//, '').replace(/\/$/, '');
+  return slug || 'dashboard';
+}
+
+function pathFromPageName(pageName) {
+  return pageName === 'dashboard' ? '/' : `/${pageName}`;
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('dashboard');
@@ -28,27 +39,38 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_API_URL || ''}/api/me`, { credentials: 'include' })
+    const initialPage = pageNameFromPath(window.location.pathname);
+    fetch(`${API}/api/me`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
+      .then(async (data) => {
         if (data) {
           setUser(data);
-          // Seed initial history state so back button stays within the app
-          window.history.replaceState({ pageName: 'dashboard', props: {} }, '');
+          // Fetch tools so we can restore canUpload when landing directly on a tool URL
+          let tools = [];
+          try {
+            const r = await fetch(`${API}/api/my-tools`, { credentials: 'include' });
+            if (r.ok) tools = await r.json();
+          } catch {}
+          const toolEntry = tools.find(t => t.slug === initialPage);
+          const props = toolEntry ? { canUpload: toolEntry.has_upload_permission } : {};
+          setPage(initialPage);
+          setPageProps(props);
+          window.history.replaceState({ pageName: initialPage, props }, '', pathFromPageName(initialPage));
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
   const handleLogout = async () => {
-    await fetch(`${process.env.REACT_APP_API_URL || ''}/api/logout`, { method: 'POST', credentials: 'include' });
+    await fetch(`${API}/api/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
     setPage('dashboard');
     setPageProps({});
+    window.history.replaceState({ pageName: 'dashboard', props: {} }, '', '/');
   };
 
   const handleNavigate = (pageName, props = {}) => {
-    window.history.pushState({ pageName, props }, '', '');
+    window.history.pushState({ pageName, props }, '', pathFromPageName(pageName));
     setPage(pageName);
     setPageProps(props);
   };
@@ -73,8 +95,24 @@ function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  const handleLogin = async (userData) => {
+    setUser(userData);
+    const currentPage = pageNameFromPath(window.location.pathname);
+    if (currentPage !== 'dashboard') {
+      try {
+        const r = await fetch(`${API}/api/my-tools`, { credentials: 'include' });
+        if (r.ok) {
+          const tools = await r.json();
+          const toolEntry = tools.find(t => t.slug === currentPage);
+          setPage(currentPage);
+          setPageProps(toolEntry ? { canUpload: toolEntry.has_upload_permission } : {});
+        }
+      } catch {}
+    }
+  };
+
   if (loading) return null;
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) return <Login onLogin={handleLogin} />;
   if (page === 'usermanagement') return <UserManagement user={user} onBack={() => handleNavigate('dashboard')} onNavigate={handleNavigate} />;
   if (page === 'permissions') return <Permissions onBack={() => handleNavigate('usermanagement')} onHome={() => handleNavigate('dashboard')} />;
   if (page === 'hr-documents') return <HRDocuments user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
