@@ -72,79 +72,74 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
   );
 }
 
-// ── Section column (desktop portrait) ─────────────────────────────────────────
-function SectionColumn({ section, weekStart, checksSet, onToggle, initialsMap, weekOffset }) {
-  const meta = SECTION_META[section.key] || {};
-  const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
-  const todayDay = weekOffset === 0 ? getTodayDay() : null;
-
+// ── Section item (read-only, no checkbox) ─────────────────────────────────────
+function SectionItem({ text, initialsMap, accentColor }) {
+  const { label, initials } = parseInitials(text);
+  const names = initials.length ? resolveInitials(initials, initialsMap) : null;
   return (
-    <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
-      <div className={`px-4 py-3 ${bgClass}`}>
-        <div className="flex items-center gap-2">
-          <Icon size={16} style={{ color: accent }} />
-          <h3 className="font-semibold text-white">{label}</h3>
-        </div>
-      </div>
-      <div className="divide-y divide-gray-700/40">
-        {DAYS.map(day => {
-          const tasks = section.dayTasks[day] || [];
-          const isToday = day === todayDay;
-          return (
-            <div key={day} className="p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
-                  {DAY_SHORT[day]}
-                </span>
-                {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />}
-              </div>
-              {tasks.length ? (
-                <div className="space-y-1.5">
-                  {tasks.map((t, i) => (
-                    <TaskItem key={i} text={t} day={day} accentColor={accent}
-                      rowType="section" rowKey={section.key}
-                      weekStart={weekStart} checksSet={checksSet}
-                      onToggle={onToggle} initialsMap={initialsMap} />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-600 text-xs">—</p>
-              )}
-            </div>
-          );
-        })}
-      </div>
+    <div className="text-sm text-gray-200 leading-snug">
+      {label}
+      {names && <span className="text-xs ml-1.5 font-medium" style={{ color: accentColor }}>{names}</span>}
     </div>
   );
 }
 
-// ── Section card (mobile, one-day view) ───────────────────────────────────────
-function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
+// ── Section column (desktop, read-only condensed) ─────────────────────────────
+function SectionColumn({ section, initialsMap, weekOffset }) {
   const meta = SECTION_META[section.key] || {};
   const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
-  const sharedProps = { rowType: 'section', rowKey: section.key, weekStart, checksSet, onToggle, initialsMap };
+  const todayDay = weekOffset === 0 ? getTodayDay() : null;
+  const activeDays = DAYS.filter(day => (section.dayTasks[day] || []).length > 0);
 
   return (
     <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
-      <div className={`px-4 py-3 ${bgClass}`}>
-        <div className="flex items-center gap-2">
-          <Icon size={16} style={{ color: accent }} />
-          <h3 className="font-semibold text-white">{label}</h3>
-        </div>
+      <div className={`px-4 py-2.5 ${bgClass} flex items-center gap-2`}>
+        <Icon size={14} style={{ color: accent }} />
+        <h3 className="font-semibold text-white text-sm">{label}</h3>
       </div>
-      <div className="p-3">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>
-          {DAY_LABELS[selectedDay]}
+      {activeDays.length === 0 ? (
+        <p className="text-gray-600 text-xs px-4 py-3">Nothing scheduled</p>
+      ) : (
+        <div className="px-4 py-3 space-y-2.5">
+          {activeDays.map(day => (
+            <div key={day}>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: accent }}>
+                  {DAY_SHORT[day]}
+                </span>
+                {day === todayDay && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: accent }} />}
+              </div>
+              <div className="space-y-0.5 pl-1">
+                {(section.dayTasks[day] || []).map((t, i) => (
+                  <SectionItem key={i} text={t} initialsMap={initialsMap} accentColor={accent} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-        {(section.dayTasks[selectedDay] || []).length ? (
-          <div className="space-y-1.5">
-            {(section.dayTasks[selectedDay] || []).map((t, i) => (
-              <TaskItem key={i} text={t} day={selectedDay} accentColor={accent} {...sharedProps} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 text-sm">Nothing scheduled</p>
-        )}
+      )}
+    </div>
+  );
+}
+
+// ── Section card (mobile, one-day view, read-only condensed) ──────────────────
+function SectionCard({ section, initialsMap, selectedDay }) {
+  const meta = SECTION_META[section.key] || {};
+  const { Icon = Beer, label, bgClass, borderClass, accent } = meta;
+  const tasks = section.dayTasks[selectedDay] || [];
+
+  if (tasks.length === 0) return null;
+
+  return (
+    <div className={`rounded-xl border overflow-hidden ${borderClass}`}>
+      <div className={`px-4 py-2.5 ${bgClass} flex items-center gap-2`}>
+        <Icon size={14} style={{ color: accent }} />
+        <h3 className="font-semibold text-white text-sm">{label}</h3>
+      </div>
+      <div className="px-4 py-3 space-y-0.5">
+        {tasks.map((t, i) => (
+          <SectionItem key={i} text={t} initialsMap={initialsMap} accentColor={accent} />
+        ))}
       </div>
     </div>
   );
