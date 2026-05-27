@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
@@ -402,6 +402,36 @@ function ManageView({ canUpload, onClose }) {
   );
 }
 
+// ── Auto-scaling container for display view day cells ─────────────────────────
+function AutoScaleContainer({ children, contentKey }) {
+  const outerRef = useRef(null);
+  const innerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    inner.style.transform = 'none';
+    inner.style.width = '100%';
+    const availH = outer.clientHeight;
+    const contentH = inner.scrollHeight;
+    setScale(availH > 0 && contentH > availH ? availH / contentH : 1);
+  }, [contentKey]);
+
+  return (
+    <div ref={outerRef} style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+      <div ref={innerRef} style={{
+        transformOrigin: 'top left',
+        transform: scale < 1 ? `scale(${scale})` : 'none',
+        width: scale < 1 ? `${(100 / scale).toFixed(2)}%` : '100%',
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ── Display view (kiosk/office board) ─────────────────────────────────────────
 function DisplayTaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28', bgColor }) {
   const { label, initials } = parseInitials(text);
@@ -487,22 +517,25 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                     <div key={day} style={{
                       flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
                       border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column',
                     }}>
-                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh' }}>
+                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh', flexShrink: 0 }}>
                         {DAY_SHORT[day]}
                       </div>
                       {tasks.length === 0
                         ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
-                        : tasks.map((task, i) => {
-                            const { label, initials } = parseInitials(task);
-                            const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-                            return (
-                              <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
-                                {label}
-                                {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
-                              </div>
-                            );
-                          })
+                        : <AutoScaleContainer contentKey={`${sectionKey}-${day}-${weekStart}-${tasks.length}`}>
+                            {tasks.map((task, i) => {
+                              const { label, initials } = parseInitials(task);
+                              const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                              return (
+                                <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
+                                  {label}
+                                  {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                </div>
+                              );
+                            })}
+                          </AutoScaleContainer>
                       }
                     </div>
                   );
@@ -537,25 +570,30 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                   <div key={day} style={{
                     flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
                     border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column',
                   }}>
-                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh' }}>
+                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh', flexShrink: 0 }}>
                       {DAY_LABELS[day]}
                     </div>
-                    {!hasAnything && <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>}
-                    {brewPack.map(({ task, sectionKey }, i) => {
-                      const meta = SECTION_META[sectionKey] || {};
-                      return (
-                        <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
-                          rowType="section" rowKey={sectionKey} {...sharedCheck} />
-                      );
-                    })}
-                    {brewPack.length > 0 && tasks.length > 0 && (
-                      <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
-                    )}
-                    {tasks.map((task, i) => (
-                      <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
-                        rowType="person" rowKey={person.name} {...sharedCheck} />
-                    ))}
+                    {!hasAnything
+                      ? <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>
+                      : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
+                          {brewPack.map(({ task, sectionKey }, i) => {
+                            const meta = SECTION_META[sectionKey] || {};
+                            return (
+                              <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+                                rowType="section" rowKey={sectionKey} {...sharedCheck} />
+                            );
+                          })}
+                          {brewPack.length > 0 && tasks.length > 0 && (
+                            <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
+                          )}
+                          {tasks.map((task, i) => (
+                            <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
+                              rowType="person" rowKey={person.name} {...sharedCheck} />
+                          ))}
+                        </AutoScaleContainer>
+                    }
                   </div>
                 );
               })}
