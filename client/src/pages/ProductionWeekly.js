@@ -61,25 +61,33 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
         {checked && <Check size={12} className="text-white" strokeWidth={3} />}
       </span>
       <span className="flex-1 min-w-0">
-        <span className={`text-sm leading-snug block ${checked ? 'line-through text-gray-500' : 'text-gray-100'}`}>
+        <span className={`text-sm leading-snug ${checked ? 'line-through text-gray-500' : 'text-gray-100'}`}>
           {label}
+          {assignedNames && (
+            <span className="text-xs ml-1.5 font-medium not-italic" style={{ color: accentColor }}>{assignedNames}</span>
+          )}
         </span>
-        {assignedNames && (
-          <span className="text-xs mt-0.5 block" style={{ color: accentColor }}>{assignedNames}</span>
-        )}
       </span>
     </div>
   );
 }
 
 // ── Section item (read-only, no checkbox) ─────────────────────────────────────
-function SectionItem({ text, initialsMap, accentColor }) {
+function SectionItem({ text, initialsMap, accentColor, sectionKey }) {
   const { label, initials } = parseInitials(text);
   const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+  const typeLabel = sectionKey === 'brews' ? 'Brew' : sectionKey === 'packaging' ? 'Pack' : null;
   return (
-    <div className="text-sm text-gray-200 leading-snug">
-      {label}
-      {names && <span className="text-xs ml-1.5 font-medium" style={{ color: accentColor }}>{names}</span>}
+    <div className="leading-snug">
+      {typeLabel && (
+        <span className="text-xs font-bold uppercase tracking-wider block mb-0.5" style={{ color: accentColor }}>
+          {typeLabel}
+        </span>
+      )}
+      <span className="text-sm text-gray-200">
+        {label}
+        {names && <span className="text-xs ml-1.5 font-medium" style={{ color: accentColor }}>{names}</span>}
+      </span>
     </div>
   );
 }
@@ -170,7 +178,7 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
       <div className="space-y-0.5 mb-1.5">
         {items.map(({ task, sectionKey }, i) => {
           const meta = SECTION_META[sectionKey] || {};
-          return <SectionItem key={i} text={task} initialsMap={initialsMap} accentColor={meta.accent} />;
+          return <SectionItem key={i} text={task} initialsMap={initialsMap} accentColor={meta.accent} sectionKey={sectionKey} />;
         })}
       </div>
     );
