@@ -175,10 +175,22 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
     const items = getBrewPackTasks(day, sections, personInitial);
     if (!items.length) return null;
     return (
-      <div className="space-y-0.5 mb-1.5">
+      <div className="space-y-1.5 mb-1.5">
         {items.map(({ task, sectionKey }, i) => {
           const meta = SECTION_META[sectionKey] || {};
-          return <SectionItem key={i} text={task} initialsMap={initialsMap} accentColor={meta.accent} sectionKey={sectionKey} />;
+          const typeLabel = sectionKey === 'brews' ? 'Brew' : 'Pack';
+          return (
+            <div key={i}>
+              <span className="text-xs font-bold uppercase tracking-wider block mb-0.5" style={{ color: meta.accent }}>
+                {typeLabel}
+              </span>
+              <TaskItem
+                text={task} day={day} accentColor={meta.accent}
+                rowType="section" rowKey={sectionKey}
+                weekStart={weekStart} checksSet={checksSet} onToggle={onToggle} initialsMap={initialsMap}
+              />
+            </div>
+          );
         })}
       </div>
     );
