@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, Fragment } from 'react';
 import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
@@ -565,16 +565,21 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                       {tasks.length === 0
                         ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
                         : <AutoScaleContainer contentKey={`${sectionKey}-${day}-${weekStart}-${tasks.length}`}>
-                            {tasks.map((task, i) => {
-                              const { label, initials } = parseInitials(task);
-                              const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-                              return (
-                                <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
-                                  {label}
-                                  {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
-                                </div>
-                              );
-                            })}
+                            <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
+                              {tasks.map((task, i) => {
+                                const { label, initials } = parseInitials(task);
+                                const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                                return (
+                                  <Fragment key={i}>
+                                    {i > 0 && <span style={{ color: '#6B7280', fontSize: '1.3vh', margin: '0 0.2vw' }}>·</span>}
+                                    <span>
+                                      {label}
+                                      {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.3vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                    </span>
+                                  </Fragment>
+                                );
+                              })}
+                            </div>
                           </AutoScaleContainer>
                       }
                     </div>
