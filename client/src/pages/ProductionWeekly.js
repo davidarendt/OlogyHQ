@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, Fragment } from 'react';
 import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
@@ -494,8 +494,6 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
   const sharedCheck = { weekStart, checksSet, onToggle, initialsMap };
 
   const wkLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`;
-
-  // Section column: one block per section (Brews / Packaging / Time Off), each with 5 day rows
   const SECTION_ORDER = ['brews', 'packaging', 'timeoff'];
 
   return (
@@ -507,7 +505,6 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
           <span style={{ fontSize: '2.4vh', fontWeight: 800, color: '#F05A28', letterSpacing: '-0.02em' }}>OLOGY</span>
           <span style={{ fontSize: '2.4vh', fontWeight: 600, color: '#F2EDE4' }}>Production Weekly</span>
         </div>
-        {/* Week navigation */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6vw' }}>
           <button onClick={() => onWeekChange(w => w - 1)}
             style={{ background: 'none', border: '1px solid #374151', borderRadius: '0.4vw', padding: '0.3vh 0.5vw', cursor: 'pointer', color: '#9CA3AF', display: 'flex', alignItems: 'center' }}>
@@ -525,23 +522,23 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </button>
       </div>
 
-      {/* Column grid: schedule | [divider] | person... */}
+      {/* Main grid: schedule | divider | people */}
       <div style={{
-        flex: 1, display: 'grid',
-        gridTemplateColumns: `1fr 2vw ${people.map(() => '1fr').join(' ')}`,
-        gap: '0 0', padding: '0.6vw', overflow: 'hidden', minHeight: 0,
+        flex: 1, minHeight: 0, display: 'grid',
+        gridTemplateColumns: '1fr 2vw 3fr',
+        padding: '0.6vw', overflow: 'hidden',
       }}>
 
-        {/* ── Schedule column: 3 sections stacked ── */}
+        {/* ── Schedule column: Brews / Packaging / Time Off stacked ── */}
         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '0.8vw' }}>
           {SECTION_ORDER.map((sectionKey, si) => {
             const sec = sections.find(s => s.key === sectionKey);
             const meta = SECTION_META[sectionKey] || {};
             const { label: secLabel, accent } = meta;
+            const combineLines = sectionKey === 'packaging' || sectionKey === 'timeoff';
             return (
               <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden', paddingTop: si > 0 ? '1vh' : 0 }}>
                 {si > 0 && <div style={{ height: '1px', background: '#2D3748', marginBottom: '0.7vh', flexShrink: 0 }} />}
-                {/* Section header */}
                 <div style={{
                   flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
                   background: `${accent}22`, border: `1px solid ${accent}44`,
@@ -549,7 +546,6 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                 }}>
                   <span style={{ fontSize: '1.9vh', fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{secLabel}</span>
                 </div>
-                {/* 5 day rows */}
                 {DAYS.map(day => {
                   const isToday = day === todayDay;
                   const tasks = sec ? (sec.dayTasks[day] || []) : [];
@@ -565,16 +561,34 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                       {tasks.length === 0
                         ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
                         : <AutoScaleContainer contentKey={`${sectionKey}-${day}-${weekStart}-${tasks.length}`}>
-                            {tasks.map((task, i) => {
-                              const { label, initials } = parseInitials(task);
-                              const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-                              return (
-                                <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
-                                  {label}
-                                  {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
-                                </div>
-                              );
-                            })}
+                            {combineLines ? (
+                              <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
+                                {tasks.map((task, i) => {
+                                  const { label, initials } = parseInitials(task);
+                                  const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                                  return (
+                                    <Fragment key={i}>
+                                      {i > 0 && <span style={{ color: '#6B7280', fontSize: '1.3vh', margin: '0 0.2vw' }}>·</span>}
+                                      <span>
+                                        {label}
+                                        {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.3vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                      </span>
+                                    </Fragment>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              tasks.map((task, i) => {
+                                const { label, initials } = parseInitials(task);
+                                const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                                return (
+                                  <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
+                                    {label}
+                                    {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                  </div>
+                                );
+                              })
+                            )}
                           </AutoScaleContainer>
                       }
                     </div>
@@ -590,56 +604,99 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
           <div style={{ width: '1px', background: '#2D3748', height: '100%' }} />
         </div>
 
-        {/* ── Person columns ── */}
-        {people.map((person, pi) => {
-          const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
-          return (
-            <div key={person.name} style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden', paddingLeft: pi === 0 ? '0.8vw' : '0', paddingRight: pi < people.length - 1 ? '0.4vw' : '0' }}>
-              <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.5vh 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6vw' }}>
-                <div style={{ width: '2.8vh', height: '2.8vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
-                  {person.name.charAt(0)}
-                </div>
-                <span style={{ fontSize: '2.2vh', fontWeight: 700, color: '#F2EDE4' }}>{person.name}</span>
+        {/* ── People sub-grid: name col + 5 day cols, header row + N person rows ── */}
+        <div style={{
+          paddingLeft: '0.8vw',
+          height: '100%',
+          display: 'grid',
+          gridTemplateColumns: `auto ${DAYS.map(() => '1fr').join(' ')}`,
+          gridTemplateRows: `auto ${people.map(() => '1fr').join(' ')}`,
+          gap: '0.4vh 0.4vw',
+          overflow: 'hidden',
+        }}>
+
+          {/* Corner (empty) */}
+          <div />
+
+          {/* Day column headers — rotated bottom-to-top */}
+          {DAYS.map(day => {
+            const isToday = day === todayDay;
+            return (
+              <div key={day} style={{
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                paddingBottom: '0.5vh',
+                borderBottom: `2px solid ${isToday ? '#F05A28' : '#2D3748'}`,
+              }}>
+                <span style={{
+                  writingMode: 'vertical-lr',
+                  transform: 'rotate(180deg)',
+                  fontSize: '1.4vh',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: isToday ? '#F05A28' : '#9CA3AF',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none',
+                }}>
+                  {DAY_LABELS[day]}
+                </span>
               </div>
-              {DAYS.map(day => {
-                const isToday = day === todayDay;
-                const tasks = person.dayTasks[day] || [];
-                const brewPack = getBrewPackTasks(day, sections, personInitial);
-                const hasAnything = tasks.length > 0 || brewPack.length > 0;
-                return (
-                  <div key={day} style={{
-                    flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
-                    border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh', flexShrink: 0 }}>
-                      {DAY_LABELS[day]}
+            );
+          })}
+
+          {/* Person rows */}
+          {people.map(person => {
+            const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
+            return (
+              <Fragment key={person.name}>
+                {/* Name cell */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.6vw' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5vw' }}>
+                    <div style={{ width: '2.6vh', height: '2.6vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                      {person.name.charAt(0)}
                     </div>
-                    {!hasAnything
-                      ? <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>
-                      : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
-                          {brewPack.map(({ task, sectionKey }, i) => {
-                            const meta = SECTION_META[sectionKey] || {};
-                            return (
-                              <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
-                                rowType="section" rowKey={sectionKey} {...sharedCheck} />
-                            );
-                          })}
-                          {brewPack.length > 0 && tasks.length > 0 && (
-                            <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
-                          )}
-                          {tasks.map((task, i) => (
-                            <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
-                              rowType="person" rowKey={person.name} {...sharedCheck} />
-                          ))}
-                        </AutoScaleContainer>
-                    }
+                    <span style={{ fontSize: '2vh', fontWeight: 700, color: '#F2EDE4', whiteSpace: 'nowrap' }}>{person.name}</span>
                   </div>
-                );
-              })}
-            </div>
-          );
-        })}
+                </div>
+
+                {/* Day cells — no day label inside */}
+                {DAYS.map(day => {
+                  const isToday = day === todayDay;
+                  const tasks = person.dayTasks[day] || [];
+                  const brewPack = getBrewPackTasks(day, sections, personInitial);
+                  const hasAnything = tasks.length > 0 || brewPack.length > 0;
+                  return (
+                    <div key={day} style={{
+                      minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
+                      border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column',
+                    }}>
+                      {!hasAnything
+                        ? <span style={{ color: '#4B5563', fontSize: '1.4vh', margin: 'auto' }}>—</span>
+                        : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
+                            {brewPack.map(({ task, sectionKey }, i) => {
+                              const meta = SECTION_META[sectionKey] || {};
+                              return (
+                                <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+                                  rowType="section" rowKey={sectionKey} {...sharedCheck} />
+                              );
+                            })}
+                            {brewPack.length > 0 && tasks.length > 0 && (
+                              <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
+                            )}
+                            {tasks.map((task, i) => (
+                              <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
+                                rowType="person" rowKey={person.name} {...sharedCheck} />
+                            ))}
+                          </AutoScaleContainer>
+                      }
+                    </div>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
