@@ -408,7 +408,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const defaultDay = DAYS.includes(todayDay) ? todayDay : 'monday';
   const [selectedDay, setSelectedDay] = useState(defaultDay);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [mobileTab, setMobileTab] = useState('sections');
+  const [mobileTab, setMobileTab] = useState('people');
   const [showManage, setShowManage] = useState(false);
   const [sheetData, setSheetData] = useState(null);
   const [checksSet, setChecksSet] = useState(new Set());
