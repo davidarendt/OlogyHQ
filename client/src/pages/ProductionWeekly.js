@@ -55,8 +55,8 @@ function TaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, 
         ${checked ? 'bg-gray-700/40' : 'bg-gray-700/60 hover:bg-gray-700'}`}
     >
       <span
-        className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all border-gray-500"
-        style={checked ? { borderColor: accentColor, backgroundColor: accentColor } : {}}
+        className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all"
+        style={{ borderColor: accentColor, ...(checked ? { backgroundColor: accentColor } : {}) }}
       >
         {checked && <Check size={12} className="text-white" strokeWidth={3} />}
       </span>
