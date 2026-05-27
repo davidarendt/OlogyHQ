@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, Fragment } from 'react';
 import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -705,6 +706,33 @@ function ProductionWeekly({ user, canUpload, onBack }) {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [loadData]);
+
+  // Supabase realtime: sync checkbox changes made by others
+  useEffect(() => {
+    const ws = sheetData?.weekStart;
+    if (!ws) return;
+    const channel = supabase
+      .channel(`prod-weekly-checks-${ws}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prod_weekly_checks', filter: `week_start=eq.${ws}` }, (payload) => {
+        const r = payload.new || payload.old;
+        if (!r) return;
+        const key = checkKey(r.week_start, r.row_type, r.row_key, r.day, r.task_text);
+        setChecksSet(prev => {
+          const next = new Set(prev);
+          payload.eventType === 'INSERT' ? next.add(key) : next.delete(key);
+          return next;
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [sheetData?.weekStart]);
+
+  // 5-minute polling while display mode is active
+  useEffect(() => {
+    if (!showDisplay) return;
+    const interval = setInterval(() => loadData(false), 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [showDisplay, loadData]);
 
   const handleToggle = async (rowType, rowKey, day, taskText, currentlyChecked) => {
     const weekStart = sheetData?.weekStart;
