@@ -27,7 +27,11 @@ function parseInitials(text) {
 }
 
 function resolveInitials(initials, initialsMap) {
-  return initials.map(i => initialsMap[i] || i).join(', ');
+  const names = initials.map(i => initialsMap[i] || i);
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
 }
 
 function checkKey(weekStart, rowType, rowKey, day, taskText) {
@@ -147,8 +151,9 @@ function SectionCard({ section, weekStart, checksSet, onToggle, initialsMap, sel
 }
 
 // ── Person card ────────────────────────────────────────────────────────────────
-function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selectedDay }) {
+function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selectedDay, weekOffset }) {
   const sharedProps = { rowType: 'person', rowKey: person.name, weekStart, checksSet, onToggle, initialsMap };
+  const todayDay = weekOffset === 0 ? getTodayDay() : null;
 
   return (
     <div className="rounded-xl border border-gray-700 overflow-hidden">
@@ -162,14 +167,18 @@ function PersonCard({ person, weekStart, checksSet, onToggle, initialsMap, selec
         </div>
       </div>
 
-      {/* Desktop: 5-column grid */}
-      <div className="hidden md:grid grid-cols-5 divide-x divide-gray-700/60">
+      {/* Desktop: vertical day list */}
+      <div className="hidden md:block divide-y divide-gray-700/40">
         {DAYS.map(day => {
           const tasks = person.dayTasks[day] || [];
+          const isToday = day === todayDay;
           return (
-            <div key={day} className="p-3" style={{ borderTop: '2px solid rgba(240,90,40,0.15)' }}>
-              <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#F05A28' }}>
-                {DAY_SHORT[day]}
+            <div key={day} className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#F05A28' }}>
+                  {DAY_SHORT[day]}
+                </span>
+                {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F05A28' }} />}
               </div>
               {tasks.length ? (
                 <div className="space-y-1.5">
@@ -518,9 +527,9 @@ function ProductionWeekly({ user, canUpload, onBack }) {
                   <span className="text-gray-400 text-xs font-semibold uppercase tracking-widest">Individual Tasks</span>
                   <div className="flex-1 h-px bg-gray-700" />
                 </div>
-                <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
                   {people.map(p => (
-                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} {...sharedProps} />
+                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} weekOffset={weekOffset} {...sharedProps} />
                   ))}
                 </div>
               </div>
@@ -547,7 +556,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
                   </div>
                 ) : (
                   people.map(p => (
-                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} {...sharedProps} />
+                    <PersonCard key={p.name} person={p} selectedDay={selectedDay} weekOffset={weekOffset} {...sharedProps} />
                   ))
                 )}
               </div>
