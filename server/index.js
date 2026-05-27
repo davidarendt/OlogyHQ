@@ -1053,6 +1053,35 @@ app.get('/api/checklists', authenticateToken, checkChecklistView, async (req, re
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
+// Location roles — must be before /:id patterns
+app.get('/api/checklists/location-roles', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT location, role FROM checklist_location_roles ORDER BY location, role');
+    const map = {};
+    for (const row of r.rows) {
+      if (!map[row.location]) map[row.location] = [];
+      map[row.location].push(row.role);
+    }
+    res.json(map);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+app.put('/api/checklists/location-roles/:location', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { location } = req.params;
+    const valid = ['midtown', 'northside', 'power_mill', 'tampa'];
+    if (!valid.includes(location)) return res.status(400).json({ message: 'Invalid location.' });
+    const { roles } = req.body;
+    await pool.query('DELETE FROM checklist_location_roles WHERE location=$1', [location]);
+    if (Array.isArray(roles) && roles.length > 0) {
+      const vals = roles.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+      const params = roles.flatMap(r => [location, r]);
+      await pool.query(`INSERT INTO checklist_location_roles (location, role) VALUES ${vals}`, params);
+    }
+    res.json({ ok: true });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
 // Run history — must be before /:id patterns
 app.get('/api/checklists/runs', authenticateToken, checkChecklistView, async (req, res) => {
   try {

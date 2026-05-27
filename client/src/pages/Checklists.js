@@ -388,10 +388,20 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
 }
 
 // ── Location Landing Page ─────────────────────────────────────────────────────
-function LocationLanding({ checklists, onSelect }) {
+function LocationLanding({ checklists, locationRoles, user, canUpload, onSelect }) {
+  const isPrivileged = canUpload || (user?.role === 'admin');
+  const userRoles = user?.roles || (user?.role ? [user.role] : []);
+
+  const visibleLocations = LOCATIONS.filter(loc => {
+    if (isPrivileged) return true;
+    const allowed = locationRoles[loc.key];
+    if (!allowed || allowed.length === 0) return true;
+    return userRoles.some(r => allowed.includes(r));
+  });
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-      {LOCATIONS.map(loc => {
+      {visibleLocations.map(loc => {
         const count = checklists.filter(c => c.location === loc.key || c.location === 'all').length;
         return (
           <button key={loc.key} onClick={() => onSelect(loc.key)}
@@ -413,24 +423,102 @@ function LocationLanding({ checklists, onSelect }) {
   );
 }
 
+// ── Location Access (Manage) ──────────────────────────────────────────────────
+function LocationAccessSection({ locationRoles, onSaved }) {
+  const [localRoles, setLocalRoles] = useState(() => {
+    const init = {};
+    LOCATIONS.forEach(l => { init[l.key] = locationRoles[l.key] || []; });
+    return init;
+  });
+  const [saving, setSaving] = useState(null);
+  const [saved, setSaved] = useState(null);
+
+  useEffect(() => {
+    const init = {};
+    LOCATIONS.forEach(l => { init[l.key] = locationRoles[l.key] || []; });
+    setLocalRoles(init);
+  }, [locationRoles]);
+
+  const toggle = (locKey, role) => {
+    setLocalRoles(p => ({
+      ...p,
+      [locKey]: p[locKey].includes(role) ? p[locKey].filter(r => r !== role) : [...p[locKey], role],
+    }));
+  };
+
+  const save = async (locKey) => {
+    setSaving(locKey);
+    await fetch(`${API}/api/checklists/location-roles/${locKey}`, {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles: localRoles[locKey] }),
+    });
+    setSaving(null);
+    setSaved(locKey);
+    setTimeout(() => setSaved(null), 2000);
+    onSaved();
+  };
+
+  return (
+    <div className="mt-8">
+      <h3 className="text-white font-semibold text-lg mb-1">Location Access</h3>
+      <p className="text-gray-500 text-sm mb-4">
+        Restrict which roles can see each location on the landing page. If no roles are selected, the location is visible to everyone.
+      </p>
+      <div className="space-y-4">
+        {LOCATIONS.map(loc => (
+          <div key={loc.key} className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: loc.color }} />
+                <h4 className="text-white font-semibold">{loc.label}</h4>
+                {localRoles[loc.key].length === 0 && (
+                  <span className="text-xs text-gray-500 italic">visible to all</span>
+                )}
+              </div>
+              <button onClick={() => save(loc.key)} disabled={saving === loc.key}
+                className="px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition disabled:opacity-50"
+                style={{ backgroundColor: saved === loc.key ? '#22c55e' : '#F05A28' }}>
+                {saving === loc.key ? 'Saving…' : saved === loc.key ? 'Saved ✓' : 'Save'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {ROLES.map(role => (
+                <label key={role} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={localRoles[loc.key].includes(role)}
+                    onChange={() => toggle(loc.key, role)} className="accent-orange-500" />
+                  <span className="text-gray-300 text-sm">{ROLE_LABELS[role]}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Checklists({ user, canUpload, onBack }) {
-  const [checklists, setChecklists] = useState([]);
-  const [runs, setRuns]             = useState([]);
-  const [tab, setTab]               = useState('checklists');
-  const [location, setLocation]     = useState(null); // null = landing
-  const [running, setRunning]       = useState(null);
-  const [editing, setEditing]       = useState(null);
-  const [loading, setLoading]       = useState(true);
+  const [checklists, setChecklists]     = useState([]);
+  const [runs, setRuns]                 = useState([]);
+  const [locationRoles, setLocationRoles] = useState({});
+  const [tab, setTab]                   = useState('checklists');
+  const [location, setLocation]         = useState(null); // null = landing
+  const [running, setRunning]           = useState(null);
+  const [editing, setEditing]           = useState(null);
+  const [loading, setLoading]           = useState(true);
 
   const fetchAll = async () => {
-    const [clRes, runRes] = await Promise.all([
+    const [clRes, runRes, lrRes] = await Promise.all([
       fetch(`${API}/api/checklists`, { credentials: 'include' }),
       fetch(`${API}/api/checklists/runs`, { credentials: 'include' }),
+      fetch(`${API}/api/checklists/location-roles`, { credentials: 'include' }),
     ]);
-    const [clData, runData] = await Promise.all([clRes.json(), runRes.json()]);
+    const [clData, runData, lrData] = await Promise.all([clRes.json(), runRes.json(), lrRes.json()]);
     setChecklists(Array.isArray(clData) ? clData : []);
     setRuns(Array.isArray(runData) ? runData : []);
+    setLocationRoles(lrData && typeof lrData === 'object' ? lrData : {});
     setLoading(false);
   };
 
@@ -515,7 +603,7 @@ export default function Checklists({ user, canUpload, onBack }) {
         {loading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : !location ? (
-          <LocationLanding checklists={checklists} onSelect={key => { setLocation(key); setTab('checklists'); }} />
+          <LocationLanding checklists={checklists} locationRoles={locationRoles} user={user} canUpload={canUpload} onSelect={key => { setLocation(key); setTab('checklists'); }} />
         ) : tab === 'checklists' ? (
           filtered.length === 0 ? (
             <div className="text-center py-20 text-gray-600 text-sm">
@@ -665,6 +753,7 @@ export default function Checklists({ user, canUpload, onBack }) {
                 </table>
               )}
             </div>
+            <LocationAccessSection locationRoles={locationRoles} onSaved={fetchAll} />
           </div>
         )}
       </main>
