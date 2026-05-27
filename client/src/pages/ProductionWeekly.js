@@ -438,6 +438,12 @@ function ProductionWeekly({ user, canUpload, onBack }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    const handleVisibility = () => { if (document.visibilityState === 'visible') loadData(false); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [loadData]);
+
   const handleToggle = async (rowType, rowKey, day, taskText, currentlyChecked) => {
     const weekStart = sheetData?.weekStart;
     if (!weekStart) return;
