@@ -522,13 +522,14 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
       }}>
 
         {/* ── Schedule column: 3 sections stacked ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5vh', overflow: 'hidden', paddingRight: '0.8vw' }}>
-          {SECTION_ORDER.map(sectionKey => {
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '0.8vw' }}>
+          {SECTION_ORDER.map((sectionKey, si) => {
             const sec = sections.find(s => s.key === sectionKey);
             const meta = SECTION_META[sectionKey] || {};
             const { label: secLabel, accent } = meta;
             return (
-              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden' }}>
+              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden', paddingTop: si > 0 ? '1vh' : 0 }}>
+                {si > 0 && <div style={{ height: '1px', background: '#2D3748', marginBottom: '0.7vh', flexShrink: 0 }} />}
                 {/* Section header */}
                 <div style={{
                   flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
