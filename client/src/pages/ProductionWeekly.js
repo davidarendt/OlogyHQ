@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Pencil, Trash2, X, Check, Beer, Package, CalendarOff, User, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -402,6 +402,152 @@ function ManageView({ canUpload, onClose }) {
   );
 }
 
+// ── Display view (kiosk/office board) ─────────────────────────────────────────
+function DisplayTaskItem({ text, rowType, rowKey, day, weekStart, checksSet, onToggle, initialsMap, accentColor = '#F05A28', bgColor }) {
+  const { label, initials } = parseInitials(text);
+  const checked = isChecked(checksSet, weekStart, rowType, rowKey, day, text);
+  const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+  const bg = bgColor
+    ? { backgroundColor: checked ? `${bgColor}40` : `${bgColor}22` }
+    : { backgroundColor: checked ? 'rgba(55,65,81,0.5)' : 'rgba(55,65,81,0.7)' };
+  return (
+    <div onClick={() => onToggle(rowType, rowKey, day, text, checked)}
+      style={{ ...bg, display: 'flex', alignItems: 'flex-start', gap: '0.5vw', padding: '0.35vh 0.5vw', borderRadius: '0.4vw', cursor: 'pointer', marginBottom: '0.3vh' }}>
+      <span style={{
+        flexShrink: 0, width: '1.7vh', height: '1.7vh', borderRadius: '0.3vh',
+        border: `0.2vh solid ${accentColor}`, backgroundColor: checked ? accentColor : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '0.15vh',
+      }}>
+        {checked && <Check size={10} style={{ color: 'white' }} strokeWidth={3} />}
+      </span>
+      <span style={{ fontSize: '1.55vh', lineHeight: 1.3, color: checked ? '#6B7280' : '#F3F4F6', textDecoration: checked ? 'line-through' : 'none' }}>
+        {label}
+        {names && <span style={{ fontSize: '1.25vh', marginLeft: '0.4vw', color: accentColor, fontWeight: 600 }}>{names}</span>}
+      </span>
+    </div>
+  );
+}
+
+function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseInitialsMap, weekOffset, weekLabel, onExit }) {
+  const sections = sheetData?.sections || [];
+  const people   = sheetData?.people   || [];
+  const weekStart = sheetData?.weekStart || '';
+  const todayDay  = weekOffset === 0 ? getTodayDay() : null;
+  const sharedCheck = { weekStart, checksSet, onToggle, initialsMap };
+
+  const wkLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`;
+  const totalCols = 1 + Math.max(people.length, 1);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#0d1117', zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: 'inherit' }}>
+
+      {/* Top bar */}
+      <div style={{ height: '4.5vh', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.5vw', borderBottom: '1px solid #374151' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8vw' }}>
+          <span style={{ fontSize: '2.4vh', fontWeight: 800, color: '#F05A28', letterSpacing: '-0.02em' }}>OLOGY</span>
+          <span style={{ fontSize: '2.4vh', fontWeight: 600, color: '#F2EDE4' }}>Production Weekly</span>
+          <span style={{ fontSize: '1.8vh', color: '#9CA3AF', marginLeft: '0.5vw' }}>{wkLabel}</span>
+        </div>
+        <button onClick={onExit}
+          style={{ fontSize: '1.5vh', color: '#9CA3AF', padding: '0.4vh 1vw', border: '1px solid #4B5563', borderRadius: '0.4vw', background: 'none', cursor: 'pointer' }}>
+          Exit Display
+        </button>
+      </div>
+
+      {/* Column grid */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${totalCols}, 1fr)`, gap: '0.5vw', padding: '0.5vw', overflow: 'hidden', minHeight: 0 }}>
+
+        {/* ── Sections column ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden' }}>
+          <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.7vh 0', textAlign: 'center' }}>
+            <span style={{ fontSize: '2.2vh', fontWeight: 700, color: '#F2EDE4' }}>Schedule</span>
+          </div>
+          {DAYS.map(day => {
+            const isToday = day === todayDay;
+            const daySections = sections.filter(s => (s.dayTasks[day] || []).length > 0);
+            return (
+              <div key={day} style={{
+                flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
+                border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
+              }}>
+                <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh' }}>
+                  {DAY_LABELS[day]}
+                </div>
+                {daySections.length === 0
+                  ? <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>
+                  : daySections.map(sec => {
+                      const meta = SECTION_META[sec.key] || {};
+                      return (
+                        <div key={sec.key} style={{ marginBottom: '0.4vh' }}>
+                          <div style={{ fontSize: '1.15vh', fontWeight: 700, color: meta.accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.15vh' }}>
+                            {meta.label}
+                          </div>
+                          {(sec.dayTasks[day] || []).map((task, i) => {
+                            const { label, initials } = parseInitials(task);
+                            const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                            return (
+                              <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
+                                {label}
+                                {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: meta.accent, fontWeight: 600 }}>{names}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })
+                }
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Person columns ── */}
+        {people.map(person => {
+          const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
+          return (
+            <div key={person.name} style={{ display: 'flex', flexDirection: 'column', gap: '0.4vh', overflow: 'hidden' }}>
+              <div style={{ flexShrink: 0, background: '#1F2937', borderRadius: '0.5vw', padding: '0.5vh 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6vw' }}>
+                <div style={{ width: '2.8vh', height: '2.8vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                  {person.name.charAt(0)}
+                </div>
+                <span style={{ fontSize: '2.2vh', fontWeight: 700, color: '#F2EDE4' }}>{person.name}</span>
+              </div>
+              {DAYS.map(day => {
+                const isToday = day === todayDay;
+                const tasks = person.dayTasks[day] || [];
+                const brewPack = getBrewPackTasks(day, sections, personInitial);
+                const hasAnything = tasks.length > 0 || brewPack.length > 0;
+                return (
+                  <div key={day} style={{
+                    flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
+                    border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
+                  }}>
+                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh' }}>
+                      {DAY_LABELS[day]}
+                    </div>
+                    {!hasAnything && <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>}
+                    {brewPack.map(({ task, sectionKey }, i) => {
+                      const meta = SECTION_META[sectionKey] || {};
+                      return (
+                        <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+                          rowType="section" rowKey={sectionKey} {...sharedCheck} />
+                      );
+                    })}
+                    {tasks.map((task, i) => (
+                      <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
+                        rowType="person" rowKey={person.name} {...sharedCheck} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 function ProductionWeekly({ user, canUpload, onBack }) {
   const todayDay = getTodayDay();
@@ -410,6 +556,7 @@ function ProductionWeekly({ user, canUpload, onBack }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [mobileTab, setMobileTab] = useState('people');
   const [showManage, setShowManage] = useState(false);
+  const [showDisplay, setShowDisplay] = useState(false);
   const [sheetData, setSheetData] = useState(null);
   const [checksSet, setChecksSet] = useState(new Set());
   const [initialsMap, setInitialsMap] = useState({});
@@ -508,7 +655,10 @@ function ProductionWeekly({ user, canUpload, onBack }) {
               <Settings size={18} />
             </button>
           )}
-
+          <button onClick={() => setShowDisplay(true)} className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 transition">
+            <Maximize2 size={14} />
+            Display
+          </button>
           <button onClick={onBack} className="hidden sm:block text-sm text-gray-400 hover:text-white transition">
             ← Back
           </button>
@@ -626,6 +776,14 @@ function ProductionWeekly({ user, canUpload, onBack }) {
       </main>
 
       {showManage && <ManageView canUpload={canUpload} onClose={() => setShowManage(false)} />}
+      {showDisplay && (
+        <DisplayView
+          sheetData={sheetData} checksSet={checksSet} onToggle={handleToggle}
+          initialsMap={initialsMap} reverseInitialsMap={reverseInitialsMap}
+          weekOffset={weekOffset} weekLabel={weekLabel}
+          onExit={() => setShowDisplay(false)}
+        />
+      )}
     </div>
   );
 }
