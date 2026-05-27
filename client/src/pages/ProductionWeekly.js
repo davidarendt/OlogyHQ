@@ -612,9 +612,6 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
                     border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
                     display: 'flex', flexDirection: 'column',
                   }}>
-                    <div style={{ fontSize: '1.5vh', fontWeight: 700, color: isToday ? '#F05A28' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3vh', flexShrink: 0 }}>
-                      {DAY_LABELS[day]}
-                    </div>
                     {!hasAnything
                       ? <span style={{ color: '#4B5563', fontSize: '1.4vh' }}>—</span>
                       : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
