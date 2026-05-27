@@ -495,7 +495,6 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
 
   const wkLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week' : `Week of ${weekLabel}`;
   const SECTION_ORDER = ['brews', 'packaging', 'timeoff'];
-  const sectionRows = SECTION_ORDER.map(k => sections.find(s => s.key === k)).filter(Boolean);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0d1117', zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: 'inherit' }}>
@@ -523,159 +522,181 @@ function DisplayView({ sheetData, checksSet, onToggle, initialsMap, reverseIniti
         </button>
       </div>
 
-      {/* Unified grid: label col + 5 day cols; header + section rows + divider + person rows */}
+      {/* Main grid: schedule | divider | people */}
       <div style={{
-        flex: 1, minHeight: 0, overflow: 'hidden', padding: '0.6vw',
-        display: 'grid',
-        gridTemplateColumns: 'auto repeat(5, 1fr)',
-        gridTemplateRows: `auto repeat(${sectionRows.length}, 1fr) auto repeat(${people.length}, 1fr)`,
-        gap: '0.4vh 0.5vw',
+        flex: 1, minHeight: 0, display: 'grid',
+        gridTemplateColumns: '1fr 2vw 3fr',
+        padding: '0.6vw', overflow: 'hidden',
       }}>
 
-        {/* ── Header row: empty corner + Mon–Fri column headers ── */}
-        <div />
-        {DAYS.map(day => {
-          const isToday = day === todayDay;
-          return (
-            <div key={day} style={{
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              paddingBottom: '0.5vh',
-              borderBottom: `2px solid ${isToday ? '#F05A28' : '#374151'}`,
-            }}>
-              <span style={{
-                writingMode: 'vertical-lr',
-                transform: 'rotate(180deg)',
-                fontSize: '1.5vh', fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.08em', whiteSpace: 'nowrap', userSelect: 'none',
-                color: isToday ? '#F05A28' : '#9CA3AF',
-              }}>
-                {DAY_LABELS[day]}
-              </span>
-            </div>
-          );
-        })}
-
-        {/* ── Section rows (Brews / Packaging / Time Off) ── */}
-        {sectionRows.map(sec => {
-          const meta = SECTION_META[sec.key] || {};
-          const { label: secLabel, accent } = meta;
-          const combineLines = sec.key === 'packaging' || sec.key === 'timeoff';
-          return (
-            <Fragment key={sec.key}>
-              {/* Row label */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                paddingRight: '0.8vw', borderRight: `2px solid ${accent}55`,
-              }}>
-                <span style={{ fontSize: '1.6vh', fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                  {secLabel}
-                </span>
-              </div>
-              {/* Day cells */}
-              {DAYS.map(day => {
-                const isToday = day === todayDay;
-                const tasks = sec.dayTasks[day] || [];
-                return (
-                  <div key={day} style={{
-                    minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
-                    border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    {tasks.length === 0
-                      ? <span style={{ color: '#374151', fontSize: '1.3vh', margin: 'auto' }}>—</span>
-                      : <AutoScaleContainer contentKey={`${sec.key}-${day}-${weekStart}-${tasks.length}`}>
-                          {combineLines ? (
-                            <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
-                              {tasks.map((task, i) => {
-                                const { label: tl, initials } = parseInitials(task);
+        {/* ── Schedule column: Brews / Packaging / Time Off stacked ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '0.8vw' }}>
+          {SECTION_ORDER.map((sectionKey, si) => {
+            const sec = sections.find(s => s.key === sectionKey);
+            const meta = SECTION_META[sectionKey] || {};
+            const { label: secLabel, accent } = meta;
+            const combineLines = sectionKey === 'packaging' || sectionKey === 'timeoff';
+            return (
+              <div key={sectionKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3vh', overflow: 'hidden', paddingTop: si > 0 ? '1vh' : 0 }}>
+                {si > 0 && <div style={{ height: '1px', background: '#2D3748', marginBottom: '0.7vh', flexShrink: 0 }} />}
+                <div style={{
+                  flexShrink: 0, borderRadius: '0.5vw', padding: '0.5vh 0.8vw',
+                  background: `${accent}22`, border: `1px solid ${accent}44`,
+                  display: 'flex', alignItems: 'center', gap: '0.5vw',
+                }}>
+                  <span style={{ fontSize: '1.9vh', fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{secLabel}</span>
+                </div>
+                {DAYS.map(day => {
+                  const isToday = day === todayDay;
+                  const tasks = sec ? (sec.dayTasks[day] || []) : [];
+                  return (
+                    <div key={day} style={{
+                      flex: 1, minHeight: 0, background: '#161b27', borderRadius: '0.4vw', padding: '0.4vh 0.6vw',
+                      border: `1px solid ${isToday ? accent : '#2D3748'}`, overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column',
+                    }}>
+                      <div style={{ fontSize: '1.3vh', fontWeight: 700, color: isToday ? accent : '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.2vh', flexShrink: 0 }}>
+                        {DAY_SHORT[day]}
+                      </div>
+                      {tasks.length === 0
+                        ? <span style={{ color: '#374151', fontSize: '1.3vh' }}>—</span>
+                        : <AutoScaleContainer contentKey={`${sectionKey}-${day}-${weekStart}-${tasks.length}`}>
+                            {combineLines ? (
+                              <div style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 0.2vw' }}>
+                                {tasks.map((task, i) => {
+                                  const { label, initials } = parseInitials(task);
+                                  const names = initials.length ? resolveInitials(initials, initialsMap) : null;
+                                  return (
+                                    <Fragment key={i}>
+                                      {i > 0 && <span style={{ color: '#6B7280', fontSize: '1.3vh', margin: '0 0.2vw' }}>·</span>}
+                                      <span>
+                                        {label}
+                                        {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.3vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                      </span>
+                                    </Fragment>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              tasks.map((task, i) => {
+                                const { label, initials } = parseInitials(task);
                                 const names = initials.length ? resolveInitials(initials, initialsMap) : null;
                                 return (
-                                  <Fragment key={i}>
-                                    {i > 0 && <span style={{ color: '#6B7280', fontSize: '1.3vh', margin: '0 0.2vw' }}>·</span>}
-                                    <span>{tl}{names && <span style={{ fontSize: '1.2vh', marginLeft: '0.3vw', color: accent, fontWeight: 600 }}>{names}</span>}</span>
-                                  </Fragment>
+                                  <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
+                                    {label}
+                                    {names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
+                                  </div>
                                 );
-                              })}
-                            </div>
-                          ) : (
-                            tasks.map((task, i) => {
-                              const { label: tl, initials } = parseInitials(task);
-                              const names = initials.length ? resolveInitials(initials, initialsMap) : null;
-                              return (
-                                <div key={i} style={{ fontSize: '1.5vh', color: '#E5E7EB', lineHeight: 1.3, marginBottom: '0.15vh' }}>
-                                  {tl}{names && <span style={{ fontSize: '1.2vh', marginLeft: '0.4vw', color: accent, fontWeight: 600 }}>{names}</span>}
-                                </div>
-                              );
-                            })
-                          )}
-                        </AutoScaleContainer>
-                    }
-                  </div>
-                );
-              })}
-            </Fragment>
-          );
-        })}
-
-        {/* ── Horizontal divider between sections and people ── */}
-        <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center' }}>
-          <div style={{ flex: 1, height: '2px', background: '#374151' }} />
+                              })
+                            )}
+                          </AutoScaleContainer>
+                      }
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
 
-        {/* ── Person rows ── */}
-        {people.map(person => {
-          const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
-          return (
-            <Fragment key={person.name}>
-              {/* Row label */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                paddingRight: '0.8vw', borderRight: '2px solid #374151',
+        {/* ── Vertical divider ── */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '1px', background: '#2D3748', height: '100%' }} />
+        </div>
+
+        {/* ── People sub-grid: name col + 5 day cols, header row + N person rows ── */}
+        <div style={{
+          paddingLeft: '0.8vw',
+          height: '100%',
+          display: 'grid',
+          gridTemplateColumns: `auto ${DAYS.map(() => '1fr').join(' ')}`,
+          gridTemplateRows: `auto ${people.map(() => '1fr').join(' ')}`,
+          gap: '0.4vh 0.4vw',
+          overflow: 'hidden',
+        }}>
+
+          {/* Corner (empty) */}
+          <div />
+
+          {/* Day column headers — rotated bottom-to-top */}
+          {DAYS.map(day => {
+            const isToday = day === todayDay;
+            return (
+              <div key={day} style={{
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                paddingBottom: '0.5vh',
+                borderBottom: `2px solid ${isToday ? '#F05A28' : '#2D3748'}`,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5vw' }}>
-                  <div style={{ width: '2.6vh', height: '2.6vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
-                    {person.name.charAt(0)}
-                  </div>
-                  <span style={{ fontSize: '2vh', fontWeight: 700, color: '#F2EDE4', whiteSpace: 'nowrap' }}>{person.name}</span>
-                </div>
+                <span style={{
+                  writingMode: 'vertical-lr',
+                  transform: 'rotate(180deg)',
+                  fontSize: '1.4vh',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: isToday ? '#F05A28' : '#9CA3AF',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none',
+                }}>
+                  {DAY_LABELS[day]}
+                </span>
               </div>
-              {/* Day cells */}
-              {DAYS.map(day => {
-                const isToday = day === todayDay;
-                const tasks = person.dayTasks[day] || [];
-                const brewPack = getBrewPackTasks(day, sections, personInitial);
-                const hasAnything = tasks.length > 0 || brewPack.length > 0;
-                return (
-                  <div key={day} style={{
-                    minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
-                    border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    {!hasAnything
-                      ? <span style={{ color: '#4B5563', fontSize: '1.4vh', margin: 'auto' }}>—</span>
-                      : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
-                          {brewPack.map(({ task, sectionKey }, i) => {
-                            const meta = SECTION_META[sectionKey] || {};
-                            return (
-                              <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
-                                rowType="section" rowKey={sectionKey} {...sharedCheck} />
-                            );
-                          })}
-                          {brewPack.length > 0 && tasks.length > 0 && (
-                            <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
-                          )}
-                          {tasks.map((task, i) => (
-                            <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
-                              rowType="person" rowKey={person.name} {...sharedCheck} />
-                          ))}
-                        </AutoScaleContainer>
-                    }
+            );
+          })}
+
+          {/* Person rows */}
+          {people.map(person => {
+            const personInitial = (reverseInitialsMap || {})[person.name] || person.name;
+            return (
+              <Fragment key={person.name}>
+                {/* Name cell */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.6vw' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5vw' }}>
+                    <div style={{ width: '2.6vh', height: '2.6vh', borderRadius: '50%', background: '#F05A28', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3vh', fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                      {person.name.charAt(0)}
+                    </div>
+                    <span style={{ fontSize: '2vh', fontWeight: 700, color: '#F2EDE4', whiteSpace: 'nowrap' }}>{person.name}</span>
                   </div>
-                );
-              })}
-            </Fragment>
-          );
-        })}
+                </div>
+
+                {/* Day cells — no day label inside */}
+                {DAYS.map(day => {
+                  const isToday = day === todayDay;
+                  const tasks = person.dayTasks[day] || [];
+                  const brewPack = getBrewPackTasks(day, sections, personInitial);
+                  const hasAnything = tasks.length > 0 || brewPack.length > 0;
+                  return (
+                    <div key={day} style={{
+                      minHeight: 0, background: '#161b27', borderRadius: '0.5vw', padding: '0.5vh 0.6vw',
+                      border: `1px solid ${isToday ? '#F05A28' : '#2D3748'}`, overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column',
+                    }}>
+                      {!hasAnything
+                        ? <span style={{ color: '#4B5563', fontSize: '1.4vh', margin: 'auto' }}>—</span>
+                        : <AutoScaleContainer contentKey={`${person.name}-${day}-${weekStart}-${brewPack.length}-${tasks.length}`}>
+                            {brewPack.map(({ task, sectionKey }, i) => {
+                              const meta = SECTION_META[sectionKey] || {};
+                              return (
+                                <DisplayTaskItem key={i} text={task} day={day} accentColor={meta.accent} bgColor={meta.accent}
+                                  rowType="section" rowKey={sectionKey} {...sharedCheck} />
+                              );
+                            })}
+                            {brewPack.length > 0 && tasks.length > 0 && (
+                              <div style={{ height: '1px', background: '#2D3748', margin: '0.3vh 0' }} />
+                            )}
+                            {tasks.map((task, i) => (
+                              <DisplayTaskItem key={i} text={task} day={day} accentColor="#F05A28"
+                                rowType="person" rowKey={person.name} {...sharedCheck} />
+                            ))}
+                          </AutoScaleContainer>
+                      }
+                    </div>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
