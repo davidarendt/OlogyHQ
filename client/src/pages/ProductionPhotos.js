@@ -36,7 +36,11 @@ function fmtDate(iso) {
 }
 
 function fmtType(t) {
-  return { distro: 'Distro', keg_return: 'Keg Return' }[t] || t;
+  return { distro: 'Distro', keg_return: 'Ology Keg Return', keg_logistics: 'Keg Logistics' }[t] || t;
+}
+
+function typeColor(t) {
+  return { distro: '#F05A28', keg_return: '#2563eb', keg_logistics: '#16a34a' }[t] || '#6b7280';
 }
 
 function isImage(mimetype) {
@@ -124,12 +128,16 @@ function DropZone({ files, previews, onChange, maxFiles = 10, label = 'Drop file
 // ── Submission detail modal ───────────────────────────────────────────────────
 function DetailModal({ submission, onClose }) {
   if (!submission) return null;
+
+  const showOlogy = submission.submission_type !== 'keg_logistics';
+  const showKL    = submission.submission_type !== 'keg_return';
   const kegFields = [
-    ['Ology 1/2s', submission.ology_halves],
-    ['Ology 1/6s', submission.ology_sixths],
-    ['Keg Logistics 1/2s', submission.kl_halves],
-    ['Keg Logistics 1/6s', submission.kl_sixths],
+    ...(showOlogy ? [['Ology 1/2s', submission.ology_halves], ['Ology 1/6s', submission.ology_sixths]] : []),
+    ...(showKL    ? [['KL 1/2s', submission.kl_halves], ['KL 1/6s', submission.kl_sixths]] : []),
   ].filter(([, v]) => v > 0);
+
+  const isKL = submission.submission_type === 'keg_logistics';
+  const slipLabel = isKL ? 'Bill of Lading (BOL)' : 'Packing Slips';
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto">
@@ -146,6 +154,12 @@ function DetailModal({ submission, onClose }) {
         <div className="px-6 py-5 space-y-6">
           {/* Metadata */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {submission.shipper && (
+              <div className="col-span-2 sm:col-span-4">
+                <p className="text-gray-500 text-xs uppercase tracking-wider">Shipper / Carrier</p>
+                <p className="text-white text-sm mt-0.5">{submission.shipper}</p>
+              </div>
+            )}
             {submission.distributor && (
               <div className="col-span-2 sm:col-span-4">
                 <p className="text-gray-500 text-xs uppercase tracking-wider">Distributor</p>
@@ -162,14 +176,14 @@ function DetailModal({ submission, onClose }) {
             ))}
           </div>
 
-          {/* Packing slips */}
+          {/* Packing slips / BOL */}
           {submission.packing_slip_unavailable ? (
             <div className="px-4 py-3 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-sm">
-              Packing slip was not available at time of submission.
+              {isKL ? 'BOL' : 'Packing slip'} was not available at time of submission.
             </div>
           ) : submission.packing_slips?.length > 0 && (
             <div>
-              <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Packing Slips</p>
+              <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">{slipLabel}</p>
               <div className="flex flex-wrap gap-3">
                 {submission.packing_slips.map(p => (
                   isImage(p.mimetype)
@@ -216,9 +230,158 @@ function DetailModal({ submission, onClose }) {
   );
 }
 
+// ── KL Inventory view ─────────────────────────────────────────────────────────
+function KLInventoryView({ canUpload }) {
+  const [data, setData]           = useState(null);
+  const [editing, setEditing]     = useState(false);
+  const [startHalves, setStartHalves] = useState('');
+  const [startSixths, setStartSixths] = useState('');
+  const [saving, setSaving]       = useState(false);
+
+  const load = useCallback(() => {
+    fetch(`${API}/api/production/kl-inventory`, { credentials: 'include' })
+      .then(r => r.json()).then(setData);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveSettings = async () => {
+    setSaving(true);
+    await fetch(`${API}/api/production/kl-inventory/settings`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ starting_halves: startHalves, starting_sixths: startSixths }),
+    });
+    load();
+    setEditing(false);
+    setSaving(false);
+  };
+
+  if (!data) return <div className="py-16 text-center text-gray-500 text-sm animate-pulse">Loading…</div>;
+
+  return (
+    <div className="space-y-6">
+
+      {/* Current stock */}
+      <div className="grid grid-cols-2 gap-4">
+        {[['Current 1/2 BBL', data.current_halves], ['Current 1/6 BBL', data.current_sixths]].map(([label, val]) => (
+          <div key={label} className="bg-gray-800 rounded-xl border border-gray-700 p-6 text-center">
+            <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">{label}</p>
+            <p className={`text-4xl font-bold ${val < 0 ? 'text-red-400' : 'text-white'}`}>{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Starting inventory */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-semibold">Starting Inventory</h3>
+          {canUpload && !editing && (
+            <button onClick={() => { setStartHalves(data.starting_halves); setStartSixths(data.starting_sixths); setEditing(true); }}
+              className="text-sm text-orange-400 hover:text-orange-300 transition">Edit</button>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-400 text-sm mb-1.5">Starting 1/2 BBL</label>
+                <input type="number" min="0" value={startHalves} onChange={e => setStartHalves(e.target.value)}
+                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-1.5">Starting 1/6 BBL</label>
+                <input type="number" min="0" value={startSixths} onChange={e => setStartSixths(e.target.value)}
+                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={saveSettings} disabled={saving}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+                style={{ backgroundColor: '#F05A28' }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => setEditing(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white bg-gray-700 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {[['1/2 BBL', data.starting_halves], ['1/6 BBL', data.starting_sixths]].map(([label, val]) => (
+              <div key={label}>
+                <p className="text-gray-500 text-xs uppercase tracking-wider">{label}</p>
+                <p className="text-white text-xl font-bold mt-0.5">{val}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Transaction log */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-700">
+          <h3 className="text-white font-semibold">Transaction Log</h3>
+        </div>
+        {data.transactions.length === 0 ? (
+          <div className="py-12 text-center text-gray-500 text-sm">No transactions yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">Direction</th>
+                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">From / To</th>
+                  <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">1/2 BBL</th>
+                  <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">1/6 BBL</th>
+                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.transactions.map(t => {
+                  const isIn = t.submission_type === 'keg_logistics';
+                  const fromTo = isIn
+                    ? (t.shipper || '—')
+                    : (t.distributor === 'Other' ? t.other_distributor : t.distributor) || '—';
+                  return (
+                    <tr key={t.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
+                      <td className="px-6 py-3 text-white text-sm whitespace-nowrap">{fmtDate(t.submission_date)}</td>
+                      <td className="px-6 py-3">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded text-white ${isIn ? 'bg-green-700' : 'bg-red-700'}`}>
+                          {isIn ? '▲ In' : '▼ Out'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-gray-300 text-sm">{fromTo}</td>
+                      <td className="px-6 py-3 text-sm text-right font-mono">
+                        <span className={isIn ? 'text-green-400' : 'text-red-400'}>
+                          {isIn ? '+' : '-'}{t.kl_halves}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-sm text-right font-mono">
+                        <span className={isIn ? 'text-green-400' : 'text-red-400'}>
+                          {isIn ? '+' : '-'}{t.kl_sixths}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-gray-400 text-sm">{t.submitted_by_name}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 function ProductionPhotos({ user, canUpload, onBack }) {
-  const [view, setView] = useState('form'); // 'form' | 'log'
+  const [view, setView] = useState('form'); // 'form' | 'log' | 'kl_inventory'
   const [submissions, setSubmissions] = useState([]);
   const [detail, setDetail] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -232,6 +395,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
     type: '',
     distributor: '',
     other_distributor: '',
+    shipper: '',
     ology_halves: '',
     ology_sixths: '',
     kl_halves: '',
@@ -243,7 +407,6 @@ function ProductionPhotos({ user, canUpload, onBack }) {
   const [photoSets, setPhotoSets] = useState([blankPhotoSet()]);
 
   // Load submissions
-
   const fetchSubmissions = useCallback(() => {
     fetch(`${API}/api/production`, { credentials: 'include' })
       .then(r => r.json()).then(d => setSubmissions(Array.isArray(d) ? d : []));
@@ -269,10 +432,18 @@ function ProductionPhotos({ user, canUpload, onBack }) {
     e.preventDefault();
     setError('');
 
-    if (!form.type)          { setError('Please select a submission type.'); return; }
-    if (!form.distributor && form.type !== 'other') { setError('Please select a distributor.'); return; }
+    if (!form.type) { setError('Please select a submission type.'); return; }
+    if ((form.type === 'distro' || form.type === 'keg_return') && !form.distributor) {
+      setError('Please select a distributor.'); return;
+    }
+    if (form.type === 'keg_logistics' && !form.shipper.trim()) {
+      setError('Please enter the shipper / carrier name.'); return;
+    }
     if (!slipFiles.length && !form.packing_slip_unavailable) {
-      setError('Please upload the packing slip or check "Not Available".'); return;
+      setError(form.type === 'keg_logistics'
+        ? 'Please upload the BOL or check "Not Available".'
+        : 'Please upload the packing slip or check "Not Available".');
+      return;
     }
 
     setSubmitting(true);
@@ -282,10 +453,11 @@ function ProductionPhotos({ user, canUpload, onBack }) {
     fd.append('submission_type',          form.type);
     fd.append('distributor',              form.distributor);
     fd.append('other_distributor',        form.other_distributor);
+    fd.append('shipper',                  form.shipper);
     fd.append('ology_halves',             form.ology_halves || 0);
     fd.append('ology_sixths',             form.ology_sixths || 0);
     fd.append('kl_halves',                form.kl_halves || 0);
-    fd.append('kl_sixths',               form.kl_sixths || 0);
+    fd.append('kl_sixths',                form.kl_sixths || 0);
     fd.append('packing_slip_unavailable', form.packing_slip_unavailable);
     fd.append('photo_sets_meta', JSON.stringify(
       photoSets.map(s => ({ type: s.type, product_date: s.product_date }))
@@ -298,7 +470,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
       setSuccess('Submission saved successfully!');
-      setForm({ name: user.name, date: today(), type: '', distributor: '', other_distributor: '',
+      setForm({ name: user.name, date: today(), type: '', distributor: '', other_distributor: '', shipper: '',
                 ology_halves: '', ology_sixths: '', kl_halves: '', kl_sixths: '', packing_slip_unavailable: false });
       setSlipFiles([]); setSlipPreviews([]);
       setPhotoSets([blankPhotoSet('')]);
@@ -323,6 +495,9 @@ function ProductionPhotos({ user, canUpload, onBack }) {
 
   const set = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
+  const isKL = form.type === 'keg_logistics';
+  const bolOrSlip = isKL ? 'Bill of Lading (BOL)' : 'Packing Slip';
+
   return (
     <div className="min-h-screen bg-gray-900">
 
@@ -342,16 +517,16 @@ function ProductionPhotos({ user, canUpload, onBack }) {
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-cream text-2xl sm:text-4xl font-bold">Production Photos</h2>
-              <p className="text-gray-400 mt-1 text-sm sm:mt-2">Submit distro and keg return documentation</p>
+              <p className="text-gray-400 mt-1 text-sm sm:mt-2">Submit distro, keg return, and KL keg documentation</p>
             </div>
           </div>
-          <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700 w-full sm:w-auto sm:inline-flex">
-            {['form', 'log'].map(v => (
+          <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700">
+            {[['form', 'New Submission'], ['log', 'Submission Log'], ['kl_inventory', 'KL Inventory']].map(([v, label]) => (
               <button key={v} onClick={() => setView(v)}
-                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
+                className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold transition ${
                   view === v ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
                 }`}>
-                {v === 'form' ? 'New Submission' : 'Submission Log'}
+                {label}
               </button>
             ))}
           </div>
@@ -385,11 +560,17 @@ function ProductionPhotos({ user, canUpload, onBack }) {
               {/* Type selector */}
               <div>
                 <label className="block text-gray-400 text-sm mb-2">Type <span className="text-orange-500">*</span></label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[['distro', 'Distro'], ['keg_return', 'Keg Return']].map(([val, label]) => (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    ['distro',        'Distro'],
+                    ['keg_return',    'Ology Keg Return'],
+                    ['keg_logistics', 'Keg Logistics'],
+                  ].map(([val, label]) => (
                     <button type="button" key={val} onClick={() => {
-                      setForm(p => ({ ...p, type: val, distributor: '' }));
-                      setPhotoSets([blankPhotoSet(val === 'keg_return' ? 'Keg Return' : '')]);
+                      setForm(p => ({ ...p, type: val, distributor: '', shipper: '' }));
+                      setPhotoSets([blankPhotoSet(
+                        val === 'keg_return' ? 'Keg Return' : val === 'keg_logistics' ? 'BOL' : ''
+                      )]);
                     }}
                       className={`py-3 rounded-lg text-sm font-semibold border transition ${
                         form.type === val
@@ -404,8 +585,8 @@ function ProductionPhotos({ user, canUpload, onBack }) {
               </div>
             </div>
 
-            {/* ── Distributor ── */}
-            {form.type && (
+            {/* ── Distributor (distro + keg_return) ── */}
+            {(form.type === 'distro' || form.type === 'keg_return') && (
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
                 <h3 className="text-white font-semibold text-base">Distributor</h3>
                 <div>
@@ -426,18 +607,26 @@ function ProductionPhotos({ user, canUpload, onBack }) {
               </div>
             )}
 
+            {/* ── Shipper (keg_logistics only) ── */}
+            {isKL && (
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
+                <h3 className="text-white font-semibold text-base">Shipper</h3>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-1.5">Shipper / Carrier <span className="text-orange-500">*</span></label>
+                  <input type="text" value={form.shipper} onChange={set('shipper')} placeholder="e.g. UPS, FedEx, Estes…"
+                    className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                </div>
+              </div>
+            )}
+
             {/* ── Keg Counts ── */}
             {form.type && (
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
                 <h3 className="text-white font-semibold text-base">Keg Counts</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    ['ology_halves', 'Ology 1/2 BBL'],
-                    ['ology_sixths', 'Ology 1/6 BBL'],
-                    ...(form.type !== 'keg_return' ? [
-                      ['kl_halves', 'Keg Logistics 1/2 BBL'],
-                      ['kl_sixths', 'Keg Logistics 1/6 BBL'],
-                    ] : []),
+                    ...(!isKL ? [['ology_halves', 'Ology 1/2 BBL'], ['ology_sixths', 'Ology 1/6 BBL']] : []),
+                    ...(form.type !== 'keg_return' ? [['kl_halves', 'Keg Logistics 1/2 BBL'], ['kl_sixths', 'Keg Logistics 1/6 BBL']] : []),
                   ].map(([field, label]) => (
                     <div key={field}>
                       <label className="block text-gray-400 text-sm mb-1.5">{label}</label>
@@ -449,15 +638,15 @@ function ProductionPhotos({ user, canUpload, onBack }) {
               </div>
             )}
 
-            {/* ── Packing Slip ── */}
+            {/* ── Packing Slip / BOL ── */}
             {form.type && (
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
-                <h3 className="text-white font-semibold text-base">Packing Slip <span className="text-orange-500">*</span></h3>
+                <h3 className="text-white font-semibold text-base">{bolOrSlip} <span className="text-orange-500">*</span></h3>
 
                 {!form.packing_slip_unavailable && (
                   <DropZone
                     files={slipFiles} previews={slipPreviews} maxFiles={10}
-                    label="Drop packing slip photos here or click to upload"
+                    label={`Drop ${isKL ? 'BOL' : 'packing slip'} photos here or click to upload`}
                     onChange={(f, p) => { setSlipFiles(f); setSlipPreviews(p); }}
                   />
                 )}
@@ -467,13 +656,13 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                     onChange={e => setForm(p => ({ ...p, packing_slip_unavailable: e.target.checked }))}
                     className="mt-0.5 accent-orange-500" />
                   <span className="text-gray-300 text-sm">
-                    Packing Slip not Available — I understand I am supposed to upload a picture of the packing slip, but I do not currently have it.
+                    {bolOrSlip} not Available — I understand I am supposed to upload a picture of the {isKL ? 'BOL' : 'packing slip'}, but I do not currently have it.
                   </span>
                 </label>
 
                 {form.packing_slip_unavailable && (
                   <div className="px-4 py-3 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-sm font-semibold">
-                    ⚠ PLEASE ENSURE THAT THE PACKING SLIP IS UPLOADED AS SOON AS POSSIBLE
+                    ⚠ PLEASE ENSURE THAT THE {bolOrSlip.toUpperCase()} IS UPLOADED AS SOON AS POSSIBLE
                   </div>
                 )}
               </div>
@@ -493,9 +682,9 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-gray-400 text-sm mb-1.5">Type of Picture</label>
-                    {form.type === 'keg_return' ? (
+                    {(form.type === 'keg_return' || isKL) ? (
                       <div className="w-full bg-gray-700/50 text-white px-3 py-2.5 rounded-lg text-sm border border-gray-600">
-                        Keg Return
+                        {form.type === 'keg_return' ? 'Keg Return' : 'BOL'}
                       </div>
                     ) : (
                       <select value={set.type} onChange={e => updateSet(i, 'type', e.target.value)}
@@ -560,7 +749,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           <p className="text-gray-400 text-xs mt-0.5">{fmtDate(s.submission_date)}</p>
                         </div>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded text-white shrink-0"
-                          style={{ backgroundColor: s.submission_type === 'distro' ? '#F05A28' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
+                          style={{ backgroundColor: typeColor(s.submission_type) }}>
                           {fmtType(s.submission_type)}
                         </span>
                       </div>
@@ -569,13 +758,16 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           {s.distributor === 'Other' ? s.other_distributor : s.distributor}
                         </p>
                       )}
+                      {s.shipper && (
+                        <p className="text-gray-400 text-xs mb-2">{s.shipper}</p>
+                      )}
                       <div className="flex items-center justify-between">
                         <div className="text-gray-500 text-xs">
                           {s.photo_count} photo{s.photo_count !== 1 ? 's' : ''}
                           {s.packing_slip_unavailable
-                            ? <span className="ml-2 text-amber-400">⚠ no slip</span>
+                            ? <span className="ml-2 text-amber-400">⚠ no doc</span>
                             : s.slip_count > 0
-                              ? <span className="ml-2">+ {s.slip_count} slip</span>
+                              ? <span className="ml-2">+ {s.slip_count} doc</span>
                               : null}
                         </div>
                         <div className="flex items-center gap-4">
@@ -599,7 +791,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                         <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Date</th>
                         <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Name</th>
                         <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Type</th>
-                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Distributor</th>
+                        <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">Distributor / Shipper</th>
                         <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-4 hidden md:table-cell">Photos</th>
                         <th className="px-6 py-4" />
                       </tr>
@@ -611,19 +803,23 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                           <td className="px-6 py-4 text-white text-sm">{s.submitted_by_name}</td>
                           <td className="px-6 py-4">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded text-white"
-                              style={{ backgroundColor: s.submission_type === 'distro' ? '#F05A28' : s.submission_type === 'keg_return' ? '#2563eb' : '#6b7280' }}>
+                              style={{ backgroundColor: typeColor(s.submission_type) }}>
                               {fmtType(s.submission_type)}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-gray-400 text-sm">
-                            {s.distributor === 'Other' ? s.other_distributor : (s.distributor || '—')}
+                            {s.shipper
+                              ? s.shipper
+                              : s.distributor === 'Other'
+                                ? s.other_distributor
+                                : (s.distributor || '—')}
                           </td>
                           <td className="px-6 py-4 text-gray-400 text-sm hidden md:table-cell">
                             {s.photo_count} photo{s.photo_count !== 1 ? 's' : ''}
                             {s.packing_slip_unavailable
-                              ? <span className="ml-2 text-amber-400 text-xs">⚠ no slip</span>
+                              ? <span className="ml-2 text-amber-400 text-xs">⚠ no doc</span>
                               : s.slip_count > 0
-                                ? <span className="ml-2 text-gray-500 text-xs">+ {s.slip_count} slip</span>
+                                ? <span className="ml-2 text-gray-500 text-xs">+ {s.slip_count} doc</span>
                                 : null}
                           </td>
                           <td className="px-6 py-4 flex items-center gap-4">
@@ -643,6 +839,10 @@ function ProductionPhotos({ user, canUpload, onBack }) {
             )}
           </div>
         )}
+
+        {/* ── KL INVENTORY ─────────────────────────────────────────────────── */}
+        {view === 'kl_inventory' && <KLInventoryView canUpload={canUpload} />}
+
       </main>
 
       {detail && <DetailModal submission={detail} onClose={() => setDetail(null)} />}

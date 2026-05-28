@@ -664,11 +664,52 @@ app.get('/api/production/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// KL keg inventory
+app.get('/api/production/kl-inventory', authenticateToken, async (req, res) => {
+  try {
+    const settings = await pool.query('SELECT * FROM kl_keg_settings WHERE id = 1');
+    const s = settings.rows[0] || { starting_halves: 0, starting_sixths: 0 };
+
+    const txns = await pool.query(`
+      SELECT id, submission_date, submission_type, kl_halves, kl_sixths,
+             submitted_by_name, distributor, other_distributor, shipper
+      FROM production_submissions
+      WHERE (submission_type = 'keg_logistics' AND (kl_halves > 0 OR kl_sixths > 0))
+         OR (submission_type = 'distro' AND (kl_halves > 0 OR kl_sixths > 0))
+      ORDER BY submission_date DESC, created_at DESC
+    `);
+
+    const sorted = [...txns.rows].reverse();
+    let halves = s.starting_halves;
+    let sixths = s.starting_sixths;
+    for (const t of sorted) {
+      if (t.submission_type === 'keg_logistics') { halves += t.kl_halves; sixths += t.kl_sixths; }
+      else { halves -= t.kl_halves; sixths -= t.kl_sixths; }
+    }
+
+    res.json({ starting_halves: s.starting_halves, starting_sixths: s.starting_sixths,
+               current_halves: halves, current_sixths: sixths, transactions: txns.rows });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+app.put('/api/production/kl-inventory/settings', authenticateToken, async (req, res) => {
+  const { starting_halves, starting_sixths } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO kl_keg_settings (id, starting_halves, starting_sixths, updated_at, updated_by_name)
+       VALUES (1, $1, $2, NOW(), $3)
+       ON CONFLICT (id) DO UPDATE SET starting_halves=$1, starting_sixths=$2, updated_at=NOW(), updated_by_name=$3`,
+      [parseInt(starting_halves) || 0, parseInt(starting_sixths) || 0, req.user.name]
+    );
+    res.json({ message: 'Updated' });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
 // Create a submission
 app.post('/api/production', authenticateToken, productionUpload.any(), async (req, res) => {
   const {
     submitted_by_name, submission_date, submission_type,
-    distributor, other_distributor,
+    distributor, other_distributor, shipper,
     ology_halves, ology_sixths, kl_halves, kl_sixths,
     packing_slip_unavailable, photo_sets_meta,
   } = req.body;
@@ -682,11 +723,11 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
     const subResult = await pool.query(
       `INSERT INTO production_submissions
          (submitted_by_id, submitted_by_name, submission_date, submission_type,
-          distributor, other_distributor, ology_halves, ology_sixths,
+          distributor, other_distributor, shipper, ology_halves, ology_sixths,
           kl_halves, kl_sixths, packing_slip_unavailable)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [req.user.id, submitted_by_name, submission_date, submission_type,
-       distributor || null, other_distributor || null,
+       distributor || null, other_distributor || null, shipper || null,
        parseInt(ology_halves) || 0, parseInt(ology_sixths) || 0,
        parseInt(kl_halves) || 0, parseInt(kl_sixths) || 0,
        packing_slip_unavailable === 'true']
