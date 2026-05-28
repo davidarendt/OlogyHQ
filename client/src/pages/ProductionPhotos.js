@@ -679,26 +679,19 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-1.5">Type of Picture</label>
-                    {(form.type === 'keg_return' || isKL) ? (
-                      <div className="w-full bg-gray-700/50 text-white px-3 py-2.5 rounded-lg text-sm border border-gray-600">
-                        {form.type === 'keg_return' ? 'Keg Return' : 'BOL'}
-                      </div>
-                    ) : (
-                      <select value={set.type} onChange={e => updateSet(i, 'type', e.target.value)}
-                        className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-                        <option value="">Please Select</option>
-                        {PHOTO_TYPES.filter(t => t !== 'Keg Return').map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-1.5">Product Date <span className="text-gray-600 text-xs">(Core only)</span></label>
-                    <input type="date" value={set.product_date} onChange={e => updateSet(i, 'product_date', e.target.value)}
-                      className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                  </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-1.5">Type of Picture</label>
+                  {(form.type === 'keg_return' || isKL) ? (
+                    <div className="w-full bg-gray-700/50 text-white px-3 py-2.5 rounded-lg text-sm border border-gray-600">
+                      {form.type === 'keg_return' ? 'Keg Return' : 'BOL'}
+                    </div>
+                  ) : (
+                    <select value={set.type} onChange={e => updateSet(i, 'type', e.target.value)}
+                      className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                      <option value="">Please Select</option>
+                      {PHOTO_TYPES.filter(t => t !== 'Keg Return').map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  )}
                 </div>
 
                 <DropZone

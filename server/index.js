@@ -752,8 +752,8 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
       if (!setFiles.length && !meta.type) continue;
 
       const setResult = await pool.query(
-        'INSERT INTO production_photo_sets (submission_id, sort_order, photo_type, product_date, description) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-        [sub.id, i, meta.type || null, meta.product_date || null, meta.description || null]
+        'INSERT INTO production_photo_sets (submission_id, sort_order, photo_type, product_date) VALUES ($1,$2,$3,$4) RETURNING *',
+        [sub.id, i, meta.type || null, meta.product_date || null]
       );
       const setId = setResult.rows[0].id;
 
