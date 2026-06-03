@@ -22,7 +22,6 @@ const TOOL_META = {
   '86ed-customers':        { Icon: UserX,           description: 'Track customers removed from our locations',              page: '86ed-customers' },
   'packaging-log':         { Icon: Package,         description: 'Log kegs and cases packaged from each beer',              page: 'packaging-log' },
   'coffee-keeper':         { Icon: Coffee,          description: 'Browse and manage coffee drink recipes',                  page: 'coffee-keeper' },
-  'production-checklists': { Icon: ClipboardList,   description: 'Checklists for brewery production operations',            page: 'production-checklists' },
   'production-weekly':     { Icon: CalendarCheck,   description: 'Weekly brew and packaging task board',                     page: 'production-weekly' },
   'user-management':       { Icon: Users,           description: 'Manage user accounts and roles',                          page: 'usermanagement' },
 };

@@ -1,0 +1,35 @@
+Copied 19 already-geocoded entries from batch 0
+[1/1185] NO  LOCAL STORE INC: no result for 'Local Store Inc' in Tallahassee
+[2/1185] NO  THE LIBERTY BAR & RESTAURANT: no result for 'The Liberty Bar & Restaurant' in Tallahassee
+[3/1185] NO  BIRDS APHRODISIAC OYSTER SHACK: no result for 'Birds Aphrodisiac Oyster Shack' in Tallahassee
+[4/1185] NO  TPAC THE MOON: no result for 'Tpac The Moon' in Tallahassee
+[5/1185] NO  THE ORIGINAL MARKET SQUARE LIQUORS: no result for 'The Original Market Square Liquors' in Tallahassee
+[6/1185] NO  BRADFORDVILLE SUSIE Q S FOODS: no result for 'Bradfordville Susie Q S Foods' in Tallahassee
+[7/1185] NO  SMITTY S TAPHOUSE & GRILL: no result for 'Smitty S Taphouse & Grill' in Tallahassee
+[8/1185] NO  GEO S POOL & PUB: no result for 'Geo S Pool & Pub' in Tallahassee
+[9/1185] NO  THE BRASS TAP - MIDTOWN: no result for 'The Brass Tap - Midtown' in Tallahassee
+[10/1185] NO  GAINES STREET PIES MIDTOWN: no result for 'Gaines Street Pies Midtown' in Tallahassee
+[11/1185] NO  THE WILBURY/THE IRON DAISY: no result for 'The Wilbury/The Iron Daisy' in Tallahassee
+[12/1185] NO  PUBLIX #1798: no result for 'Publix Supermarket' in Tallahassee
+[13/1185] NO  ISLAND WING COMPANY: no result for 'Island Wing Company' in Tallahassee
+[14/1185] NO  BUMPA S LOCAL 349: no result for 'Bumpa S Local 349' in Tallahassee
+[15/1185] NO  ABC LIQUORS #217: no result for 'ABC Fine Wine and Spirits' in Tallahassee
+[16/1185] NO  HANGAR 38: no result for 'Hangar 38' in Tallahassee
+[17/1185] NO  COMMUNITY COOP MARKET: no result for 'Community Coop Market' in Tallahassee
+[18/1185] NO  DRURY PLAZA HOTEL TALLAHASSEE: no result for 'Drury Plaza Hotel Tallahassee' in Tallahassee
+[19/1185] NO  ROCKYS WAKULLA: no result for 'Rockys Wakulla' in Tallahassee
+[20/1185] NO  GOLDEN EAGLE GOLF & CTRY CLUB: no result for 'Golden Eagle Golf & Ctry Club' in Tallahassee
+[21/1185] NO  ABC LIQUORS #215: no result for 'ABC Fine Wine and Spirits' in Tallahassee
+[22/1185] NO  PIESANOS STONE FRIED PIZZA-TALL: no result for 'Piesanos Stone Fried Pizza-Tall' in Tallahassee
+[23/1185] NO  AC HOTEL: no result for 'Ac Hotel' in Tallahassee
+[24/1185] NO  HAYWARD HOUSE: no result for 'Hayward House' in Tallahassee
+[25/1185] NO  BANNERMAN MARKET SQUARE LIQUOR: no result for 'Bannerman Market Square Liquor' in Tallahassee
+[26/1185] NO  WALK-ON S SPORTS BISTREAUX: no result for 'Walk-On S Sports Bistreaux' in Tallahassee
+[27/1185] NO  RICCARDO S RESTAURANT: no result for 'Riccardo S Restaurant' in Tallahassee
+[28/1185] NO  EDISON RESTAURANT: no result for 'Edison Restaurant' in Tallahassee
+[29/1185] NO  THE FISH CAMP: no result for 'The Fish Camp' in Tallahassee
+[30/1185] NO  MARKET LIQUOR #2: no result for 'Market Liquor #2' in Tallahassee
+[31/1185] NO  DISTRICT 850: no result for 'District 850' in Tallahassee
+[32/1185] NO  BO-LYNN GROCERY: no result for 'Bo-Lynn Grocery' in Tallahassee
+[33/1185] NO  GAINES STREET PIES EAST: no result for 'Gaines Street Pies East' in Tallahassee
+[34/1185] NO  THE SOCIAL MONTICELLO: no result for 'The Social Monticello' in Tallahassee

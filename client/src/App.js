@@ -18,7 +18,6 @@ import ProductionSchedule from './pages/ProductionSchedule';
 import EightySixedCustomers from './pages/EightySixedCustomers';
 import PackagingLog from './pages/PackagingLog';
 import CoffeeKeeper from './pages/CoffeeKeeper';
-import ProductionChecklists from './pages/ProductionChecklists';
 import ProductionWeekly from './pages/ProductionWeekly';
 
 const API = process.env.REACT_APP_API_URL || '';
@@ -130,7 +129,6 @@ function App() {
   if (page === '86ed-customers') return <EightySixedCustomers user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'packaging-log') return <PackagingLog user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'coffee-keeper') return <CoffeeKeeper user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
-  if (page === 'production-checklists') return <ProductionChecklists user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'production-weekly') return <ProductionWeekly user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
