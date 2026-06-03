@@ -54,21 +54,23 @@ function CocktailDetail({ cocktail, batched, onClose, onEdit, onViewBatched, onR
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 sm:p-8" onClick={onClose}>
       <div
-        className="bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto"
+        className={`bg-gray-700 border border-gray-500/40 shadow-2xl shadow-black/70 rounded-2xl w-full max-h-[90vh] ${
+          hasPhoto ? 'sm:max-w-4xl sm:flex sm:flex-row sm:overflow-hidden overflow-y-auto' : 'max-w-xl overflow-y-auto'
+        }`}
         onClick={e => e.stopPropagation()}
       >
-        {/* Photo */}
+        {/* Photo — left panel on desktop, stacked on mobile */}
         {hasPhoto && (
-          <div className="w-full h-56 bg-gray-800 rounded-t-2xl overflow-hidden">
+          <div className="sm:w-2/5 sm:shrink-0 bg-gray-800 sm:rounded-l-2xl overflow-hidden sm:flex sm:items-center">
             <PhotoImg
               src={`${API}/api/cocktails/${cocktail.id}/photo`}
               alt={cocktail.name}
-              className="w-full h-full object-cover"
+              className="w-full h-auto"
             />
           </div>
         )}
 
-        <div className="p-8">
+        <div className={`p-8 ${hasPhoto ? 'sm:flex-1 sm:overflow-y-auto' : ''}`}>
           {/* Header */}
           <div className="flex items-start justify-between gap-4 mb-6">
             <div className="flex-1 min-w-0">
@@ -1164,15 +1166,6 @@ function CocktailKeeper({ user, canUpload, onBack }) {
                   onClick={() => setViewCocktail(c)}
                   className="relative bg-gray-800 border border-gray-700 rounded-xl overflow-hidden cursor-pointer hover:border-orange-500 transition group"
                 >
-                  {c.photo_filename && (
-                    <div className="w-full h-32 bg-gray-900 overflow-hidden">
-                      <PhotoImg
-                        src={`${API}/api/cocktails/${c.id}/photo`}
-                        alt={c.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                  )}
                   <div className="p-4">
                     <h3 className="text-white font-semibold text-base group-hover:text-orange-400 transition leading-tight mb-1">{c.name}</h3>
                     <div className="flex flex-wrap gap-1 mb-2">
