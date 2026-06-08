@@ -614,6 +614,26 @@ app.delete('/api/hr-documents/:id', authenticateToken, checkHRPermission, async 
 const productionUploadDir = path.join(__dirname, 'uploads', 'production-photos');
 const productionUpload = multer({ storage: memoryStorage, limits: { fileSize: 50 * 1024 * 1024 } });
 
+// Generate signed upload URLs so the browser can upload files directly to Supabase
+app.post('/api/production/upload-tokens', authenticateToken, async (req, res) => {
+  try {
+    const files = Array.isArray(req.body.files) ? req.body.files : [];
+    const tokens = await Promise.all(files.map(async ({ ext }) => {
+      const cleanExt = (ext || 'jpg').replace(/^\./, '').toLowerCase();
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${cleanExt}`;
+      const { data, error } = await supabase.storage
+        .from('production-photos')
+        .createSignedUploadUrl(filename, { expiresIn: 300 });
+      if (error) throw error;
+      return { filename, signedUrl: data.signedUrl };
+    }));
+    res.json(tokens);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not create upload URLs' });
+  }
+});
+
 // Serve a production photo inline — must come before /:id route
 app.get('/api/production/photo/:filename', authenticateToken, async (req, res) => {
   try {
@@ -713,19 +733,16 @@ app.get('/api/production/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Create a submission
-app.post('/api/production', authenticateToken, productionUpload.any(), async (req, res) => {
+// Create a submission — files are pre-uploaded by browser; this endpoint only writes DB rows
+app.post('/api/production', authenticateToken, async (req, res) => {
   const {
     submitted_by_name, submission_date, submission_type,
     distributor, other_distributor, shipper,
     ology_halves, ology_sixths, kl_halves, kl_sixths,
-    packing_slip_unavailable, photo_sets_meta,
+    packing_slip_unavailable,
+    packing_slips,   // [{filename, original_name, mimetype}]
+    photo_sets,      // [{type, product_date, photos: [{filename, original_name, mimetype}]}]
   } = req.body;
-
-  let photoSetsMeta = [];
-  try { photoSetsMeta = JSON.parse(photo_sets_meta || '[]'); } catch {}
-
-  const files = req.files || [];
 
   try {
     const subResult = await pool.query(
@@ -738,40 +755,39 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
        distributor || null, other_distributor || null, shipper || null,
        parseInt(ology_halves) || 0, parseInt(ology_sixths) || 0,
        parseInt(kl_halves) || 0, parseInt(kl_sixths) || 0,
-       packing_slip_unavailable === 'true']
+       !!packing_slip_unavailable]
     );
     const sub = subResult.rows[0];
 
-    // Packing slips — upload all in parallel
-    await Promise.all(files.filter(f => f.fieldname === 'packing_slips').map(async file => {
-      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-      await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
-      await pool.query(
-        'INSERT INTO production_photos (submission_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,true,$2,$3,$4)',
-        [sub.id, filename, file.originalname, file.mimetype]
-      );
-    }));
+    // Packing slips
+    if (Array.isArray(packing_slips)) {
+      await Promise.all(packing_slips.map(({ filename, original_name, mimetype }) =>
+        pool.query(
+          'INSERT INTO production_photos (submission_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,true,$2,$3,$4)',
+          [sub.id, filename, original_name, mimetype]
+        )
+      ));
+    }
 
-    // Photo sets — create sets sequentially, upload photos within each set in parallel
-    for (let i = 0; i < photoSetsMeta.length; i++) {
-      const meta     = photoSetsMeta[i];
-      const setFiles = files.filter(f => f.fieldname === `photos_${i}`);
-      if (!setFiles.length && !meta.type) continue;
-
-      const setResult = await pool.query(
-        'INSERT INTO production_photo_sets (submission_id, sort_order, photo_type, product_date) VALUES ($1,$2,$3,$4) RETURNING *',
-        [sub.id, i, meta.type || null, meta.product_date || null]
-      );
-      const setId = setResult.rows[0].id;
-
-      await Promise.all(setFiles.map(async file => {
-        const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-        await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
-        await pool.query(
-          'INSERT INTO production_photos (submission_id, photo_set_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,$2,false,$3,$4,$5)',
-          [sub.id, setId, filename, file.originalname, file.mimetype]
+    // Photo sets
+    if (Array.isArray(photo_sets)) {
+      for (let i = 0; i < photo_sets.length; i++) {
+        const { type, product_date, photos } = photo_sets[i];
+        if (!photos?.length && !type) continue;
+        const setResult = await pool.query(
+          'INSERT INTO production_photo_sets (submission_id, sort_order, photo_type, product_date) VALUES ($1,$2,$3,$4) RETURNING *',
+          [sub.id, i, type || null, product_date || null]
         );
-      }));
+        const setId = setResult.rows[0].id;
+        if (Array.isArray(photos)) {
+          await Promise.all(photos.map(({ filename, original_name, mimetype }) =>
+            pool.query(
+              'INSERT INTO production_photos (submission_id, photo_set_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,$2,false,$3,$4,$5)',
+              [sub.id, setId, filename, original_name, mimetype]
+            )
+          ));
+        }
+      }
     }
 
     res.json(sub);

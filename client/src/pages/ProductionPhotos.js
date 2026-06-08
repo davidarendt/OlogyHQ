@@ -52,7 +52,7 @@ function blankPhotoSet(defaultType = '') {
 }
 
 // Fetches an image from the authenticated API and returns an object URL
-function PhotoImg({ filename, className, alt = '' }) {
+function PhotoImg({ filename, className, alt = '', onClick }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let url;
@@ -62,7 +62,49 @@ function PhotoImg({ filename, className, alt = '' }) {
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [filename]);
   if (!src) return <div className={`bg-gray-700 animate-pulse ${className}`} />;
-  return <img src={src} alt={alt} className={className} />;
+  return <img src={src} alt={alt} className={className} onClick={onClick} />;
+}
+
+// Full-screen lightbox for viewing/downloading a single photo
+function PhotoLightbox({ filename, originalName, onClose }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let url;
+    fetch(`${API}/api/production/photo/${filename}`, { credentials: 'include' })
+      .then(r => r.blob())
+      .then(b => { url = URL.createObjectURL(b); setSrc(url); });
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [filename]);
+
+  const handleDownload = () => {
+    if (!src) return;
+    const a = document.createElement('a');
+    a.href = src;
+    a.download = originalName || filename;
+    a.click();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <span className="text-gray-300 text-sm truncate max-w-xs">{originalName}</span>
+        <div className="flex items-center gap-3">
+          <button onClick={handleDownload} disabled={!src}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition"
+            style={{ backgroundColor: '#F05A28' }}>
+            Download
+          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none transition">×</button>
+        </div>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-4 min-h-0" onClick={e => e.stopPropagation()}>
+        {src
+          ? <img src={src} alt={originalName} className="max-w-full max-h-full object-contain rounded-lg" />
+          : <div className="w-48 h-48 bg-gray-800 rounded-xl animate-pulse" />
+        }
+      </div>
+    </div>
+  );
 }
 
 // Compress an image file via canvas before upload (skips PDFs)
@@ -154,6 +196,7 @@ function DropZone({ files, previews, onChange, maxFiles = 10, label = 'Drop file
 
 // ── Submission detail modal ───────────────────────────────────────────────────
 function DetailModal({ submission, onClose }) {
+  const [lightbox, setLightbox] = useState(null); // { filename, originalName }
   if (!submission) return null;
 
   const showOlogy = submission.submission_type !== 'keg_logistics';
@@ -214,8 +257,10 @@ function DetailModal({ submission, onClose }) {
               <div className="flex flex-wrap gap-3">
                 {submission.packing_slips.map(p => (
                   isImage(p.mimetype)
-                    ? <PhotoImg key={p.id} filename={p.filename} className="w-28 h-28 object-cover rounded-lg border border-gray-600 cursor-pointer hover:border-orange-500 transition"
-                        alt={p.original_name} />
+                    ? <PhotoImg key={p.id} filename={p.filename}
+                        className="w-28 h-28 object-cover rounded-lg border border-gray-600 cursor-pointer hover:border-orange-500 transition"
+                        alt={p.original_name}
+                        onClick={() => setLightbox({ filename: p.filename, originalName: p.original_name })} />
                     : <a key={p.id} href={`${API}/api/production/photo/${p.filename}`} target="_blank" rel="noreferrer"
                         className="flex items-center gap-2 px-3 py-2 bg-gray-700 rounded-lg text-gray-300 text-sm hover:text-white transition">
                         📄 {p.original_name}
@@ -242,7 +287,8 @@ function DetailModal({ submission, onClose }) {
                   isImage(p.mimetype)
                     ? <PhotoImg key={p.id} filename={p.filename}
                         className="w-28 h-28 object-cover rounded-lg border border-gray-600 cursor-pointer hover:border-orange-500 transition"
-                        alt={p.original_name} />
+                        alt={p.original_name}
+                        onClick={() => setLightbox({ filename: p.filename, originalName: p.original_name })} />
                     : <a key={p.id} href={`${API}/api/production/photo/${p.filename}`} target="_blank" rel="noreferrer"
                         className="flex items-center gap-2 px-3 py-2 bg-gray-700 rounded-lg text-gray-300 text-sm hover:text-white transition">
                         📄 {p.original_name}
@@ -253,6 +299,13 @@ function DetailModal({ submission, onClose }) {
           ))}
         </div>
       </div>
+      {lightbox && (
+        <PhotoLightbox
+          filename={lightbox.filename}
+          originalName={lightbox.originalName}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }
@@ -474,33 +527,72 @@ function ProductionPhotos({ user, canUpload, onBack }) {
     }
 
     setSubmitting(true);
-    const fd = new FormData();
-    fd.append('submitted_by_name',       form.name);
-    fd.append('submission_date',          form.date);
-    fd.append('submission_type',          form.type);
-    fd.append('distributor',              form.distributor);
-    fd.append('other_distributor',        form.other_distributor);
-    fd.append('shipper',                  form.shipper);
-    fd.append('ology_halves',             form.ology_halves || 0);
-    fd.append('ology_sixths',             form.ology_sixths || 0);
-    fd.append('kl_halves',                form.kl_halves || 0);
-    fd.append('kl_sixths',                form.kl_sixths || 0);
-    fd.append('packing_slip_unavailable', form.packing_slip_unavailable);
-    fd.append('photo_sets_meta', JSON.stringify(
-      photoSets.map(s => ({ type: s.type, product_date: s.product_date }))
-    ));
-    slipFiles.forEach(f => fd.append('packing_slips', f));
-    photoSets.forEach((set, i) => set.files.forEach(f => fd.append(`photos_${i}`, f)));
-
     try {
-      const res  = await fetch(`${API}/api/production`, { method: 'POST', credentials: 'include', body: fd });
-      const text = await res.text();
-      let data = {};
-      try { data = JSON.parse(text); } catch {
-        setError(`Upload failed — server returned an unexpected response. Try with fewer or smaller photos.`);
-        return;
-      }
+      // Build a flat list of all files with their role metadata
+      const allFiles = [
+        ...slipFiles.map(f => ({ file: f, role: 'slip' })),
+        ...photoSets.flatMap((set, i) => set.files.map(f => ({ file: f, role: 'set', setIdx: i }))),
+      ];
+
+      // Get signed upload URLs for every file in one batch request
+      const tokenRes = await fetch(`${API}/api/production/upload-tokens`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: allFiles.map(({ file }) => ({ ext: file.name.split('.').pop() })) }),
+      });
+      if (!tokenRes.ok) { setError('Could not start upload. Please try again.'); return; }
+      const tokens = await tokenRes.json(); // [{filename, signedUrl}]
+
+      // Upload all files directly to Supabase in parallel (bypass Netlify entirely)
+      await Promise.all(allFiles.map(({ file }, i) =>
+        fetch(tokens[i].signedUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        })
+      ));
+
+      // Build metadata payload using the filenames Supabase assigned
+      let tokenIdx = 0;
+      const packing_slips = slipFiles.map(f => ({
+        filename: tokens[tokenIdx++].filename,
+        original_name: f.name,
+        mimetype: f.type,
+      }));
+      const photo_sets = photoSets.map(set => {
+        const photos = set.files.map(f => ({
+          filename: tokens[tokenIdx++].filename,
+          original_name: f.name,
+          mimetype: f.type,
+        }));
+        return { type: set.type, product_date: set.product_date, photos };
+      });
+
+      // POST only JSON metadata — no files, so no Netlify body-size limit
+      const res = await fetch(`${API}/api/production`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submitted_by_name:       form.name,
+          submission_date:          form.date,
+          submission_type:          form.type,
+          distributor:              form.distributor,
+          other_distributor:        form.other_distributor,
+          shipper:                  form.shipper,
+          ology_halves:             form.ology_halves || 0,
+          ology_sixths:             form.ology_sixths || 0,
+          kl_halves:                form.kl_halves || 0,
+          kl_sixths:                form.kl_sixths || 0,
+          packing_slip_unavailable: form.packing_slip_unavailable,
+          packing_slips,
+          photo_sets,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.message || 'Server error'); return; }
+
       setSuccess('Submission saved successfully!');
       setForm({ name: user.name, date: today(), type: '', distributor: '', other_distributor: '', shipper: '',
                 ology_halves: '', ology_sixths: '', kl_halves: '', kl_sixths: '', packing_slip_unavailable: false });
