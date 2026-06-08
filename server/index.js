@@ -643,28 +643,7 @@ app.get('/api/production', authenticateToken, async (req, res) => {
   }
 });
 
-// Get single submission with all sets and photos
-app.get('/api/production/:id', authenticateToken, async (req, res) => {
-  try {
-    const sub = await pool.query('SELECT * FROM production_submissions WHERE id = $1', [req.params.id]);
-    if (!sub.rows[0]) return res.status(404).json({ message: 'Not found' });
-    const sets   = await pool.query('SELECT * FROM production_photo_sets WHERE submission_id = $1 ORDER BY sort_order', [req.params.id]);
-    const photos = await pool.query('SELECT * FROM production_photos WHERE submission_id = $1 ORDER BY created_at',      [req.params.id]);
-    res.json({
-      ...sub.rows[0],
-      packing_slips: photos.rows.filter(p => p.is_packing_slip),
-      photo_sets: sets.rows.map(set => ({
-        ...set,
-        photos: photos.rows.filter(p => p.photo_set_id === set.id),
-      })),
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// KL keg inventory
+// KL keg inventory — must be before /:id
 app.get('/api/production/kl-inventory', authenticateToken, async (req, res) => {
   try {
     const settings = await pool.query('SELECT * FROM kl_keg_settings WHERE id = 1');
@@ -703,6 +682,27 @@ app.put('/api/production/kl-inventory/settings', authenticateToken, async (req, 
     );
     res.json({ message: 'Updated' });
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Get single submission with all sets and photos
+app.get('/api/production/:id', authenticateToken, async (req, res) => {
+  try {
+    const sub = await pool.query('SELECT * FROM production_submissions WHERE id = $1', [req.params.id]);
+    if (!sub.rows[0]) return res.status(404).json({ message: 'Not found' });
+    const sets   = await pool.query('SELECT * FROM production_photo_sets WHERE submission_id = $1 ORDER BY sort_order', [req.params.id]);
+    const photos = await pool.query('SELECT * FROM production_photos WHERE submission_id = $1 ORDER BY created_at',      [req.params.id]);
+    res.json({
+      ...sub.rows[0],
+      packing_slips: photos.rows.filter(p => p.is_packing_slip),
+      photo_sets: sets.rows.map(set => ({
+        ...set,
+        photos: photos.rows.filter(p => p.photo_set_id === set.id),
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // Create a submission
