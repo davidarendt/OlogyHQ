@@ -66,7 +66,7 @@ function PhotoImg({ filename, className, alt = '' }) {
 }
 
 // Compress an image file via canvas before upload (skips PDFs)
-async function compressImage(file, maxDim = 1920, quality = 0.82) {
+async function compressImage(file, maxDim = 1280, quality = 0.72) {
   if (!file.type.startsWith('image/')) return file;
   return new Promise(resolve => {
     const img = new Image();
@@ -494,16 +494,21 @@ function ProductionPhotos({ user, canUpload, onBack }) {
 
     try {
       const res  = await fetch(`${API}/api/production`, { method: 'POST', credentials: 'include', body: fd });
-      const data = await res.json();
-      if (!res.ok) { setError(data.message); return; }
+      const text = await res.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch {
+        setError(`Upload failed — server returned an unexpected response. Try with fewer or smaller photos.`);
+        return;
+      }
+      if (!res.ok) { setError(data.message || 'Server error'); return; }
       setSuccess('Submission saved successfully!');
       setForm({ name: user.name, date: today(), type: '', distributor: '', other_distributor: '', shipper: '',
                 ology_halves: '', ology_sixths: '', kl_halves: '', kl_sixths: '', packing_slip_unavailable: false });
       setSlipFiles([]); setSlipPreviews([]);
       setPhotoSets([blankPhotoSet('')]);
       fetchSubmissions();
-    } catch { setError('Submission failed. Please try again.'); }
-    finally   { setSubmitting(false); }
+    } catch (err) { setError('Submission failed. Please try again.'); }
+    finally        { setSubmitting(false); }
   };
 
   // ── Delete submission ──────────────────────────────────────────────────────
