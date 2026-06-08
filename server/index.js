@@ -734,18 +734,17 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
     );
     const sub = subResult.rows[0];
 
-    // Packing slips
-    for (const file of files.filter(f => f.fieldname === 'packing_slips')) {
-      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      const filename = unique + path.extname(file.originalname);
+    // Packing slips — upload all in parallel
+    await Promise.all(files.filter(f => f.fieldname === 'packing_slips').map(async file => {
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
       await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
       await pool.query(
         'INSERT INTO production_photos (submission_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,true,$2,$3,$4)',
         [sub.id, filename, file.originalname, file.mimetype]
       );
-    }
+    }));
 
-    // Photo sets
+    // Photo sets — create sets sequentially, upload photos within each set in parallel
     for (let i = 0; i < photoSetsMeta.length; i++) {
       const meta     = photoSetsMeta[i];
       const setFiles = files.filter(f => f.fieldname === `photos_${i}`);
@@ -757,15 +756,14 @@ app.post('/api/production', authenticateToken, productionUpload.any(), async (re
       );
       const setId = setResult.rows[0].id;
 
-      for (const file of setFiles) {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const filename = unique + path.extname(file.originalname);
+      await Promise.all(setFiles.map(async file => {
+        const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
         await uploadToSupabase('production-photos', filename, file.buffer, file.mimetype);
         await pool.query(
           'INSERT INTO production_photos (submission_id, photo_set_id, is_packing_slip, filename, original_name, mimetype) VALUES ($1,$2,false,$3,$4,$5)',
           [sub.id, setId, filename, file.originalname, file.mimetype]
         );
-      }
+      }));
     }
 
     res.json(sub);

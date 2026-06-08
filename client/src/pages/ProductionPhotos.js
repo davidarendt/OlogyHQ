@@ -65,13 +65,39 @@ function PhotoImg({ filename, className, alt = '' }) {
   return <img src={src} alt={alt} className={className} />;
 }
 
+// Compress an image file via canvas before upload (skips PDFs)
+async function compressImage(file, maxDim = 1920, quality = 0.82) {
+  if (!file.type.startsWith('image/')) return file;
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      const scale = Math.min(1, maxDim / Math.max(width, height));
+      width  = Math.round(width  * scale);
+      height = Math.round(height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => {
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 // ── File drop zone ────────────────────────────────────────────────────────────
 function DropZone({ files, previews, onChange, maxFiles = 10, label = 'Drop files or click to upload' }) {
   const inputRef = useRef();
   const [dragOver, setDragOver] = useState(false);
 
-  const addFiles = (newFiles) => {
-    const combined = [...files, ...Array.from(newFiles)].slice(0, maxFiles);
+  const addFiles = async (newFiles) => {
+    const compressed = await Promise.all(Array.from(newFiles).map(compressImage));
+    const combined = [...files, ...compressed].slice(0, maxFiles);
     const newPreviews = combined.map(f =>
       f.type.startsWith('image/') ? URL.createObjectURL(f) : null
     );
