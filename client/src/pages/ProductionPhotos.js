@@ -139,7 +139,9 @@ function DropZone({ files, previews, onChange, maxFiles = 10, label = 'Drop file
   const [dragOver, setDragOver] = useState(false);
 
   const addFiles = async (newFiles) => {
-    const compressed = await Promise.all(Array.from(newFiles).map(compressImage));
+    // Sequential — parallel canvas ops exhaust iOS memory and make toBlob return null
+    const compressed = [];
+    for (const f of Array.from(newFiles)) compressed.push(await compressImage(f));
     const combined = [...files, ...compressed].slice(0, maxFiles);
     const newPreviews = combined.map(f =>
       f.type.startsWith('image/') ? URL.createObjectURL(f) : null
@@ -589,14 +591,16 @@ function ProductionPhotos({ user, canUpload, onBack }) {
       if (!tokenRes.ok) { setError('Could not start upload. Please try again.'); return; }
       const tokens = await tokenRes.json(); // [{filename, signedUrl}]
 
-      // Upload all files directly to Supabase in parallel (bypass Netlify entirely)
-      await Promise.all(allFiles.map(({ file }, i) =>
-        fetch(tokens[i].signedUrl, {
+      // Upload files to Supabase sequentially — parallel uploads can fail silently on iOS
+      for (let i = 0; i < allFiles.length; i++) {
+        const { file } = allFiles[i];
+        const r = await fetch(tokens[i].signedUrl, {
           method: 'PUT',
           body: file,
           headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        })
-      ));
+        });
+        if (!r.ok) { setError(`Photo ${i + 1} failed to upload (${r.status}). Please try again.`); return; }
+      }
 
       // Build metadata payload using the filenames Supabase assigned
       let tokenIdx = 0;
