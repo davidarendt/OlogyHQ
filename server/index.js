@@ -1012,6 +1012,114 @@ app.delete('/api/sop-documents/:id', authenticateToken, checkSOPPermission, asyn
   }
 });
 
+// ── Equipment Manuals ──────────────────────────────────────────────────────────
+
+function checkEquipmentView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'equipment-manuals' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkEquipmentManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'equipment-manuals' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+// List all manuals
+app.get('/api/equipment-manuals', authenticateToken, checkEquipmentView, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM equipment_manuals ORDER BY category, sort_order, uploaded_at');
+    res.json(result.rows);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Get signed upload URL
+app.post('/api/equipment-manuals/presign', authenticateToken, checkEquipmentManage, async (req, res) => {
+  try {
+    const ext = (req.body.ext || 'pdf').replace(/^\./, '').toLowerCase();
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+    const { data, error } = await supabase.storage.from('equipment-manuals').createSignedUploadUrl(filename);
+    if (error) throw error;
+    res.json({ filename, signedUrl: data.signedUrl });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Commit after direct upload
+app.post('/api/equipment-manuals/commit', authenticateToken, checkEquipmentManage, async (req, res) => {
+  const { name, category, filename, original_name, mimetype, size } = req.body;
+  try {
+    const maxSort = await pool.query(`SELECT COALESCE(MAX(sort_order),0) AS m FROM equipment_manuals WHERE category=$1`, [category]);
+    const result = await pool.query(
+      `INSERT INTO equipment_manuals (name, category, filename, original_name, mimetype, size, uploaded_by_id, uploaded_by_name, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [name, category, filename, original_name, mimetype, parseInt(size) || 0,
+       req.user.id, req.user.name, maxSort.rows[0].m + 1]
+    );
+    res.json(result.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Update name/category — reorder must be before /:id
+app.patch('/api/equipment-manuals/reorder', authenticateToken, checkEquipmentManage, async (req, res) => {
+  const { orderedIds } = req.body;
+  try {
+    for (let i = 0; i < orderedIds.length; i++)
+      await pool.query('UPDATE equipment_manuals SET sort_order=$1 WHERE id=$2', [i, orderedIds[i]]);
+    res.json({ message: 'Reordered' });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/equipment-manuals/:id', authenticateToken, checkEquipmentManage, async (req, res) => {
+  const { name, category } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE equipment_manuals SET name=$1, category=$2 WHERE id=$3 RETURNING *',
+      [name, category, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// View inline (signed URL redirect)
+app.get('/api/equipment-manuals/:id/view', authenticateToken, checkEquipmentView, async (req, res) => {
+  try {
+    const doc = await pool.query('SELECT * FROM equipment_manuals WHERE id=$1', [req.params.id]);
+    if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
+    const url = await getSignedUrl('equipment-manuals', doc.rows[0].filename);
+    res.redirect(url);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Download
+app.get('/api/equipment-manuals/:id/download', authenticateToken, checkEquipmentView, async (req, res) => {
+  try {
+    const doc = await pool.query('SELECT * FROM equipment_manuals WHERE id=$1', [req.params.id]);
+    if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
+    const url = await getSignedUrl('equipment-manuals', doc.rows[0].filename);
+    res.redirect(url);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Delete
+app.delete('/api/equipment-manuals/:id', authenticateToken, checkEquipmentManage, async (req, res) => {
+  try {
+    const doc = await pool.query('SELECT filename FROM equipment_manuals WHERE id=$1', [req.params.id]);
+    if (!doc.rows.length) return res.status(404).json({ message: 'Not found' });
+    await supabase.storage.from('equipment-manuals').remove([doc.rows[0].filename]);
+    await pool.query('DELETE FROM equipment_manuals WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
 // ── Checklists ─────────────────────────────────────────────────────────────────
 
 function checkChecklistView(req, res, next) {
