@@ -617,9 +617,17 @@ const productionUpload = multer({ storage: memoryStorage, limits: { fileSize: 50
 // Serve a production photo inline — must come before /:id route
 app.get('/api/production/photo/:filename', authenticateToken, async (req, res) => {
   try {
-    const url = await getSignedUrl('production-photos', path.basename(req.params.filename));
-    res.redirect(url);
+    const filename = path.basename(req.params.filename);
+    const { data, error } = await supabase.storage.from('production-photos').download(filename);
+    if (error || !data) return res.status(404).json({ message: 'Not found' });
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const ext = path.extname(filename).toLowerCase();
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.pdf': 'application/pdf', '.heic': 'image/heic', '.heif': 'image/heif' };
+    res.setHeader('Content-Type', mimeMap[ext] || data.type || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
   } catch (err) {
+    console.error(err);
     res.status(404).json({ message: 'Not found' });
   }
 });
