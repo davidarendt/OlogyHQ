@@ -694,7 +694,7 @@ function ProductionPhotos({ user, canUpload, onBack }) {
             </div>
           </div>
           <div className="flex gap-2 bg-gray-800 p-1 rounded-lg border border-gray-700">
-            {[['form', 'New Submission'], ['log', 'Submission Log'], ['kl_inventory', 'KL Inventory']].map(([v, label]) => (
+            {[['form', 'New Submission'], ['log', 'Submission Log'], ...(canUpload ? [['kl_inventory', 'KL Inventory']] : [])].map(([v, label]) => (
               <button key={v} onClick={() => setView(v)}
                 className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold transition ${
                   view === v ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
