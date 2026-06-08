@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
   Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
-  UserX, Package, Users, Wrench, Coffee, ClipboardList, CalendarCheck,
+  UserX, Package, Users, Wrench, Coffee, CalendarCheck,
 } from 'lucide-react';
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
