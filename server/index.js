@@ -674,41 +674,66 @@ app.get('/api/production', authenticateToken, async (req, res) => {
 // KL keg inventory — must be before /:id
 app.get('/api/production/kl-inventory', authenticateToken, async (req, res) => {
   try {
-    const settings = await pool.query('SELECT * FROM kl_keg_settings WHERE id = 1');
-    const s = settings.rows[0] || { starting_halves: 0, starting_sixths: 0 };
+    // Most recent spot count becomes the baseline; fall back to kl_keg_settings if none recorded yet
+    const spotResult = await pool.query('SELECT * FROM kl_spot_counts ORDER BY created_at DESC LIMIT 1');
+    const lastSpot = spotResult.rows[0] || null;
 
+    let baseHalves, baseSixths, baseCutoff;
+    if (lastSpot) {
+      baseHalves  = lastSpot.halves;
+      baseSixths  = lastSpot.sixths;
+      baseCutoff  = new Date(lastSpot.created_at);
+    } else {
+      const settings = await pool.query('SELECT * FROM kl_keg_settings WHERE id = 1');
+      const s = settings.rows[0] || { starting_halves: 0, starting_sixths: 0 };
+      baseHalves = s.starting_halves;
+      baseSixths = s.starting_sixths;
+      baseCutoff = null;
+    }
+
+    // All KL transactions (for the full log)
     const txns = await pool.query(`
       SELECT id, submission_date, submission_type, kl_halves, kl_sixths,
-             submitted_by_name, distributor, other_distributor, shipper
+             submitted_by_name, distributor, other_distributor, shipper, created_at
       FROM production_submissions
       WHERE (submission_type = 'keg_logistics' AND (kl_halves > 0 OR kl_sixths > 0))
          OR (submission_type = 'distro' AND (kl_halves > 0 OR kl_sixths > 0))
-      ORDER BY submission_date DESC, created_at DESC
+      ORDER BY created_at DESC
     `);
 
-    const sorted = [...txns.rows].reverse();
-    let halves = s.starting_halves;
-    let sixths = s.starting_sixths;
-    for (const t of sorted) {
+    // All spot counts (for the full log)
+    const spots = await pool.query('SELECT * FROM kl_spot_counts ORDER BY created_at DESC');
+
+    // Running total: base + transactions since last spot count
+    let halves = baseHalves;
+    let sixths = baseSixths;
+    const sinceBase = baseCutoff
+      ? txns.rows.filter(t => new Date(t.created_at) > baseCutoff)
+      : txns.rows;
+    for (const t of [...sinceBase].reverse()) {
       if (t.submission_type === 'keg_logistics') { halves += t.kl_halves; sixths += t.kl_sixths; }
       else { halves -= t.kl_halves; sixths -= t.kl_sixths; }
     }
 
-    res.json({ starting_halves: s.starting_halves, starting_sixths: s.starting_sixths,
-               current_halves: halves, current_sixths: sixths, transactions: txns.rows });
+    // Merge transactions + spot counts into one chronological log
+    const log = [
+      ...txns.rows.map(t => ({ entry_type: 'transaction', ...t })),
+      ...spots.rows.map(s => ({ entry_type: 'spot_count', ...s })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    res.json({ last_spot: lastSpot, current_halves: halves, current_sixths: sixths, log });
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.put('/api/production/kl-inventory/settings', authenticateToken, async (req, res) => {
-  const { starting_halves, starting_sixths } = req.body;
+// Record a spot count — resets the running total baseline
+app.post('/api/production/kl-inventory/spot-count', authenticateToken, async (req, res) => {
+  const { halves, sixths } = req.body;
   try {
-    await pool.query(
-      `INSERT INTO kl_keg_settings (id, starting_halves, starting_sixths, updated_at, updated_by_name)
-       VALUES (1, $1, $2, NOW(), $3)
-       ON CONFLICT (id) DO UPDATE SET starting_halves=$1, starting_sixths=$2, updated_at=NOW(), updated_by_name=$3`,
-      [parseInt(starting_halves) || 0, parseInt(starting_sixths) || 0, req.user.name]
+    const result = await pool.query(
+      'INSERT INTO kl_spot_counts (halves, sixths, counted_by_name) VALUES ($1,$2,$3) RETURNING *',
+      [parseInt(halves) || 0, parseInt(sixths) || 0, req.user.name]
     );
-    res.json({ message: 'Updated' });
+    res.json(result.rows[0]);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 

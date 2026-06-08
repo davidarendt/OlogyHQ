@@ -310,13 +310,62 @@ function DetailModal({ submission, onClose }) {
   );
 }
 
+// ── Spot Count Modal ──────────────────────────────────────────────────────────
+function SpotCountModal({ onSave, onClose }) {
+  const [halves, setHalves] = useState('');
+  const [sixths, setSixths] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(halves, sixths);
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+          <h3 className="text-white font-semibold">Record Spot Count</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none transition">×</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-gray-400 text-sm">Enter the actual physical count of KL kegs on hand. This will reset the running total and be logged in the transaction history.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-400 text-sm mb-1.5">1/2 BBL on hand</label>
+              <input type="number" min="0" value={halves} onChange={e => setHalves(e.target.value)}
+                placeholder="0"
+                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            </div>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1.5">1/6 BBL on hand</label>
+              <input type="number" min="0" value={sixths} onChange={e => setSixths(e.target.value)}
+                placeholder="0"
+                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            </div>
+          </div>
+        </div>
+        <div className="px-6 pb-5 flex gap-3">
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
+            style={{ backgroundColor: '#F05A28' }}>
+            {saving ? 'Saving…' : 'Record Count'}
+          </button>
+          <button onClick={onClose}
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold text-gray-400 hover:text-white bg-gray-700 transition">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── KL Inventory view ─────────────────────────────────────────────────────────
 function KLInventoryView({ canUpload }) {
   const [data, setData]           = useState(null);
-  const [editing, setEditing]     = useState(false);
-  const [startHalves, setStartHalves] = useState('');
-  const [startSixths, setStartSixths] = useState('');
-  const [saving, setSaving]       = useState(false);
+  const [showSpotModal, setShowSpotModal] = useState(false);
 
   const load = useCallback(() => {
     fetch(`${API}/api/production/kl-inventory`, { credentials: 'include' })
@@ -325,27 +374,31 @@ function KLInventoryView({ canUpload }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const saveSettings = async () => {
-    setSaving(true);
-    await fetch(`${API}/api/production/kl-inventory/settings`, {
-      method: 'PUT',
+  const handleSpotCount = async (halves, sixths) => {
+    await fetch(`${API}/api/production/kl-inventory/spot-count`, {
+      method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ starting_halves: startHalves, starting_sixths: startSixths }),
+      body: JSON.stringify({ halves, sixths }),
     });
+    setShowSpotModal(false);
     load();
-    setEditing(false);
-    setSaving(false);
   };
 
   if (!data) return <div className="py-16 text-center text-gray-500 text-sm animate-pulse">Loading…</div>;
 
+  const { last_spot, current_halves, current_sixths, log } = data;
+
   return (
     <div className="space-y-6">
 
+      {showSpotModal && (
+        <SpotCountModal onSave={handleSpotCount} onClose={() => setShowSpotModal(false)} />
+      )}
+
       {/* Current stock */}
       <div className="grid grid-cols-2 gap-4">
-        {[['Current 1/2 BBL', data.current_halves], ['Current 1/6 BBL', data.current_sixths]].map(([label, val]) => (
+        {[['Current 1/2 BBL', current_halves], ['Current 1/6 BBL', current_sixths]].map(([label, val]) => (
           <div key={label} className="bg-gray-800 rounded-xl border border-gray-700 p-6 text-center">
             <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">{label}</p>
             <p className={`text-4xl font-bold ${val < 0 ? 'text-red-400' : 'text-white'}`}>{val}</p>
@@ -353,52 +406,28 @@ function KLInventoryView({ canUpload }) {
         ))}
       </div>
 
-      {/* Starting inventory */}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white font-semibold">Starting Inventory</h3>
-          {canUpload && !editing && (
-            <button onClick={() => { setStartHalves(data.starting_halves); setStartSixths(data.starting_sixths); setEditing(true); }}
-              className="text-sm text-orange-400 hover:text-orange-300 transition">Edit</button>
+      {/* Last spot count + record button */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-white font-semibold mb-1">Spot Count</h3>
+            {last_spot ? (
+              <p className="text-gray-400 text-sm">
+                Last counted <span className="text-white">{fmtDate(last_spot.created_at.split('T')[0])}</span> by {last_spot.counted_by_name}
+                {' — '}<span className="text-white">{last_spot.halves}</span> halves, <span className="text-white">{last_spot.sixths}</span> sixths
+              </p>
+            ) : (
+              <p className="text-gray-500 text-sm">No spot count recorded yet.</p>
+            )}
+          </div>
+          {canUpload && (
+            <button onClick={() => setShowSpotModal(true)}
+              className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
+              style={{ backgroundColor: '#F05A28' }}>
+              Record Count
+            </button>
           )}
         </div>
-
-        {editing ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-gray-400 text-sm mb-1.5">Starting 1/2 BBL</label>
-                <input type="number" min="0" value={startHalves} onChange={e => setStartHalves(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-              <div>
-                <label className="block text-gray-400 text-sm mb-1.5">Starting 1/6 BBL</label>
-                <input type="number" min="0" value={startSixths} onChange={e => setStartSixths(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={saveSettings} disabled={saving}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-50"
-                style={{ backgroundColor: '#F05A28' }}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button onClick={() => setEditing(false)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white bg-gray-700 transition">
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            {[['1/2 BBL', data.starting_halves], ['1/6 BBL', data.starting_sixths]].map(([label, val]) => (
-              <div key={label}>
-                <p className="text-gray-500 text-xs uppercase tracking-wider">{label}</p>
-                <p className="text-white text-xl font-bold mt-0.5">{val}</p>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Transaction log */}
@@ -406,15 +435,15 @@ function KLInventoryView({ canUpload }) {
         <div className="px-6 py-4 border-b border-gray-700">
           <h3 className="text-white font-semibold">Transaction Log</h3>
         </div>
-        {data.transactions.length === 0 ? (
-          <div className="py-12 text-center text-gray-500 text-sm">No transactions yet.</div>
+        {log.length === 0 ? (
+          <div className="py-12 text-center text-gray-500 text-sm">No activity yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">Direction</th>
+                  <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">Type</th>
                   <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">From / To</th>
                   <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">1/2 BBL</th>
                   <th className="text-right text-gray-400 text-xs font-semibold uppercase tracking-wider px-6 py-3">1/6 BBL</th>
@@ -422,14 +451,30 @@ function KLInventoryView({ canUpload }) {
                 </tr>
               </thead>
               <tbody>
-                {data.transactions.map(t => {
-                  const isIn = t.submission_type === 'keg_logistics';
+                {log.map(entry => {
+                  if (entry.entry_type === 'spot_count') {
+                    return (
+                      <tr key={`sc-${entry.id}`} className="border-b border-gray-700 last:border-0 bg-indigo-950/40">
+                        <td className="px-6 py-3 text-white text-sm whitespace-nowrap">{fmtDate(entry.created_at.split('T')[0])}</td>
+                        <td className="px-6 py-3">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded text-white bg-indigo-600">
+                            ◉ Spot Count
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-gray-500 text-sm">—</td>
+                        <td className="px-6 py-3 text-sm text-right font-mono text-indigo-300">= {entry.halves}</td>
+                        <td className="px-6 py-3 text-sm text-right font-mono text-indigo-300">= {entry.sixths}</td>
+                        <td className="px-6 py-3 text-gray-400 text-sm">{entry.counted_by_name}</td>
+                      </tr>
+                    );
+                  }
+                  const isIn = entry.submission_type === 'keg_logistics';
                   const fromTo = isIn
-                    ? (t.shipper || '—')
-                    : (t.distributor === 'Other' ? t.other_distributor : t.distributor) || '—';
+                    ? (entry.shipper || '—')
+                    : (entry.distributor === 'Other' ? entry.other_distributor : entry.distributor) || '—';
                   return (
-                    <tr key={t.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
-                      <td className="px-6 py-3 text-white text-sm whitespace-nowrap">{fmtDate(t.submission_date)}</td>
+                    <tr key={`tx-${entry.id}`} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
+                      <td className="px-6 py-3 text-white text-sm whitespace-nowrap">{fmtDate(entry.submission_date)}</td>
                       <td className="px-6 py-3">
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded text-white ${isIn ? 'bg-green-700' : 'bg-red-700'}`}>
                           {isIn ? '▲ In' : '▼ Out'}
@@ -438,15 +483,15 @@ function KLInventoryView({ canUpload }) {
                       <td className="px-6 py-3 text-gray-300 text-sm">{fromTo}</td>
                       <td className="px-6 py-3 text-sm text-right font-mono">
                         <span className={isIn ? 'text-green-400' : 'text-red-400'}>
-                          {isIn ? '+' : '-'}{t.kl_halves}
+                          {isIn ? '+' : '-'}{entry.kl_halves}
                         </span>
                       </td>
                       <td className="px-6 py-3 text-sm text-right font-mono">
                         <span className={isIn ? 'text-green-400' : 'text-red-400'}>
-                          {isIn ? '+' : '-'}{t.kl_sixths}
+                          {isIn ? '+' : '-'}{entry.kl_sixths}
                         </span>
                       </td>
-                      <td className="px-6 py-3 text-gray-400 text-sm">{t.submitted_by_name}</td>
+                      <td className="px-6 py-3 text-gray-400 text-sm">{entry.submitted_by_name}</td>
                     </tr>
                   );
                 })}
