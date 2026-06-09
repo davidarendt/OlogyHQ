@@ -1034,10 +1034,31 @@ function checkEquipmentManage(req, res, next) {
    .catch(() => res.status(500).json({ message: 'Server error' }));
 }
 
-// List all manuals
+// List manuals — privileged users see all; others see only docs matching their role
 app.get('/api/equipment-manuals', authenticateToken, checkEquipmentView, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM equipment_manuals ORDER BY category, sort_order, uploaded_at');
+    const isPrivileged = req.user.roles.includes('admin') || await pool.query(
+      `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+       WHERE p.role = ANY($1::text[]) AND t.slug = 'equipment-manuals' AND p.permission_level = 'upload'`,
+      [req.user.roles]
+    ).then(r => r.rows.length > 0);
+
+    const result = isPrivileged
+      ? await pool.query(
+          `SELECT d.*, COALESCE(array_agg(r.role) FILTER (WHERE r.role IS NOT NULL), '{}') AS roles
+           FROM equipment_manuals d
+           LEFT JOIN equipment_manual_roles r ON r.document_id = d.id
+           GROUP BY d.id ORDER BY d.category, d.sort_order, d.uploaded_at`)
+      : await pool.query(
+          `SELECT d.*, COALESCE(array_agg(r.role) FILTER (WHERE r.role IS NOT NULL), '{}') AS roles
+           FROM equipment_manuals d
+           LEFT JOIN equipment_manual_roles r ON r.document_id = d.id
+           WHERE EXISTS (
+             SELECT 1 FROM equipment_manual_roles r2
+             WHERE r2.document_id = d.id AND r2.role = ANY($1::text[])
+           )
+           GROUP BY d.id ORDER BY d.category, d.sort_order, d.uploaded_at`,
+          [req.user.roles]);
     res.json(result.rows);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
@@ -1053,9 +1074,9 @@ app.post('/api/equipment-manuals/presign', authenticateToken, checkEquipmentMana
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-// Commit after direct upload
+// Commit after direct upload — saves doc record + role visibility
 app.post('/api/equipment-manuals/commit', authenticateToken, checkEquipmentManage, async (req, res) => {
-  const { name, category, filename, original_name, mimetype, size } = req.body;
+  const { name, category, filename, original_name, mimetype, size, roles } = req.body;
   try {
     const maxSort = await pool.query(`SELECT COALESCE(MAX(sort_order),0) AS m FROM equipment_manuals WHERE category=$1`, [category]);
     const result = await pool.query(
@@ -1064,11 +1085,16 @@ app.post('/api/equipment-manuals/commit', authenticateToken, checkEquipmentManag
       [name, category, filename, original_name, mimetype, parseInt(size) || 0,
        req.user.id, req.user.name, maxSort.rows[0].m + 1]
     );
-    res.json(result.rows[0]);
+    const doc = result.rows[0];
+    if (Array.isArray(roles)) {
+      for (const role of roles)
+        await pool.query('INSERT INTO equipment_manual_roles (document_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [doc.id, role]);
+    }
+    res.json({ ...doc, roles: roles || [] });
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
-// Update name/category — reorder must be before /:id
+// Reorder — must be before /:id
 app.patch('/api/equipment-manuals/reorder', authenticateToken, checkEquipmentManage, async (req, res) => {
   const { orderedIds } = req.body;
   try {
@@ -1078,14 +1104,20 @@ app.patch('/api/equipment-manuals/reorder', authenticateToken, checkEquipmentMan
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
+// Update name / category / roles
 app.patch('/api/equipment-manuals/:id', authenticateToken, checkEquipmentManage, async (req, res) => {
-  const { name, category } = req.body;
+  const { name, category, roles } = req.body;
   try {
     const result = await pool.query(
       'UPDATE equipment_manuals SET name=$1, category=$2 WHERE id=$3 RETURNING *',
       [name, category, req.params.id]
     );
-    res.json(result.rows[0]);
+    await pool.query('DELETE FROM equipment_manual_roles WHERE document_id=$1', [req.params.id]);
+    if (Array.isArray(roles)) {
+      for (const role of roles)
+        await pool.query('INSERT INTO equipment_manual_roles (document_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, role]);
+    }
+    res.json({ ...result.rows[0], roles: roles || [] });
   } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
 });
 
