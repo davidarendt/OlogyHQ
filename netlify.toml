@@ -16,6 +16,9 @@
 [functions."prod-weekly-reminder"]
   schedule = "0 12 * * 1-5"
 
+[functions."taproom-delivery-sync"]
+  schedule = "0 10 * * 6"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
