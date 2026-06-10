@@ -1439,6 +1439,17 @@ app.delete('/api/checklists/:id/items/:itemId/check', authenticateToken, checkCh
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+app.post('/api/checklists/:id/add-item', authenticateToken, checkChecklistManage, async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ message: 'Text required' });
+  try {
+    const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM checklist_items WHERE checklist_id=$1', [req.params.id]);
+    await pool.query('INSERT INTO checklist_items (checklist_id, text, sort_order) VALUES ($1,$2,$3)',
+      [req.params.id, text.trim(), maxSort.rows[0].m + 1]);
+    res.json({ message: 'Added' });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
 app.delete('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
     await pool.query('DELETE FROM checklists WHERE id=$1', [req.params.id]);

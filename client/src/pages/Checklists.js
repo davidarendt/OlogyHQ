@@ -218,7 +218,7 @@ function ChecklistCard({ checklist, onRun }) {
 }
 
 // ── Checklist Modal (create / edit) ───────────────────────────────────────────
-function ChecklistModal({ checklist, onClose, onSaved }) {
+function ChecklistModal({ checklist, checklists, onClose, onSaved }) {
   const isEdit = !!checklist;
   const [name, setName]           = useState(checklist?.name || '');
   const [displayName, setDispName]= useState(checklist?.display_name || '');
@@ -230,12 +230,17 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
   const [items, setItems]       = useState((checklist?.items || []).map(i => ({ text: i.text })));
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState('');
+  const [pickerIdx, setPickerIdx]     = useState(null);
+  const [pickerTarget, setPickerTarget] = useState('');
+  const [pickerSaving, setPickerSaving] = useState(false);
+
+  const otherChecklists = (checklists || []).filter(c => c.id !== checklist?.id);
 
   const toggleRole = r => setRoles(p => p.includes(r) ? p.filter(x => x !== r) : [...p, r]);
   const allSelected = ROLES.every(r => roles.includes(r));
 
   const addItem    = () => setItems(p => [...p, { text: '' }]);
-  const removeItem = i => setItems(p => p.filter((_, idx) => idx !== i));
+  const removeItem = i => { setItems(p => p.filter((_, idx) => idx !== i)); setPickerIdx(null); };
   const updateItem = (i, val) => setItems(p => p.map((item, idx) => idx === i ? { text: val } : item));
   const moveItem   = (i, dir) => {
     const next = [...items];
@@ -243,6 +248,25 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
     if (j < 0 || j >= next.length) return;
     [next[i], next[j]] = [next[j], next[i]];
     setItems(next);
+  };
+
+  const openPicker = (i) => {
+    if (pickerIdx === i) { setPickerIdx(null); return; }
+    setPickerIdx(i);
+    setPickerTarget('');
+  };
+
+  const handleTransfer = async (type) => {
+    if (!pickerTarget || pickerSaving) return;
+    setPickerSaving(true);
+    await fetch(`${API}/api/checklists/${pickerTarget}/add-item`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: items[pickerIdx].text }),
+    });
+    if (type === 'move') setItems(p => p.filter((_, idx) => idx !== pickerIdx));
+    setPickerIdx(null);
+    setPickerSaving(false);
   };
 
   const handleSave = async () => {
@@ -349,18 +373,44 @@ function ChecklistModal({ checklist, onClose, onSaved }) {
             <label className="block text-gray-400 text-sm mb-2">Items</label>
             <div className="space-y-2">
               {items.map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveItem(i, -1)} disabled={i === 0}
-                      className="text-gray-500 hover:text-white disabled:opacity-20 text-xs leading-none transition">▲</button>
-                    <button onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}
-                      className="text-gray-500 hover:text-white disabled:opacity-20 text-xs leading-none transition">▼</button>
+                <div key={i}>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <button onClick={() => moveItem(i, -1)} disabled={i === 0}
+                        className="text-gray-500 hover:text-white disabled:opacity-20 text-xs leading-none transition">▲</button>
+                      <button onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}
+                        className="text-gray-500 hover:text-white disabled:opacity-20 text-xs leading-none transition">▼</button>
+                    </div>
+                    <input value={item.text} onChange={e => updateItem(i, e.target.value)}
+                      placeholder={`Item ${i + 1}`}
+                      className="flex-1 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-500" />
+                    {otherChecklists.length > 0 && item.text.trim() && (
+                      <button onClick={() => openPicker(i)} title="Move or copy to another checklist"
+                        className={`text-sm px-1 leading-none transition ${pickerIdx === i ? 'text-orange-400' : 'text-gray-500 hover:text-orange-400'}`}>
+                        →
+                      </button>
+                    )}
+                    <button onClick={() => removeItem(i)}
+                      className="text-gray-600 hover:text-red-400 transition text-xl leading-none">×</button>
                   </div>
-                  <input value={item.text} onChange={e => updateItem(i, e.target.value)}
-                    placeholder={`Item ${i + 1}`}
-                    className="flex-1 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-500" />
-                  <button onClick={() => removeItem(i)}
-                    className="text-gray-600 hover:text-red-400 transition text-xl leading-none">×</button>
+                  {pickerIdx === i && (
+                    <div className="ml-8 mt-1.5 flex items-center gap-2 bg-gray-900/60 border border-gray-600 rounded-lg px-3 py-2">
+                      <select value={pickerTarget} onChange={e => setPickerTarget(e.target.value)}
+                        className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-500">
+                        <option value="">Select checklist…</option>
+                        {otherChecklists.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <button onClick={() => handleTransfer('copy')} disabled={!pickerTarget || pickerSaving}
+                        className="text-xs px-2.5 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-gray-200 disabled:opacity-40 transition whitespace-nowrap">
+                        {pickerSaving ? '…' : 'Copy'}
+                      </button>
+                      <button onClick={() => handleTransfer('move')} disabled={!pickerTarget || pickerSaving}
+                        className="text-xs px-2.5 py-1.5 rounded text-white disabled:opacity-40 transition whitespace-nowrap"
+                        style={{ backgroundColor: '#F05A28' }}>
+                        {pickerSaving ? '…' : 'Move'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               <button onClick={addItem}
@@ -759,6 +809,7 @@ export default function Checklists({ user, canUpload, onBack }) {
       {editing && (
         <ChecklistModal
           checklist={editing === 'new' ? null : editing}
+          checklists={checklists}
           onClose={() => setEditing(null)}
           onSaved={fetchAll}
         />
