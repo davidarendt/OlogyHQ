@@ -144,7 +144,11 @@ function UserManagement({ user, onBack, onNavigate }) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message); return; }
-      setSuccess(`Invite sent to ${data.name}!`);
+      if (data._emailError) {
+        setSuccess(`${data.name} was added, but the invite email failed to send. Use "Resend Invite" to try again.`);
+      } else {
+        setSuccess(`Invite sent to ${data.name}!`);
+      }
       setNewUser({ name: '', email: '', roles: ['bartender'] });
       setShowAdd(false);
       fetchUsers();

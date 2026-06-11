@@ -239,21 +239,27 @@ app.post('/api/users', authenticateToken, async (req, res) => {
     }
 
     const setupUrl = `${process.env.CLIENT_URL || 'https://ologyhq.netlify.app'}/?reset=${token}`;
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com', port: 465, secure: true,
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
-    await transporter.sendMail({
-      from: `"OlogyHQ" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'You\'ve been invited to OlogyHQ',
-      html: `<p>Hi ${name},</p>
-             <p>You've been added to OlogyHQ. Click the link below to set up your password and get started.</p>
-             <p><a href="${setupUrl}">Set up your account</a></p>
-             <p>This link expires in 7 days.</p>`,
-    });
+    let emailError = null;
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com', port: 465, secure: true,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+      await transporter.sendMail({
+        from: `"OlogyHQ" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'You\'ve been invited to OlogyHQ',
+        html: `<p>Hi ${name},</p>
+               <p>You've been added to OlogyHQ. Click the link below to set up your password and get started.</p>
+               <p><a href="${setupUrl}">Set up your account</a></p>
+               <p>This link expires in 7 days.</p>`,
+      });
+    } catch (mailErr) {
+      console.error('Invite email failed:', mailErr.message);
+      emailError = mailErr.message;
+    }
 
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], _emailError: emailError });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
