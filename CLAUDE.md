@@ -42,10 +42,11 @@ All `/api/*` requests redirect to `/.netlify/functions/api/:splat` via `netlify.
 - **Filesystem**: Netlify Lambda has a read-only filesystem. All `mkdirSync` calls are wrapped in try/catch; uploads go to Supabase Storage, not local disk.
 
 ### Scheduled Functions
-Label order emails run via Netlify Scheduled Functions (not node-cron in production):
-- `netlify/functions/label-email-thursday.js` — every Thursday 18:00 UTC (2pm ET)
-- `netlify/functions/label-email-friday.js` — every Friday 12:00 UTC (8am ET), sends only if inventory not updated since Thursday
-- Shared logic lives in `server/labelEmail.js`
+All scheduled jobs run as Netlify Scheduled Functions (node-cron only runs in local dev, inside the `if (require.main === module)` block):
+- `netlify/functions/label-reminder.js` — daily 12:00 UTC; sends a reminder to david@ologybrewing.com if no label order email has been sent in 7 days
+- `netlify/functions/prod-weekly-reminder.js` — weekdays 12:00 UTC; production weekly task reminders
+- `netlify/functions/taproom-delivery-sync.js` — Saturdays 10:00 UTC (6 AM ET); imports taproom delivery PDFs from the Invoice Log Google Sheet for Mon–Fri of that week
+- Shared email logic: `server/labelEmail.js`; shared delivery sync logic: `server/taproomDeliverySync.js`
 
 ## Architecture
 
@@ -72,7 +73,7 @@ For all other behavior, admin goes through the normal permission system — no b
 **Protected user**: `david@ologybrewing.com` cannot be deleted — the delete endpoint checks the target email before proceeding.
 
 ### Two-Level Permission Tools
-HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Coffee Keeper, Sales CRM, Production Schedule, 86ed Customers, Production Checklists, Production Weekly, and Packaging Log use two permission levels:
+HR Documents, SOPs & Checklists, Label Inventory, Taproom Inventory, Cocktail Keeper, Coffee Keeper, Sales CRM, Production Schedule, 86ed Customers, Production Checklists, Production Weekly, Packaging Log, and Equipment Manuals use two permission levels:
 - `view` — can see the tool card and access the tool
 - `upload` — can access manage/upload areas within the tool (Manage tab, Edit/Delete, Send Order Email, etc.)
 
@@ -80,6 +81,7 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 
 ### Database Schema (key tables)
 - `users` — id, name, email, password (nullable for invited users), role, reset_token, reset_token_expires, created_at
+- `user_roles` — user_id (→ users), role; multi-role support (a user can have multiple roles)
 - `tools` — id, name, slug, description, url, visible_to_all, created_at
 - `permissions` — id, role, tool_id, permission_level ('view'|'upload'), created_at
 - `hr_documents` — id, name, filename, mimetype, size, uploaded_by_id, uploaded_by_name, sort_order, uploaded_at
@@ -94,7 +96,7 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `taproom_beers` — id, name, sort_order, created_at
 - `taproom_beer_locations` — beer_id, location (PK: beer_id+location)
 - `taproom_inventory_sessions` — id, location, session_date, submitted_by_id, submitted_by_name, notes, submitted_at
-- `taproom_inventory_counts` — id, session_id, beer_id, four_pack, sixth_bbl, half_bbl
+- `taproom_inventory_counts` — id, session_id, beer_id, four_pack, sixth_bbl, half_bbl, storage_area (format: `"cans:Can Cooler"` or `"kegs:Walk-in"`); one row per beer per area per session, aggregated by beer_id on read
 - `taproom_inventory_settings` — singleton row (id=1), four_pack_threshold, sixth_bbl_threshold, half_bbl_threshold
 - `taproom_deliveries` — id, location, invoice_number, delivery_date, submitted_by_id, submitted_by_name, notes, submitted_at
 - `taproom_delivery_items` — id, delivery_id, beer_id, beer_name, cases, sixth_bbl, half_bbl
@@ -149,6 +151,9 @@ The `canUpload` prop comes from `pageProps.canUpload`, set by the dashboard via 
 - `prod_weekly_checks` — week_start (DATE), row_type (TEXT), row_key (TEXT), day (TEXT), task_text (TEXT), checked_by_id, checked_by_name, checked_at; UNIQUE on all five key columns
 - `prod_weekly_initials` — id, initials (TEXT), display_name (TEXT), sort_order, user_id
 - `packaging_logs` — id, beer_name, package_date (DATE), half_bbl, sixth_bbl, cases, notes, sheet_row_index (INT), submitted_by_id, submitted_by_name, created_at
+- `equipment_manuals` — id, name, filename, mimetype, size, category, uploaded_by_id, uploaded_by_name, sort_order, uploaded_at
+- `equipment_manual_roles` — document_id (→ equipment_manuals), role
+- `kl_spot_counts` — id, halves, sixths, counted_by_name, created_at; each row is a physical count that resets the KL inventory running total baseline
 
 ### Roles
 `admin`, `bar_manager`, `bartender`, `barista`, `coffee_manager`, `production`, `sales`, `hr`, `kitchen_manager`, `cook`
@@ -163,9 +168,11 @@ Dark theme throughout. `tailwind.config.js` overrides three color families — d
 Tailwind utility classes for layout/spacing; inline `style={{ color/backgroundColor: '#F05A28' }}` for dynamic brand color. Responsive design uses `sm:` breakpoint — mobile gets card layouts, desktop gets tables. Custom tool icons go in `client/public/icons/` as RGBA PNGs (256×256).
 
 ### File Uploads (Supabase Storage)
-All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`, `production-photos`.
+All uploads go to Supabase Storage private buckets. `multer.memoryStorage()` buffers the file, then `uploadToSupabase(bucket, filename, buffer, mimetype)` uploads it. Serving files uses `getSignedUrl(bucket, filename)` → `res.redirect(signedUrl)` (1-hour signed URLs). Buckets: `hr-documents`, `sop-documents`.
 
 Recipe photos, cocktail photos, coffee photos, and 86ed customer photos are served differently — the server downloads from Supabase Storage and streams the buffer directly back (no redirect), with MIME type inferred from file extension. This avoids cross-origin redirect issues with the authenticated fetch pattern. Buckets using direct-stream: `recipe-photos`, `cocktail-photos`, `coffee-photos`, `eightysixed-photos`.
+
+**Direct browser-to-Supabase uploads** (bypasses Netlify's 6MB Lambda body limit): Production Photos and Equipment Manuals use a presign/commit pattern. The client calls a server endpoint to get a signed upload URL (`supabase.storage.from(bucket).createSignedUploadUrl(filename)`), then PUTs the file directly to Supabase from the browser, then POSTs only JSON metadata to the server. The server never receives file bytes. Buckets: `production-photos`, `equipment-manuals`.
 
 Route ordering matters in `server/index.js`: `/api/production/photo/:filename` must be registered **before** `/api/production/:id`. Similarly, `/api/86ed/:id/photo` must be before any catch-all on `/api/86ed/:id`.
 
@@ -329,6 +336,8 @@ Both tables have RLS enabled with open policies and are published to `supabase_r
 
 **Manage tab**: Create/edit checklists (name, category, location, frequency, description, role visibility, ordered items). Drag-to-reorder via arrow buttons; `PATCH /api/checklists/reorder` takes `{ orderedIds }`. The `reorder` route must be registered **before** `PATCH /api/checklists/:id`.
 
+**Move/Copy items**: In the checklist edit modal, each item with text shows a `→` button that opens an inline picker. Select a target checklist then hit Copy (adds to target) or Move (adds to target and removes from current). Server endpoint: `POST /api/checklists/:id/add-item` — must be registered before `DELETE /api/checklists/:id`.
+
 **Role visibility**: Each checklist has a `checklist_roles` join table. `GET /api/checklists` filters to checklists the user's role can see (admin and manage-permission users see all).
 
 **Permissions middleware**: `checkChecklistView` (`view` or `upload` on the `checklists` slug); `checkChecklistManage` (`upload` only).
@@ -398,6 +407,30 @@ Everything else — suggestion flow, ownership-based editing, ingredient autocom
 **Check key**: `${weekStart}|${rowType}|${rowKey}|${day}|${taskText}` — stored in `prod_weekly_checks`, UNIQUE on all five columns. Toggling is optimistic (immediate local update), with silent reload on network error.
 
 **Initials mapping**: `prod_weekly_initials` table maps sheet initials (e.g., `"R"`) to display names (e.g., `"Ron"`). Managed via the Manage drawer (canUpload only). Initials in task text are also resolved to names and shown beneath the task label in each `TaskItem`.
+
+### Production Photos Tool
+`ProductionPhotos.js` manages outgoing distro order photo submissions and KL keg inventory.
+
+**Upload flow**: Uses the direct presign/commit pattern. `POST /api/production/upload-tokens` batch-generates signed upload URLs; client PUTs files directly to Supabase `production-photos` bucket; `POST /api/production` saves JSON metadata only. This bypasses the Lambda 6MB body limit.
+
+**KL Inventory**: Tracks KL keg returns. Running total = most recent `kl_spot_counts` entry + transactions since that timestamp. Falls back to `kl_keg_settings` (singleton) if no spot counts exist. A spot count is a physical recount that hard-resets the baseline while preserving the full transaction log. The KL Inventory tab is hidden from view-only users (`canUpload` required).
+
+**Route ordering**: `GET /api/production/kl-inventory` and `POST /api/production/upload-tokens` must be before `GET /api/production/:id`.
+
+### Equipment Manuals Tool
+`EquipmentManuals.js` manages uploadable PDF/document manuals with per-document role visibility. Permission middleware: `checkEquipmentView` / `checkEquipmentManage`.
+
+**Tabs**: Browse (by category) | Manage (`canUpload` only)
+
+**Categories**: `Brewing`, `Packaging`, `Refrigeration & HVAC`, `Electrical`, `Kitchen`, `Taproom`, `General`
+
+**Per-document role visibility**: Same pattern as HR Documents — each manual has an `equipment_manual_roles` join table. Privileged users (admin or manage permission) see all documents. View-only users see only docs where their role is listed. If no roles are assigned to a doc, it's visible to all users with view access.
+
+**Upload flow**: Uses the direct presign/commit pattern (not multer). Client calls `POST /api/equipment-manuals/presign` → gets a signed URL + filename → PUTs file directly to Supabase `equipment-manuals` bucket → POSTs JSON metadata to `POST /api/equipment-manuals/commit`. Edit (`PATCH /api/equipment-manuals/:id`) accepts JSON only (no file re-upload).
+
+**Viewing/downloading**: `GET /api/equipment-manuals/:id/view` and `/download` both generate a signed URL and redirect. View uses inline content-disposition; download forces attachment.
+
+**Permission middleware**: `checkEquipmentView` gates browse access; `checkEquipmentManage` gates upload/edit/delete/reorder.
 
 ### Packaging Log Tool
 `PackagingLog.js` tracks kegs and cases packaged from each beer, with two-way sync to Google Sheets. Permission middleware: `checkPackagingView` / `checkPackagingManage`.
