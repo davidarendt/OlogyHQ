@@ -1328,6 +1328,125 @@ app.get('/api/checklists/runs', authenticateToken, checkChecklistView, async (re
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
+// Notification config — must be before /:id patterns
+app.get('/api/checklists/notification-config', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT send_hour FROM checklist_notification_config WHERE id = 1');
+    res.json(rows[0] || { send_hour: 22 });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.put('/api/checklists/notification-config', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { send_hour } = req.body;
+    if (typeof send_hour !== 'number' || send_hour < 0 || send_hour > 23)
+      return res.status(400).json({ message: 'Invalid hour' });
+    await pool.query(
+      `INSERT INTO checklist_notification_config (id, send_hour) VALUES (1, $1)
+       ON CONFLICT (id) DO UPDATE SET send_hour = $1`,
+      [send_hour]
+    );
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/checklists/notification-subscriptions', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT checklist_id, threshold FROM checklist_notification_subscriptions WHERE user_id = $1',
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.put('/api/checklists/notification-subscriptions', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { subscriptions } = req.body;
+    await pool.query('DELETE FROM checklist_notification_subscriptions WHERE user_id = $1', [req.user.id]);
+    for (const sub of (subscriptions || [])) {
+      await pool.query(
+        'INSERT INTO checklist_notification_subscriptions (user_id, checklist_id, threshold) VALUES ($1, $2, $3)',
+        [req.user.id, sub.checklist_id, sub.threshold]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Day overrides — must be before /:id patterns
+app.get('/api/checklists/day-overrides', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const { rows } = await pool.query(`
+      SELECT o.*, c.name AS checklist_name,
+        (oc.override_id IS NOT NULL) AS checked
+      FROM checklist_day_overrides o
+      JOIN checklists c ON c.id = o.checklist_id
+      LEFT JOIN checklist_day_override_checks oc ON oc.override_id = o.id
+      WHERE o.override_date BETWEEN $1 AND $2
+      ORDER BY o.override_date, o.checklist_id, o.sort_order
+    `, [start, end]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/checklists/day-overrides', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { checklist_id, override_date, type, text } = req.body;
+    if (!checklist_id || !override_date || !type || !text?.trim())
+      return res.status(400).json({ message: 'Missing required fields' });
+    const { rows: [{ m }] } = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), -1) AS m FROM checklist_day_overrides WHERE checklist_id=$1 AND override_date=$2',
+      [checklist_id, override_date]
+    );
+    const { rows: [row] } = await pool.query(
+      `INSERT INTO checklist_day_overrides (checklist_id, override_date, type, text, sort_order, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [checklist_id, override_date, type, text.trim(), m + 1, req.user.id, req.user.name]
+    );
+    res.json(row);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/checklists/day-overrides/:oid', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    const { text, type } = req.body;
+    const { rows: [row] } = await pool.query(
+      `UPDATE checklist_day_overrides
+       SET text = COALESCE($1, text), type = COALESCE($2, type)
+       WHERE id = $3 RETURNING *`,
+      [text?.trim() || null, type || null, req.params.oid]
+    );
+    if (!row) return res.status(404).json({ message: 'Not found' });
+    res.json(row);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/checklists/day-overrides/:oid', authenticateToken, checkChecklistManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM checklist_day_overrides WHERE id=$1', [req.params.oid]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/checklists/day-overrides/:oid/check', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    await pool.query(
+      'INSERT INTO checklist_day_override_checks (override_id) VALUES ($1) ON CONFLICT DO NOTHING',
+      [req.params.oid]
+    );
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/checklists/day-overrides/:oid/check', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM checklist_day_override_checks WHERE override_id=$1', [req.params.oid]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 app.post('/api/checklists', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
     const { name, category, description, roles, items, frequency, location, display_name } = req.body;
@@ -1408,6 +1527,20 @@ app.delete('/api/checklists/runs/:id', authenticateToken, checkChecklistManage, 
   try {
     await pool.query('DELETE FROM checklist_runs WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Day overrides for a specific checklist + date (RunModal)
+app.get('/api/checklists/:id/overrides/:date', authenticateToken, checkChecklistView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT o.*, (oc.override_id IS NOT NULL) AS checked
+      FROM checklist_day_overrides o
+      LEFT JOIN checklist_day_override_checks oc ON oc.override_id = o.id
+      WHERE o.checklist_id = $1 AND o.override_date = $2
+      ORDER BY o.type DESC, o.sort_order
+    `, [req.params.id, req.params.date]);
+    res.json(rows);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 

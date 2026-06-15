@@ -19,6 +19,9 @@
 [functions."taproom-delivery-sync"]
   schedule = "0 10 * * 6"
 
+[functions."checklist-notifications"]
+  schedule = "0 * * * *"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
