@@ -1480,13 +1480,13 @@ app.delete('/api/checklists/day-overrides/:oid/check', authenticateToken, checkC
 
 app.post('/api/checklists', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
-    const { name, category, description, roles, items, frequency, location, display_name } = req.body;
+    const { name, category, description, roles, items, frequency, location, display_name, notify_hour } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Name required' });
     const maxSort = await pool.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM checklists');
     const cl = await pool.query(
-      `INSERT INTO checklists (name, display_name, category, description, frequency, location, sort_order, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [name.trim(), display_name?.trim() || null, category || 'other', description || '', frequency || 'daily', location || 'all', maxSort.rows[0].m + 1, req.user.id, req.user.name]
+      `INSERT INTO checklists (name, display_name, category, description, frequency, location, notify_hour, sort_order, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [name.trim(), display_name?.trim() || null, category || 'other', description || '', frequency || 'daily', location || 'all', notify_hour ?? null, maxSort.rows[0].m + 1, req.user.id, req.user.name]
     );
     const id = cl.rows[0].id;
     for (const role of (roles || [])) {
@@ -1515,11 +1515,11 @@ app.patch('/api/checklists/reorder', authenticateToken, checkChecklistManage, as
 
 app.patch('/api/checklists/:id', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
-    const { name, category, description, roles, items, frequency, location, display_name } = req.body;
+    const { name, category, description, roles, items, frequency, location, display_name, notify_hour } = req.body;
     const id = parseInt(req.params.id);
     await pool.query(
-      'UPDATE checklists SET name=$1, display_name=$2, category=$3, description=$4, frequency=$5, location=$6, updated_at=NOW() WHERE id=$7',
-      [name.trim(), display_name?.trim() || null, category || 'other', description || '', frequency || 'daily', location || 'all', id]
+      'UPDATE checklists SET name=$1, display_name=$2, category=$3, description=$4, frequency=$5, location=$6, notify_hour=$7, updated_at=NOW() WHERE id=$8',
+      [name.trim(), display_name?.trim() || null, category || 'other', description || '', frequency || 'daily', location || 'all', notify_hour ?? null, id]
     );
     await pool.query('DELETE FROM checklist_roles WHERE checklist_id=$1', [id]);
     for (const role of (roles || [])) {

@@ -298,6 +298,7 @@ function ChecklistModal({ checklist, checklists, onClose, onSaved }) {
   const [description, setDesc]    = useState(checklist?.description || '');
   const [frequency, setFreq]      = useState(checklist?.frequency || 'daily');
   const [loc, setLoc]             = useState(checklist?.location || 'all');
+  const [notifyHour, setNotifyHour] = useState(checklist?.notify_hour ?? '');
   const [roles, setRoles]       = useState(checklist?.roles || []);
   const [items, setItems]       = useState((checklist?.items || []).map(i => ({ text: i.text })));
   const [saving, setSaving]     = useState(false);
@@ -346,7 +347,7 @@ function ChecklistModal({ checklist, checklists, onClose, onSaved }) {
     if (!roles.length) { setError('Select at least one role.'); return; }
     setSaving(true); setError('');
     const validItems = items.filter(i => i.text.trim());
-    const body = { name: name.trim(), display_name: displayName.trim() || null, category, description: description.trim(), frequency, location: loc, roles, items: validItems };
+    const body = { name: name.trim(), display_name: displayName.trim() || null, category, description: description.trim(), frequency, location: loc, notify_hour: notifyHour === '' ? null : parseInt(notifyHour), roles, items: validItems };
     const url = isEdit ? `${API}/api/checklists/${checklist.id}` : `${API}/api/checklists`;
     const res = await fetch(url, {
       method: isEdit ? 'PATCH' : 'POST', credentials: 'include',
@@ -416,10 +417,22 @@ function ChecklistModal({ checklist, checklists, onClose, onSaved }) {
               </select>
             </div>
             <div>
-              <label className="block text-gray-400 text-sm mb-1.5">Description <span className="text-gray-600">(optional)</span></label>
-              <input value={description} onChange={e => setDesc(e.target.value)} placeholder="Brief description..."
-                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              <label className="block text-gray-400 text-sm mb-1.5">Notification Time <span className="text-gray-600">(ET)</span></label>
+              <select value={notifyHour} onChange={e => setNotifyHour(e.target.value)}
+                className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="">Default (4:00 AM)</option>
+                {Array.from({ length: 24 }, (_, i) => {
+                  const label = i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`;
+                  return <option key={i} value={i}>{label}</option>;
+                })}
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-gray-400 text-sm mb-1.5">Description <span className="text-gray-600">(optional)</span></label>
+            <input value={description} onChange={e => setDesc(e.target.value)} placeholder="Brief description..."
+              className="w-full bg-gray-700 text-white px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
           <div>
@@ -1084,7 +1097,18 @@ function NotificationSettingsSection({ checklists, user }) {
                   </span>
                   {subscribed && (
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-gray-500 text-xs hidden sm:inline">notify if ≥</span>
+                      {(() => {
+                        const h = cl.notify_hour ?? config.send_hour;
+                        const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+                        const isOverride = cl.notify_hour != null;
+                        return (
+                          <span className={`text-xs hidden sm:inline ${isOverride ? 'text-orange-400' : 'text-gray-600'}`}>
+                            {label}
+                          </span>
+                        );
+                      })()}
+                      <span className="text-gray-500 text-xs hidden sm:inline">·</span>
+                      <span className="text-gray-500 text-xs hidden sm:inline">if ≥</span>
                       <input type="number" min="0" value={threshold}
                         onChange={e => setThreshold(cl.id, Math.max(0, parseInt(e.target.value) || 0))}
                         className="w-14 bg-gray-700 text-white text-center px-2 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-500" />

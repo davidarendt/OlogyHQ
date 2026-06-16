@@ -1,5 +1,6 @@
-// Runs every hour. Sends checklist completion reminder emails when the
-// current Eastern Time hour matches the configured send_hour.
+// Runs every hour. For each subscription, fires when the current ET hour matches
+// the checklist's notify_hour override, or the global send_hour if none is set.
+// Tracks last_sent_date per subscription so different lists can fire at different hours.
 require('dotenv').config({ path: require('path').join(__dirname, '../../server/.env') });
 const pool = require('../../server/db');
 const nodemailer = require('nodemailer');
@@ -23,27 +24,20 @@ exports.handler = async () => {
   console.log('[scheduled] Checklist notification check');
   try {
     const { rows: [config] } = await pool.query(
-      'SELECT send_hour, last_sent_date FROM checklist_notification_config WHERE id = 1'
+      'SELECT send_hour FROM checklist_notification_config WHERE id = 1'
     );
     if (!config) return { statusCode: 200 };
 
     const { todayET, currentHourET } = getETInfo();
+    console.log(`[scheduled] ET hour: ${currentHourET}, global default: ${config.send_hour}`);
 
-    if (currentHourET !== config.send_hour) {
-      console.log(`[scheduled] Not time yet (current ET hour: ${currentHourET}, configured: ${config.send_hour})`);
-      return { statusCode: 200 };
-    }
-    if (config.last_sent_date === todayET) {
-      console.log('[scheduled] Already sent today');
-      return { statusCode: 200 };
-    }
-
-    // Get all subscriptions with today's completion data
+    // Get all subscriptions due this hour (effective_hour = checklist override ?? global default)
     const { rows: subs } = await pool.query(`
       SELECT
-        s.user_id, s.threshold,
+        s.user_id, s.threshold, s.last_sent_date,
         u.email, u.name AS user_name,
         c.id AS checklist_id, c.name AS checklist_name,
+        COALESCE(c.notify_hour, $2) AS effective_hour,
         COUNT(DISTINCT ci.id)::int AS total_items,
         COUNT(DISTINCT cds.item_id)::int AS checked_items
       FROM checklist_notification_subscriptions s
@@ -54,32 +48,51 @@ exports.handler = async () => {
         ON cds.checklist_id = c.id
         AND cds.item_id = ci.id
         AND cds.run_date = $1
-      GROUP BY s.user_id, s.threshold, u.email, u.name, c.id, c.name
-    `, [todayET]);
+      GROUP BY s.user_id, s.threshold, s.last_sent_date,
+               u.email, u.name, c.id, c.name, c.notify_hour
+      HAVING COALESCE(c.notify_hour, $2) = $3
+    `, [todayET, config.send_hour, currentHourET]);
 
-    // Group by user, collect checklists that meet the threshold
+    if (subs.length === 0) {
+      console.log('[scheduled] No subscriptions due this hour');
+      return { statusCode: 200 };
+    }
+
+    // Filter to subscriptions not yet sent today and meeting threshold
     const byUser = {};
+    const toMarkSent = []; // [{user_id, checklist_id}]
+
     for (const sub of subs) {
+      if (sub.last_sent_date === todayET) continue;
       const incomplete = sub.total_items - sub.checked_items;
-      if (incomplete < sub.threshold) continue;
+      if (incomplete < sub.threshold) {
+        // Still mark as sent so we don't re-check after threshold would be met by luck
+        toMarkSent.push({ user_id: sub.user_id, checklist_id: sub.checklist_id });
+        continue;
+      }
       if (!byUser[sub.user_id]) {
         byUser[sub.user_id] = { email: sub.email, name: sub.user_name, items: [] };
       }
       byUser[sub.user_id].items.push({
         name: sub.checklist_name,
+        checklist_id: sub.checklist_id,
         total: sub.total_items,
         checked: sub.checked_items,
         incomplete,
       });
+      toMarkSent.push({ user_id: sub.user_id, checklist_id: sub.checklist_id });
     }
 
-    await pool.query(
-      'UPDATE checklist_notification_config SET last_sent_date = $1 WHERE id = 1',
-      [todayET]
-    );
+    // Mark all due subscriptions as sent for today (whether email was triggered or not)
+    for (const { user_id, checklist_id } of toMarkSent) {
+      await pool.query(
+        'UPDATE checklist_notification_subscriptions SET last_sent_date = $1 WHERE user_id = $2 AND checklist_id = $3',
+        [todayET, user_id, checklist_id]
+      );
+    }
 
     if (Object.keys(byUser).length === 0) {
-      console.log('[scheduled] No notifications to send');
+      console.log('[scheduled] All subscriptions below threshold — no emails sent');
       return { statusCode: 200 };
     }
 
@@ -104,7 +117,7 @@ exports.handler = async () => {
           </div>
           <h2 style="color:#F2EDE4;margin:0 0 6px;">Checklist Reminder</h2>
           <p style="color:#9ca3af;margin:0 0 24px;">
-            Hi ${user.name} — the following checklists have incomplete items as of tonight.
+            Hi ${user.name} — the following checklists have incomplete items.
           </p>
           <table style="width:100%;border-collapse:collapse;background:#1f2937;border-radius:8px;overflow:hidden;">
             <thead>
@@ -117,7 +130,7 @@ exports.handler = async () => {
             <tbody>${listRows}</tbody>
           </table>
           <p style="color:#6b7280;font-size:12px;margin-top:24px;line-height:1.6;">
-            Manage your notification preferences in Ology HQ → Checklists → Manage → Notification Settings.
+            Manage your notification preferences in Ology HQ → Checklists → Notifications.
           </p>
         </div>`;
 
