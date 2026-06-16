@@ -872,36 +872,59 @@ function ScheduleTab({ checklists, canUpload }) {
   );
 }
 
-// ── Notification Settings (Manage) ───────────────────────────────────────────
-function NotificationSettingsSection({ checklists }) {
-  const [config, setConfig]         = useState({ send_hour: 22 });
-  const [subscriptions, setSubs]    = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [savingCfg, setSavingCfg]   = useState(false);
-  const [savedCfg, setSavedCfg]     = useState(false);
-  const [savingSubs, setSavingSubs] = useState(false);
-  const [savedSubs, setSavedSubs]   = useState(false);
+// ── Notification Settings ─────────────────────────────────────────────────────
+function NotificationSettingsSection({ checklists, user }) {
+  const isAdmin = user?.roles?.includes('admin') || user?.role === 'admin';
+
+  const [config, setConfig]           = useState({ send_hour: 22 });
+  const [subscriptions, setSubs]      = useState([]);
+  const [allUsers, setAllUsers]       = useState([]);
+  const [editingUserId, setEditingId] = useState(null); // null = self
+  const [loading, setLoading]         = useState(true);
+  const [loadingSubs, setLoadingSubs] = useState(false);
+  const [savingCfg, setSavingCfg]     = useState(false);
+  const [savedCfg, setSavedCfg]       = useState(false);
+  const [savingSubs, setSavingSubs]   = useState(false);
+  const [savedSubs, setSavedSubs]     = useState(false);
+
+  const loadSubs = async (forUserId) => {
+    setLoadingSubs(true);
+    const url = forUserId
+      ? `${API}/api/checklists/notification-subscriptions?forUserId=${forUserId}`
+      : `${API}/api/checklists/notification-subscriptions`;
+    const data = await fetch(url, { credentials: 'include' }).then(r => r.json()).catch(() => []);
+    setSubs(Array.isArray(data) ? data : []);
+    setLoadingSubs(false);
+  };
 
   useEffect(() => {
-    Promise.all([
+    const promises = [
       fetch(`${API}/api/checklists/notification-config`, { credentials: 'include' }).then(r => r.json()),
       fetch(`${API}/api/checklists/notification-subscriptions`, { credentials: 'include' }).then(r => r.json()),
-    ]).then(([cfg, subs]) => {
+    ];
+    if (isAdmin) {
+      promises.push(fetch(`${API}/api/checklists/notification-users`, { credentials: 'include' }).then(r => r.json()));
+    }
+    Promise.all(promises).then(([cfg, subs, users]) => {
       setConfig(cfg || { send_hour: 22 });
       setSubs(Array.isArray(subs) ? subs : []);
+      if (users) setAllUsers(Array.isArray(users) ? users : []);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectUser = async (userId) => {
+    setEditingId(userId);
+    await loadSubs(userId);
+    setSavedSubs(false);
+  };
 
   const isSubscribed = id => subscriptions.some(s => s.checklist_id === id);
   const getThreshold = id => subscriptions.find(s => s.checklist_id === id)?.threshold ?? 1;
 
   const toggleSub = id => {
-    if (isSubscribed(id)) {
-      setSubs(p => p.filter(s => s.checklist_id !== id));
-    } else {
-      setSubs(p => [...p, { checklist_id: id, threshold: 1 }]);
-    }
+    if (isSubscribed(id)) setSubs(p => p.filter(s => s.checklist_id !== id));
+    else setSubs(p => [...p, { checklist_id: id, threshold: 1 }]);
   };
 
   const setThreshold = (id, val) =>
@@ -920,12 +943,18 @@ function NotificationSettingsSection({ checklists }) {
 
   const saveSubs = async () => {
     setSavingSubs(true);
-    await fetch(`${API}/api/checklists/notification-subscriptions`, {
+    const qs = editingUserId ? `?forUserId=${editingUserId}` : '';
+    await fetch(`${API}/api/checklists/notification-subscriptions${qs}`, {
       method: 'PUT', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscriptions }),
     });
     setSavingSubs(false); setSavedSubs(true);
+    // Refresh allUsers count for admin
+    if (isAdmin) {
+      fetch(`${API}/api/checklists/notification-users`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setAllUsers(Array.isArray(d) ? d : []));
+    }
     setTimeout(() => setSavedSubs(false), 2000);
   };
 
@@ -936,15 +965,15 @@ function NotificationSettingsSection({ checklists }) {
     return `${h - 12}:00 PM`;
   };
 
-  return (
-    <div className="mt-8">
-      <h3 className="text-white font-semibold text-lg mb-1">Notification Settings</h3>
-      <p className="text-gray-500 text-sm mb-5">
-        Receive an email when checklists have incomplete items. Each manager configures their own subscriptions independently.
-      </p>
+  const editingUser = editingUserId ? allUsers.find(u => u.id === editingUserId) : null;
+  const subsTitle = editingUser ? `${editingUser.name}'s Subscriptions` : 'My Subscriptions';
 
+  if (loading) return <div className="text-gray-500 text-sm mt-8">Loading…</div>;
+
+  return (
+    <div className="space-y-4">
       {/* Send time */}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 mb-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h4 className="text-white font-semibold mb-0.5">Daily Send Time</h4>
@@ -967,22 +996,71 @@ function NotificationSettingsSection({ checklists }) {
         </div>
       </div>
 
-      {/* Subscriptions */}
+      {/* Admin: all-users overview */}
+      {isAdmin && (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-700">
+            <h4 className="text-white font-semibold">All Users</h4>
+            <p className="text-gray-500 text-sm mt-0.5">Click Edit to view and adjust any user's subscriptions.</p>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-5 py-3">User</th>
+                <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-3 hidden sm:table-cell">Email</th>
+                <th className="text-left text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-3">Subscriptions</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {allUsers.map(u => {
+                const isEditing = editingUserId === u.id;
+                const isSelf = u.id === user?.id;
+                return (
+                  <tr key={u.id} className={`border-b border-gray-700 last:border-0 transition ${isEditing ? 'bg-orange-500/5' : 'hover:bg-gray-700/20'}`}>
+                    <td className="px-5 py-3">
+                      <div className="text-white text-sm font-medium">{u.name}</div>
+                      {isSelf && <div className="text-gray-600 text-xs">you</div>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-sm hidden sm:table-cell">{u.email}</td>
+                    <td className="px-4 py-3">
+                      {u.subscription_count > 0 ? (
+                        <span className="text-sm font-semibold text-orange-400">{u.subscription_count} list{u.subscription_count !== 1 ? 's' : ''}</span>
+                      ) : (
+                        <span className="text-sm text-gray-600">None</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => isEditing ? selectUser(null) : selectUser(u.id)}
+                        className={`text-sm font-semibold transition ${isEditing ? 'text-orange-400' : 'text-gray-400 hover:text-white'}`}>
+                        {isEditing ? 'Editing ✓' : isSelf ? 'Edit (me)' : 'Edit'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Subscriptions editor */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
           <div>
-            <h4 className="text-white font-semibold mb-0.5">My Subscriptions</h4>
+            <h4 className="text-white font-semibold mb-0.5">{subsTitle}</h4>
             <p className="text-gray-500 text-sm">
-              Select checklists to watch. Set threshold to 0 to always notify, or higher to only notify when that many items are still incomplete.
+              Select checklists to watch. Threshold 0 = always notify; higher = only notify when that many items are incomplete.
             </p>
           </div>
-          <button onClick={saveSubs} disabled={savingSubs}
+          <button onClick={saveSubs} disabled={savingSubs || loadingSubs}
             className="px-3 py-2 rounded-lg text-white text-sm font-semibold transition disabled:opacity-50 flex-shrink-0"
             style={{ backgroundColor: savedSubs ? '#22c55e' : '#F05A28' }}>
             {savingSubs ? 'Saving…' : savedSubs ? 'Saved ✓' : 'Save Subscriptions'}
           </button>
         </div>
-        {loading ? (
+        {loadingSubs ? (
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : checklists.length === 0 ? (
           <div className="text-gray-500 text-sm">No checklists available.</div>
@@ -1198,7 +1276,7 @@ export default function Checklists({ user, canUpload, onBack }) {
         ) : tab === 'schedule' ? (
           <ScheduleTab checklists={checklists} canUpload={canUpload} />
         ) : tab === 'notifications' ? (
-          <NotificationSettingsSection checklists={checklists} />
+          <NotificationSettingsSection checklists={checklists} user={user} />
         ) : (
           /* Manage tab */
           <div>

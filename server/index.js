@@ -1352,9 +1352,11 @@ app.put('/api/checklists/notification-config', authenticateToken, checkChecklist
 
 app.get('/api/checklists/notification-subscriptions', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
+    const forUserId = req.query.forUserId && req.user.roles.includes('admin')
+      ? parseInt(req.query.forUserId) : req.user.id;
     const { rows } = await pool.query(
       'SELECT checklist_id, threshold FROM checklist_notification_subscriptions WHERE user_id = $1',
-      [req.user.id]
+      [forUserId]
     );
     res.json(rows);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
@@ -1362,15 +1364,33 @@ app.get('/api/checklists/notification-subscriptions', authenticateToken, checkCh
 
 app.put('/api/checklists/notification-subscriptions', authenticateToken, checkChecklistManage, async (req, res) => {
   try {
+    const forUserId = req.query.forUserId && req.user.roles.includes('admin')
+      ? parseInt(req.query.forUserId) : req.user.id;
     const { subscriptions } = req.body;
-    await pool.query('DELETE FROM checklist_notification_subscriptions WHERE user_id = $1', [req.user.id]);
+    await pool.query('DELETE FROM checklist_notification_subscriptions WHERE user_id = $1', [forUserId]);
     for (const sub of (subscriptions || [])) {
       await pool.query(
         'INSERT INTO checklist_notification_subscriptions (user_id, checklist_id, threshold) VALUES ($1, $2, $3)',
-        [req.user.id, sub.checklist_id, sub.threshold]
+        [forUserId, sub.checklist_id, sub.threshold]
       );
     }
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Admin: all users with subscription counts
+app.get('/api/checklists/notification-users', authenticateToken, async (req, res) => {
+  if (!req.user.roles.includes('admin')) return res.status(403).json({ message: 'Forbidden' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email,
+        COUNT(s.checklist_id)::int AS subscription_count
+      FROM users u
+      LEFT JOIN checklist_notification_subscriptions s ON s.user_id = u.id
+      GROUP BY u.id, u.name, u.email
+      ORDER BY u.name
+    `);
+    res.json(rows);
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
