@@ -64,7 +64,8 @@ function Permissions({ onBack, onHome }) {
   const coffeeTool      = tools.find(t => t.slug === 'coffee-keeper');
   const prodWeeklyTool    = tools.find(t => t.slug === 'production-weekly');
   const equipmentTool     = tools.find(t => t.slug === 'equipment-manuals');
-  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule', '86ed-customers', 'distro-taproom-orders', 'coffee-keeper', 'production-weekly', 'equipment-manuals'];
+  const tankMaintenanceTool = tools.find(t => t.slug === 'tank-maintenance');
+  const dualSlugs     = ['hr-documents', 'sops', 'checklists', 'taproom-inventory', 'recipes', 'cocktail-keeper', 'sales-crm', 'label-inventory', 'production-schedule', '86ed-customers', 'distro-taproom-orders', 'coffee-keeper', 'production-weekly', 'equipment-manuals', 'tank-maintenance'];
   const otherTools    = tools.filter(t => !dualSlugs.includes(t.slug));
 
   return (
@@ -544,6 +545,38 @@ function Permissions({ onBack, onHome }) {
                         <Toggle
                           active={hasPermission(role, prodWeeklyTool.id, 'upload')}
                           onClick={() => togglePermission(role, prodWeeklyTool.id, 'upload')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              )}
+              {/* Tank Maintenance — two rows: Access and Manage */}
+              {tankMaintenanceTool && (
+                <>
+                  <tr className="border-b border-gray-700/50">
+                    <td className="px-3 pt-3 pb-1 whitespace-nowrap">
+                      <div className="text-white text-sm font-medium">Tank Maintenance</div>
+                      <div className="text-gray-500 text-xs mt-0.5">Access</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-3 pb-1 text-center">
+                        <Toggle
+                          active={hasPermission(role, tankMaintenanceTool.id, 'view')}
+                          onClick={() => togglePermission(role, tankMaintenanceTool.id, 'view')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-gray-700">
+                    <td className="px-3 pt-1 pb-3 whitespace-nowrap">
+                      <div className="text-gray-500 text-xs">Manage</div>
+                    </td>
+                    {ROLES.map((role) => (
+                      <td key={role} className="px-1 pt-1 pb-3 text-center">
+                        <Toggle
+                          active={hasPermission(role, tankMaintenanceTool.id, 'upload')}
+                          onClick={() => togglePermission(role, tankMaintenanceTool.id, 'upload')}
                         />
                       </td>
                     ))}
