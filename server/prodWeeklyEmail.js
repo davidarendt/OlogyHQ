@@ -161,14 +161,6 @@ async function findIncompleteTasks() {
       if (!weekDates[dayIdx] || weekDates[dayIdx] >= todayYMD) return;
       const dateLabel = formatDayLabel(weekStart, day);
 
-      for (const sec of sections) {
-        for (const task of (sec.dayTasks[day] || [])) {
-          if (!checked.has(`section|${sec.key}|${day}|${task}`)) {
-            incomplete.push({ type: 'section', sectionKey: sec.key, day, weekStart, dateLabel, task });
-          }
-        }
-      }
-
       for (const person of people) {
         const displayName = nameByInitial[person.initial] || person.initial;
         for (const task of (person.dayTasks[day] || [])) {
@@ -188,37 +180,24 @@ async function findIncompleteTasks() {
 }
 
 function buildEmailBody(incomplete, personFilter) {
-  const sectionItems = incomplete.filter(i => i.type === 'section');
-  const personItems  = incomplete.filter(i => i.type === 'person' && (!personFilter || i.displayName === personFilter));
-  const total        = sectionItems.length + personItems.length;
+  const personItems = incomplete.filter(i => !personFilter || i.displayName === personFilter);
+  const total       = personItems.length;
 
   let body = 'Good morning,\n\n';
   if (personFilter) {
     body += `You have ${total} incomplete task${total !== 1 ? 's' : ''} from the production schedule:\n`;
   } else {
-    body += `The following ${total} task${total !== 1 ? 's' : ''} have not been completed:\n`;
+    body += `The following ${total} individual task${total !== 1 ? 's' : ''} have not been completed:\n`;
   }
 
-  if (!personFilter) {
-    for (const [key, label] of [['brews', 'BREWS'], ['packaging', 'PACKAGING'], ['timeoff', 'TIME OFF']]) {
-      const these = sectionItems.filter(i => i.sectionKey === key);
-      if (!these.length) continue;
-      body += `\n${label}\n`;
-      for (const i of these) body += `• ${i.task} — ${i.dateLabel}\n`;
-    }
+  const byPerson = {};
+  for (const i of personItems) {
+    if (!byPerson[i.displayName]) byPerson[i.displayName] = [];
+    byPerson[i.displayName].push(i);
   }
-
-  if (personItems.length > 0) {
-    if (!personFilter) body += '\nINDIVIDUAL TASKS\n';
-    const byPerson = {};
-    for (const i of personItems) {
-      if (!byPerson[i.displayName]) byPerson[i.displayName] = [];
-      byPerson[i.displayName].push(i);
-    }
-    for (const [name, items] of Object.entries(byPerson)) {
-      if (!personFilter) body += `\n${name}:\n`;
-      for (const i of items) body += `• ${i.task} — ${i.dateLabel}\n`;
-    }
+  for (const [name, items] of Object.entries(byPerson)) {
+    if (!personFilter) body += `\n${name}:\n`;
+    for (const i of items) body += `• ${i.task} — ${i.dateLabel}\n`;
   }
 
   body += '\n—\nOlogy HQ Production Weekly';
