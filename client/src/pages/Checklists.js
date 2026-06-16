@@ -1083,7 +1083,7 @@ export default function Checklists({ user, canUpload, onBack }) {
     .filter(cl => !manageFilterRole || (cl.roles || []).includes(manageFilterRole));
   const manageHasFilter = !!(manageFilterLoc || manageFilterRole);
 
-  const tabs = ['checklists', 'history', ...(canUpload ? ['schedule', 'manage'] : [])];
+  const tabs = ['checklists', 'history', ...(canUpload ? ['schedule', 'notifications', 'manage'] : [])];
   const locLabel = location ? LOCATIONS.find(l => l.key === location)?.label : '';
   const filtered = location
     ? checklists.filter(c => c.location === location || c.location === 'all')
@@ -1122,7 +1122,7 @@ export default function Checklists({ user, canUpload, onBack }) {
                   className={`px-4 py-1.5 rounded-md text-sm font-semibold transition capitalize ${
                     tab === t ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
                   }`}>
-                  {t === 'checklists' ? 'Checklists' : t === 'history' ? 'History' : t === 'schedule' ? 'Schedule' : 'Manage'}
+                  {t === 'checklists' ? 'Checklists' : t === 'history' ? 'History' : t === 'schedule' ? 'Schedule' : t === 'notifications' ? 'Notifications' : 'Manage'}
                 </button>
               ))}
             </div>
@@ -1197,6 +1197,8 @@ export default function Checklists({ user, canUpload, onBack }) {
           </div>
         ) : tab === 'schedule' ? (
           <ScheduleTab checklists={checklists} canUpload={canUpload} />
+        ) : tab === 'notifications' ? (
+          <NotificationSettingsSection checklists={checklists} />
         ) : (
           /* Manage tab */
           <div>
@@ -1312,7 +1314,6 @@ export default function Checklists({ user, canUpload, onBack }) {
               )}
             </div>
             <LocationAccessSection locationRoles={locationRoles} onSaved={fetchAll} />
-            <NotificationSettingsSection checklists={checklists} />
           </div>
         )}
       </main>
