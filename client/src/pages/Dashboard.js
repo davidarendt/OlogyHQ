@@ -24,6 +24,7 @@ const TOOL_META = {
   'coffee-keeper':         { Icon: Coffee,          description: 'Browse and manage coffee drink recipes',                  page: 'coffee-keeper' },
   'production-weekly':     { Icon: CalendarCheck,   description: 'Weekly brew and packaging task board',                     page: 'production-weekly' },
   'equipment-manuals':     { Icon: BookOpen,        description: 'Browse and download equipment manuals and documentation',   page: 'equipment-manuals' },
+  'tank-maintenance':      { Icon: Wrench,          description: 'Track recurring maintenance tasks per tank',                  page: 'tank-maintenance' },
   'user-management':       { Icon: Users,           description: 'Manage user accounts and roles',                          page: 'usermanagement' },
 };
 

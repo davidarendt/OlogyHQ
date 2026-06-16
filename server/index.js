@@ -5321,6 +5321,187 @@ app.delete('/api/86ed/:id', authenticateToken, check86edManage, async (req, res)
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Tank Maintenance ──────────────────────────────────────────────────────────
+
+function checkTankMaintenanceView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'tank-maintenance' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkTankMaintenanceManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'tank-maintenance' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+// Status overview — active tanks × all task types with last log date and days since
+app.get('/api/tank-maintenance/status', authenticateToken, checkTankMaintenanceView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        mt.id AS tank_id, mt.name AS tank_name, mt.sort_order AS tank_sort,
+        tt.id AS task_type_id, tt.name AS task_type_name, tt.frequency_days, tt.sort_order AS tt_sort,
+        MAX(ml.performed_date) AS last_performed_date,
+        (CURRENT_DATE - MAX(ml.performed_date)) AS days_since
+      FROM maintenance_tanks mt
+      CROSS JOIN tank_maintenance_task_types tt
+      LEFT JOIN tank_maintenance_logs ml ON ml.tank_id = mt.id AND ml.task_type_id = tt.id
+      WHERE mt.active = true
+      GROUP BY mt.id, mt.name, mt.sort_order, tt.id, tt.name, tt.frequency_days, tt.sort_order
+      ORDER BY mt.sort_order, mt.name, tt.sort_order
+    `);
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+});
+
+// Tanks CRUD
+app.get('/api/tank-maintenance/tanks', authenticateToken, checkTankMaintenanceView, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM maintenance_tanks ORDER BY sort_order, name');
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/tank-maintenance/tanks', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ message: 'Name required' });
+  try {
+    const { rows: [max] } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM maintenance_tanks');
+    const { rows: [tank] } = await pool.query(
+      'INSERT INTO maintenance_tanks (name, sort_order) VALUES ($1, $2) RETURNING *',
+      [name.trim(), max.next]
+    );
+    res.json(tank);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/tank-maintenance/tanks/reorder', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { orderedIds } = req.body;
+  try {
+    await Promise.all(orderedIds.map((id, i) =>
+      pool.query('UPDATE maintenance_tanks SET sort_order=$1 WHERE id=$2', [i, id])
+    ));
+    res.json({ message: 'Reordered' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/tank-maintenance/tanks/:id', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { name, active } = req.body;
+  try {
+    const { rows: [tank] } = await pool.query(
+      `UPDATE maintenance_tanks SET
+        name = COALESCE($1, name),
+        active = COALESCE($2, active)
+       WHERE id=$3 RETURNING *`,
+      [name?.trim() || null, active !== undefined ? active : null, req.params.id]
+    );
+    if (!tank) return res.status(404).json({ message: 'Not found' });
+    res.json(tank);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/tank-maintenance/tanks/:id', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM maintenance_tanks WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Task types CRUD — reorder must be before :id
+app.get('/api/tank-maintenance/task-types', authenticateToken, checkTankMaintenanceView, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM tank_maintenance_task_types ORDER BY sort_order, name');
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/tank-maintenance/task-types', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { name, frequency_days } = req.body;
+  if (!name?.trim()) return res.status(400).json({ message: 'Name required' });
+  try {
+    const { rows: [max] } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM tank_maintenance_task_types');
+    const { rows: [tt] } = await pool.query(
+      'INSERT INTO tank_maintenance_task_types (name, frequency_days, sort_order) VALUES ($1, $2, $3) RETURNING *',
+      [name.trim(), frequency_days || 90, max.next]
+    );
+    res.json(tt);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/tank-maintenance/task-types/reorder', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { orderedIds } = req.body;
+  try {
+    await Promise.all(orderedIds.map((id, i) =>
+      pool.query('UPDATE tank_maintenance_task_types SET sort_order=$1 WHERE id=$2', [i, id])
+    ));
+    res.json({ message: 'Reordered' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/tank-maintenance/task-types/:id', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { name, frequency_days } = req.body;
+  try {
+    const { rows: [tt] } = await pool.query(
+      `UPDATE tank_maintenance_task_types SET
+        name = COALESCE($1, name),
+        frequency_days = COALESCE($2, frequency_days)
+       WHERE id=$3 RETURNING *`,
+      [name?.trim() || null, frequency_days || null, req.params.id]
+    );
+    if (!tt) return res.status(404).json({ message: 'Not found' });
+    res.json(tt);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/tank-maintenance/task-types/:id', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM tank_maintenance_task_types WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Logs — :tankId/:taskTypeId must be before :id
+app.get('/api/tank-maintenance/logs/:tankId/:taskTypeId', authenticateToken, checkTankMaintenanceView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM tank_maintenance_logs
+       WHERE tank_id=$1 AND task_type_id=$2
+       ORDER BY performed_date DESC, created_at DESC`,
+      [req.params.tankId, req.params.taskTypeId]
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/tank-maintenance/logs', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  const { tank_id, task_type_id, performed_date, notes } = req.body;
+  if (!tank_id || !task_type_id || !performed_date) return res.status(400).json({ message: 'tank_id, task_type_id, and performed_date required' });
+  try {
+    const { rows: [log] } = await pool.query(
+      `INSERT INTO tank_maintenance_logs (tank_id, task_type_id, performed_date, notes, performed_by_id, performed_by_name)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [tank_id, task_type_id, performed_date, notes || null, req.user.id, req.user.name]
+    );
+    res.json(log);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/tank-maintenance/logs/:id', authenticateToken, checkTankMaintenanceManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM tank_maintenance_logs WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
