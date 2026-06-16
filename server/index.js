@@ -1387,6 +1387,17 @@ app.get('/api/checklists/notification-users', authenticateToken, async (req, res
         COUNT(s.checklist_id)::int AS subscription_count
       FROM users u
       LEFT JOIN checklist_notification_subscriptions s ON s.user_id = u.id
+      WHERE u.id IN (
+        SELECT ur.user_id FROM user_roles ur
+        WHERE ur.role = 'admin'
+           OR EXISTS (
+             SELECT 1 FROM permissions p
+             JOIN tools t ON t.id = p.tool_id
+             WHERE p.role = ur.role
+               AND t.slug = 'checklists'
+               AND p.permission_level = 'upload'
+           )
+      )
       GROUP BY u.id, u.name, u.email
       ORDER BY u.name
     `);
