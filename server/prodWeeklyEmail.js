@@ -218,13 +218,13 @@ async function sendDailyProdWeeklyReminder() {
     host: 'smtp.gmail.com', port: 465, secure: true,
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
   });
-  const subject = `Production Weekly — ${incomplete.length} incomplete task${incomplete.length !== 1 ? 's' : ''}`;
+  const globalSubject = `Production Weekly — ${incomplete.length} incomplete task${incomplete.length !== 1 ? 's' : ''}`;
   let sent = 0;
 
   if (globalEmails.length) {
     await mailer.sendMail({
       from: process.env.EMAIL_USER, to: globalEmails.join(','),
-      subject, text: buildEmailBody(incomplete),
+      subject: globalSubject, text: buildEmailBody(incomplete),
     });
     sent++;
   }
@@ -240,9 +240,10 @@ async function sendDailyProdWeeklyReminder() {
     if (globalSet.has(email.toLowerCase())) continue;
     const myItems = incomplete.filter(i => i.type === 'person' && i.displayName === name);
     if (!myItems.length) continue;
+    const personalSubject = `Production Weekly — ${myItems.length} incomplete task${myItems.length !== 1 ? 's' : ''}`;
     await mailer.sendMail({
       from: process.env.EMAIL_USER, to: email,
-      subject, text: buildEmailBody(incomplete, name),
+      subject: personalSubject, text: buildEmailBody(incomplete, name),
     });
     sent++;
   }
