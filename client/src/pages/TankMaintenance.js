@@ -12,10 +12,10 @@ function computeStatus(daysSince, frequencyDays) {
 }
 
 const ST = {
-  ok:       { dot: 'bg-green-500',  text: 'text-green-400',  cellBg: 'hover:bg-green-500/5',   badgeBg: 'bg-green-500/10',   label: 'OK'       },
-  due_soon: { dot: 'bg-yellow-400', text: 'text-yellow-400', cellBg: 'bg-yellow-500/5 hover:bg-yellow-500/10', badgeBg: 'bg-yellow-500/10', label: 'Due Soon' },
-  overdue:  { dot: 'bg-red-500',    text: 'text-red-400',    cellBg: 'bg-red-500/8 hover:bg-red-500/15',       badgeBg: 'bg-red-500/10',   label: 'Overdue'  },
-  never:    { dot: 'bg-gray-500',   text: 'text-gray-500',   cellBg: 'hover:bg-gray-700/50',   badgeBg: 'bg-gray-700',       label: 'Never'    },
+  ok:       { dot: 'bg-green-500',  text: 'text-green-400',  cellBg: 'hover:bg-green-500/5',                   badgeBg: 'bg-green-500/10',  rowBg: '',                      label: 'OK'       },
+  due_soon: { dot: 'bg-yellow-400', text: 'text-yellow-400', cellBg: 'bg-yellow-500/5 hover:bg-yellow-500/10', badgeBg: 'bg-yellow-500/10', rowBg: 'bg-yellow-500/5',       label: 'Due Soon' },
+  overdue:  { dot: 'bg-red-500',    text: 'text-red-400',    cellBg: 'bg-red-500/8 hover:bg-red-500/15',       badgeBg: 'bg-red-500/10',   rowBg: 'bg-red-500/5',          label: 'Overdue'  },
+  never:    { dot: 'bg-gray-500',   text: 'text-gray-500',   cellBg: 'hover:bg-gray-700/50',                   badgeBg: 'bg-gray-700',      rowBg: '',                      label: 'Never'    },
 };
 
 function cellLabel(daysSince, frequencyDays) {
@@ -86,8 +86,8 @@ function LogModal({ cell, onClose, canUpload, onUpdated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-lg max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-gray-700">
           <div>
@@ -98,7 +98,7 @@ function LogModal({ cell, onClose, canUpload, onUpdated }) {
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${st.badgeBg} ${st.text}`}>
               {st.label}{daysSince !== null ? ` · ${daysSince}d ago` : ''}
             </span>
-            <button onClick={onClose} className="text-gray-400 hover:text-white ml-1">✕</button>
+            <button onClick={onClose} className="text-gray-400 hover:text-white ml-1 text-lg leading-none">✕</button>
           </div>
         </div>
 
@@ -224,7 +224,6 @@ function SettingsTab() {
 
   useEffect(() => { loadTanks(); loadTT(); }, [loadTanks, loadTT]);
 
-  // Tank helpers
   const addTank = async () => {
     if (!newTankName.trim()) return;
     const r = await fetch(`${API}/api/tank-maintenance/tanks`, {
@@ -265,7 +264,6 @@ function SettingsTab() {
     });
   };
 
-  // Task type helpers
   const addTT = async () => {
     if (!newTT.name.trim()) return;
     const r = await fetch(`${API}/api/tank-maintenance/task-types`, {
@@ -318,7 +316,7 @@ function SettingsTab() {
 
       {section === 'tanks' && (
         <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-gray-700">
             <h3 className="text-white font-medium">Tanks ({tanks.length})</h3>
             {!addingTank && (
               <button
@@ -332,7 +330,7 @@ function SettingsTab() {
           </div>
 
           {addingTank && (
-            <div className="px-5 py-3 border-b border-gray-700 bg-gray-700/30 flex gap-3 items-center">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-700 bg-gray-700/30 flex gap-3 items-center">
               <input
                 autoFocus
                 type="text"
@@ -342,60 +340,63 @@ function SettingsTab() {
                 placeholder="Tank name (e.g. FV-1)"
                 className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
               />
-              <button onClick={addTank} className="text-sm px-3 py-2 rounded-lg text-white font-medium" style={{ backgroundColor: '#F05A28' }}>Add</button>
-              <button onClick={() => { setAddingTank(false); setNewTankName(''); }} className="text-sm text-gray-400 hover:text-white">Cancel</button>
+              <button onClick={addTank} className="text-sm px-3 py-2 rounded-lg text-white font-medium flex-shrink-0" style={{ backgroundColor: '#F05A28' }}>Add</button>
+              <button onClick={() => { setAddingTank(false); setNewTankName(''); }} className="text-sm text-gray-400 hover:text-white flex-shrink-0">Cancel</button>
             </div>
           )}
 
           {tanks.length === 0 ? (
-            <p className="text-gray-500 text-sm px-5 py-6">No tanks yet. Add one to get started.</p>
+            <p className="text-gray-500 text-sm px-4 sm:px-5 py-6">No tanks yet. Add one to get started.</p>
           ) : (
             <ul>
               {tanks.map((tank, i) => (
-                <li key={tank.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-700 last:border-0">
-                  <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveTank(tank.id, 'up')} disabled={i === 0}
-                      className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
-                    <button onClick={() => moveTank(tank.id, 'down')} disabled={i === tanks.length - 1}
-                      className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
-                  </div>
-
+                <li key={tank.id} className="px-4 sm:px-5 py-3 border-b border-gray-700 last:border-0">
                   {editingTank?.id === tank.id ? (
-                    <input
-                      autoFocus
-                      type="text"
-                      value={editingTank.name}
-                      onChange={e => setEditingTank(t => ({ ...t, name: e.target.value }))}
-                      onKeyDown={e => e.key === 'Enter' && saveTank(tank.id, { name: editingTank.name })}
-                      className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm"
-                    />
-                  ) : (
-                    <span className={`flex-1 text-sm ${tank.active ? 'text-white' : 'text-gray-500 line-through'}`}>
-                      {tank.name}
-                    </span>
-                  )}
-
-                  <button
-                    onClick={() => saveTank(tank.id, { active: !tank.active })}
-                    className={`text-xs px-2 py-1 rounded flex-shrink-0 ${tank.active ? 'text-green-400 bg-green-500/10' : 'text-gray-500 bg-gray-700'}`}
-                  >
-                    {tank.active ? 'Active' : 'Inactive'}
-                  </button>
-
-                  {editingTank?.id === tank.id ? (
-                    <div className="flex gap-2 flex-shrink-0">
+                    /* Edit mode */
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
+                        <button disabled className="text-gray-600 text-xs leading-none">▲</button>
+                        <button disabled className="text-gray-600 text-xs leading-none">▼</button>
+                      </div>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingTank.name}
+                        onChange={e => setEditingTank(t => ({ ...t, name: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && saveTank(tank.id, { name: editingTank.name })}
+                        className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm"
+                      />
                       <button
                         onClick={() => saveTank(tank.id, { name: editingTank.name })}
-                        className="text-xs text-white px-2 py-1 rounded"
+                        className="text-xs text-white px-2 py-1.5 rounded flex-shrink-0"
                         style={{ backgroundColor: '#F05A28' }}
                       >Save</button>
-                      <button onClick={() => setEditingTank(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
+                      <button onClick={() => setEditingTank(null)} className="text-xs text-gray-400 hover:text-white flex-shrink-0">Cancel</button>
                     </div>
                   ) : (
-                    <div className="flex gap-3 flex-shrink-0">
-                      <button onClick={() => setEditingTank({ id: tank.id, name: tank.name })}
-                        className="text-xs text-gray-400 hover:text-white">Rename</button>
-                      <button onClick={() => deleteTank(tank.id)} className="text-xs text-red-500 hover:text-red-400">Delete</button>
+                    /* View mode — name row + actions row on mobile */
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
+                        <button onClick={() => moveTank(tank.id, 'up')} disabled={i === 0}
+                          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
+                        <button onClick={() => moveTank(tank.id, 'down')} disabled={i === tanks.length - 1}
+                          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
+                      </div>
+                      <span className={`flex-1 text-sm min-w-0 truncate ${tank.active ? 'text-white' : 'text-gray-500 line-through'}`}>
+                        {tank.name}
+                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => saveTank(tank.id, { active: !tank.active })}
+                          className={`text-xs px-2 py-1 rounded ${tank.active ? 'text-green-400 bg-green-500/10' : 'text-gray-500 bg-gray-700'}`}
+                        >
+                          {tank.active ? 'Active' : 'Inactive'}
+                        </button>
+                        <button onClick={() => setEditingTank({ id: tank.id, name: tank.name })}
+                          className="text-xs text-gray-400 hover:text-white">Rename</button>
+                        <button onClick={() => deleteTank(tank.id)}
+                          className="text-xs text-red-500 hover:text-red-400">Delete</button>
+                      </div>
                     </div>
                   )}
                 </li>
@@ -407,7 +408,7 @@ function SettingsTab() {
 
       {section === 'task-types' && (
         <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-gray-700">
             <h3 className="text-white font-medium">Task Types ({taskTypes.length})</h3>
             {!addingTT && (
               <button
@@ -421,92 +422,93 @@ function SettingsTab() {
           </div>
 
           {addingTT && (
-            <div className="px-5 py-4 border-b border-gray-700 bg-gray-700/30 flex flex-wrap gap-3 items-end">
-              <div className="flex-1 min-w-[160px]">
-                <label className="text-xs text-gray-400 block mb-1">Task Name</label>
-                <input
-                  autoFocus
-                  type="text"
-                  value={newTT.name}
-                  onChange={e => setNewTT(t => ({ ...t, name: e.target.value }))}
-                  placeholder="e.g. Tank Passivation"
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
-                />
+            <div className="px-4 sm:px-5 py-4 border-b border-gray-700 bg-gray-700/30 space-y-3">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-400 block mb-1">Task Name</label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newTT.name}
+                    onChange={e => setNewTT(t => ({ ...t, name: e.target.value }))}
+                    placeholder="e.g. Tank Passivation"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div className="w-28 flex-shrink-0">
+                  <label className="text-xs text-gray-400 block mb-1">Every (days)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newTT.frequency_days}
+                    onChange={e => setNewTT(t => ({ ...t, frequency_days: parseInt(e.target.value) || 90 }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
               </div>
-              <div className="w-32">
-                <label className="text-xs text-gray-400 block mb-1">Frequency (days)</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={newTT.frequency_days}
-                  onChange={e => setNewTT(t => ({ ...t, frequency_days: parseInt(e.target.value) || 90 }))}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
-                />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => { setAddingTT(false); setNewTT({ name: '', frequency_days: 90 }); }}
+                  className="text-sm text-gray-400 hover:text-white px-3 py-1.5">Cancel</button>
+                <button onClick={addTT} className="text-sm px-4 py-1.5 rounded-lg text-white font-medium" style={{ backgroundColor: '#F05A28' }}>Add</button>
               </div>
-              <button onClick={addTT} className="text-sm px-3 py-2 rounded-lg text-white font-medium" style={{ backgroundColor: '#F05A28' }}>Add</button>
-              <button onClick={() => { setAddingTT(false); setNewTT({ name: '', frequency_days: 90 }); }}
-                className="text-sm text-gray-400 hover:text-white">Cancel</button>
             </div>
           )}
 
           {taskTypes.length === 0 ? (
-            <p className="text-gray-500 text-sm px-5 py-6">No task types yet.</p>
+            <p className="text-gray-500 text-sm px-4 sm:px-5 py-6">No task types yet.</p>
           ) : (
             <ul>
               {taskTypes.map((tt, i) => (
-                <li key={tt.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-700 last:border-0">
-                  <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveTT(tt.id, 'up')} disabled={i === 0}
-                      className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
-                    <button onClick={() => moveTT(tt.id, 'down')} disabled={i === taskTypes.length - 1}
-                      className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
-                  </div>
-
+                <li key={tt.id} className="px-4 sm:px-5 py-3 border-b border-gray-700 last:border-0">
                   {editingTT?.id === tt.id ? (
-                    <>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingTT.name}
-                        onChange={e => setEditingTT(t => ({ ...t, name: e.target.value }))}
-                        className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm"
-                      />
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
                         <input
-                          type="number"
-                          min="1"
-                          value={editingTT.frequency_days}
-                          onChange={e => setEditingTT(t => ({ ...t, frequency_days: parseInt(e.target.value) || 90 }))}
-                          className="w-20 bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-sm"
+                          autoFocus
+                          type="text"
+                          value={editingTT.name}
+                          onChange={e => setEditingTT(t => ({ ...t, name: e.target.value }))}
+                          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm"
                         />
-                        <span className="text-gray-500 text-xs">days</span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <input
+                            type="number"
+                            min="1"
+                            value={editingTT.frequency_days}
+                            onChange={e => setEditingTT(t => ({ ...t, frequency_days: parseInt(e.target.value) || 90 }))}
+                            className="w-20 bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-sm"
+                          />
+                          <span className="text-gray-500 text-xs">days</span>
+                        </div>
                       </div>
-                    </>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setEditingTT(null)} className="text-xs text-gray-400 hover:text-white px-2 py-1">Cancel</button>
+                        <button
+                          onClick={() => saveTT(tt.id, { name: editingTT.name, frequency_days: editingTT.frequency_days })}
+                          className="text-xs text-white px-3 py-1 rounded"
+                          style={{ backgroundColor: '#F05A28' }}
+                        >Save</button>
+                      </div>
+                    </div>
                   ) : (
-                    <>
-                      <span className="flex-1 text-sm text-white">{tt.name}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
+                        <button onClick={() => moveTT(tt.id, 'up')} disabled={i === 0}
+                          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▲</button>
+                        <button onClick={() => moveTT(tt.id, 'down')} disabled={i === taskTypes.length - 1}
+                          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 text-xs leading-none">▼</button>
+                      </div>
+                      <span className="flex-1 text-sm text-white min-w-0 truncate">{tt.name}</span>
                       <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded flex-shrink-0">
                         Every {tt.frequency_days}d
                       </span>
-                    </>
-                  )}
-
-                  {editingTT?.id === tt.id ? (
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => saveTT(tt.id, { name: editingTT.name, frequency_days: editingTT.frequency_days })}
-                        className="text-xs text-white px-2 py-1 rounded"
-                        style={{ backgroundColor: '#F05A28' }}
-                      >Save</button>
-                      <button onClick={() => setEditingTT(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-3 flex-shrink-0">
-                      <button
-                        onClick={() => setEditingTT({ id: tt.id, name: tt.name, frequency_days: tt.frequency_days })}
-                        className="text-xs text-gray-400 hover:text-white"
-                      >Edit</button>
-                      <button onClick={() => deleteTT(tt.id)} className="text-xs text-red-500 hover:text-red-400">Delete</button>
+                      <div className="flex gap-3 flex-shrink-0">
+                        <button
+                          onClick={() => setEditingTT({ id: tt.id, name: tt.name, frequency_days: tt.frequency_days })}
+                          className="text-xs text-gray-400 hover:text-white"
+                        >Edit</button>
+                        <button onClick={() => deleteTT(tt.id)} className="text-xs text-red-500 hover:text-red-400">Delete</button>
+                      </div>
                     </div>
                   )}
                 </li>
@@ -536,7 +538,6 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
 
   useEffect(() => { loadStatus(true); }, [loadStatus]);
 
-  // Derive ordered tanks and task types from status data
   const tanks = [...new Map(statusData.map(r => [r.tank_id, { tank_id: r.tank_id, tank_name: r.tank_name }])).values()];
   const taskTypes = [...new Map(statusData.map(r => [r.task_type_id, {
     task_type_id: r.task_type_id, task_type_name: r.task_type_name, frequency_days: r.frequency_days,
@@ -551,12 +552,17 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
   const tabs = ['overview', ...(canUpload ? ['settings'] : [])];
   const tabLabel = { overview: 'Overview', settings: 'Settings' };
 
+  const isEmpty = !loading && (tanks.length === 0 || taskTypes.length === 0);
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-30">
-        <button onClick={onBack} className="text-gray-400 hover:text-white transition text-sm">← Back</button>
-        <h1 className="text-cream font-bold text-xl">Tank Maintenance</h1>
+      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-30">
+        <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition">
+          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-xl">HQ</span>
+        </button>
+        <h1 className="text-cream font-bold text-lg sm:text-xl">Tank Maintenance</h1>
       </nav>
 
       {/* Tabs */}
@@ -566,8 +572,8 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === t ? 'border-orange-500' : 'border-transparent text-gray-400 hover:text-white'}`}
-              style={tab === t ? { borderColor: '#F05A28', color: '#F05A28' } : {}}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === t ? '' : 'border-transparent text-gray-400 hover:text-white'}`}
+              style={tab === t ? { borderColor: '#F05A28', color: '#F05A28', borderBottomWidth: '2px' } : {}}
             >
               {tabLabel[t]}
             </button>
@@ -575,12 +581,12 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
         </div>
       </div>
 
-      <div className="px-4 sm:px-6 py-6 max-w-screen-xl mx-auto">
+      <div className="px-4 sm:px-6 py-5 max-w-screen-xl mx-auto">
         {tab === 'overview' && (
           <>
             {/* Summary badges */}
             {(overdueCount > 0 || dueSoonCount > 0 || neverCount > 0) && (
-              <div className="flex flex-wrap gap-3 mb-5">
+              <div className="flex flex-wrap gap-2 mb-4">
                 {overdueCount > 0 && (
                   <span className="flex items-center gap-1.5 text-sm text-red-400 bg-red-500/10 px-3 py-1.5 rounded-full">
                     <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
@@ -604,7 +610,7 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
 
             {loading ? (
               <div className="text-gray-500 text-sm text-center py-16">Loading…</div>
-            ) : tanks.length === 0 || taskTypes.length === 0 ? (
+            ) : isEmpty ? (
               <div className="text-center py-16 text-gray-500">
                 <p className="text-lg mb-2">No data to display.</p>
                 <p className="text-sm">
@@ -612,71 +618,105 @@ export default function TankMaintenance({ user, canUpload, onBack }) {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-gray-700">
-                <table className="border-collapse" style={{ minWidth: `${160 + taskTypes.length * 140}px`, width: '100%' }}>
-                  <thead>
-                    <tr className="bg-gray-800 border-b border-gray-700">
-                      <th className="sticky left-0 bg-gray-800 z-10 px-4 py-3 text-left text-xs text-gray-400 uppercase tracking-wider font-medium border-r border-gray-700 w-40">
-                        Tank
-                      </th>
-                      {taskTypes.map(tt => (
-                        <th key={tt.task_type_id} className="px-3 py-3 text-center text-xs text-gray-400 uppercase tracking-wider font-medium border-r border-gray-700 last:border-0">
-                          <div className="whitespace-nowrap">{tt.task_type_name}</div>
-                          <div className="text-gray-600 normal-case font-normal mt-0.5">every {tt.frequency_days}d</div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tanks.map((tank, ti) => {
-                      const rowBg = ti % 2 === 0 ? 'rgba(31,41,55,0.5)' : 'rgba(31,41,55,0.25)';
-                      return (
-                        <tr key={tank.tank_id} className="border-b border-gray-700 last:border-0">
-                          <td
-                            className="sticky left-0 z-10 px-4 py-3 text-sm font-medium text-white border-r border-gray-700"
-                            style={{ backgroundColor: rowBg }}
+              <>
+                {/* ── Mobile card list ── */}
+                <div className="sm:hidden space-y-2">
+                  {tanks.map(tank => (
+                    <div key={tank.tank_id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                      <div className="px-4 py-2.5 border-b border-gray-700 bg-gray-700/40">
+                        <span className="text-white font-semibold text-sm">{tank.tank_name}</span>
+                      </div>
+                      {taskTypes.map(tt => {
+                        const cell = getCell(tank.tank_id, tt.task_type_id);
+                        if (!cell) return null;
+                        const status = computeStatus(cell.days_since, cell.frequency_days);
+                        const st = ST[status];
+                        return (
+                          <button
+                            key={tt.task_type_id}
+                            onClick={() => setLogModal({ ...cell })}
+                            className={`w-full flex items-center justify-between px-4 py-3 border-b border-gray-700/60 last:border-0 text-left transition ${st.rowBg}`}
                           >
-                            {tank.tank_name}
-                          </td>
-                          {taskTypes.map(tt => {
-                            const cell = getCell(tank.tank_id, tt.task_type_id);
-                            if (!cell) return <td key={tt.task_type_id} className="px-3 py-3 border-r border-gray-700 last:border-0" />;
-                            const status = computeStatus(cell.days_since, cell.frequency_days);
-                            const st = ST[status];
-                            return (
-                              <td
-                                key={tt.task_type_id}
-                                onClick={() => setLogModal({ ...cell })}
-                                className={`px-3 py-3 text-center border-r border-gray-700 last:border-0 cursor-pointer transition ${st.cellBg}`}
-                              >
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${st.dot}`} />
-                                  <span className={`text-xs font-medium ${st.text}`}>
-                                    {cellLabel(cell.days_since, cell.frequency_days)}
-                                  </span>
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            <span className="text-gray-300 text-sm">{tt.task_type_name}</span>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`w-2 h-2 rounded-full ${st.dot}`} />
+                              <span className={`text-xs font-medium ${st.text}`}>
+                                {cellLabel(cell.days_since, cell.frequency_days)}
+                              </span>
+                              <span className="text-gray-600 text-xs">›</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
 
-            {/* Legend */}
-            {!loading && tanks.length > 0 && (
-              <div className="flex flex-wrap gap-4 mt-4 text-xs text-gray-500">
-                {[['bg-green-500', 'OK'], ['bg-yellow-400', 'Due Soon (80%+)'], ['bg-red-500', 'Overdue'], ['bg-gray-500', 'Never Logged']].map(([dot, label]) => (
-                  <span key={label} className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${dot}`} />
-                    {label}
-                  </span>
-                ))}
-                <span className="text-gray-600">· Click any cell to view log history</span>
-              </div>
+                {/* ── Desktop table ── */}
+                <div className="hidden sm:block overflow-x-auto rounded-xl border border-gray-700">
+                  <table className="border-collapse" style={{ minWidth: `${160 + taskTypes.length * 140}px`, width: '100%' }}>
+                    <thead>
+                      <tr className="bg-gray-800 border-b border-gray-700">
+                        <th className="sticky left-0 bg-gray-800 z-10 px-4 py-3 text-left text-xs text-gray-400 uppercase tracking-wider font-medium border-r border-gray-700 w-40">
+                          Tank
+                        </th>
+                        {taskTypes.map(tt => (
+                          <th key={tt.task_type_id} className="px-3 py-3 text-center text-xs text-gray-400 uppercase tracking-wider font-medium border-r border-gray-700 last:border-0">
+                            <div className="whitespace-nowrap">{tt.task_type_name}</div>
+                            <div className="text-gray-600 normal-case font-normal mt-0.5">every {tt.frequency_days}d</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tanks.map((tank, ti) => {
+                        const rowBg = ti % 2 === 0 ? 'rgba(31,41,55,0.5)' : 'rgba(31,41,55,0.25)';
+                        return (
+                          <tr key={tank.tank_id} className="border-b border-gray-700 last:border-0">
+                            <td
+                              className="sticky left-0 z-10 px-4 py-3 text-sm font-medium text-white border-r border-gray-700"
+                              style={{ backgroundColor: rowBg }}
+                            >
+                              {tank.tank_name}
+                            </td>
+                            {taskTypes.map(tt => {
+                              const cell = getCell(tank.tank_id, tt.task_type_id);
+                              if (!cell) return <td key={tt.task_type_id} className="px-3 py-3 border-r border-gray-700 last:border-0" />;
+                              const status = computeStatus(cell.days_since, cell.frequency_days);
+                              const st = ST[status];
+                              return (
+                                <td
+                                  key={tt.task_type_id}
+                                  onClick={() => setLogModal({ ...cell })}
+                                  className={`px-3 py-3 text-center border-r border-gray-700 last:border-0 cursor-pointer transition ${st.cellBg}`}
+                                >
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className={`w-2.5 h-2.5 rounded-full ${st.dot}`} />
+                                    <span className={`text-xs font-medium ${st.text}`}>
+                                      {cellLabel(cell.days_since, cell.frequency_days)}
+                                    </span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Legend — desktop only */}
+                <div className="hidden sm:flex flex-wrap gap-4 mt-4 text-xs text-gray-500">
+                  {[['bg-green-500', 'OK'], ['bg-yellow-400', 'Due Soon (80%+)'], ['bg-red-500', 'Overdue'], ['bg-gray-500', 'Never Logged']].map(([dot, label]) => (
+                    <span key={label} className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${dot}`} />
+                      {label}
+                    </span>
+                  ))}
+                  <span className="text-gray-600">· Click any cell to view log history</span>
+                </div>
+              </>
             )}
           </>
         )}
