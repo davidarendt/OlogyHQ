@@ -35,6 +35,14 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function fmtDateTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
 function fmtType(t) {
   return { distro: 'Distro', keg_return: 'Ology Keg Return', keg_logistics: 'Keg Logistics' }[t] || t;
 }
@@ -913,6 +921,9 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                         <div>
                           <p className="text-white text-sm font-semibold">{s.submitted_by_name}</p>
                           <p className="text-gray-400 text-xs mt-0.5">{fmtDate(s.submission_date)}</p>
+                          {s.created_at && (
+                            <p className="text-gray-500 text-xs mt-0.5">Submitted {fmtDateTime(s.created_at)}</p>
+                          )}
                         </div>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded text-white shrink-0"
                           style={{ backgroundColor: typeColor(s.submission_type) }}>
@@ -965,7 +976,12 @@ function ProductionPhotos({ user, canUpload, onBack }) {
                     <tbody>
                       {submissions.map(s => (
                         <tr key={s.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-700/40 transition">
-                          <td className="px-6 py-4 text-white text-sm whitespace-nowrap">{fmtDate(s.submission_date)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-white text-sm">{fmtDate(s.submission_date)}</p>
+                            {s.created_at && (
+                              <p className="text-gray-500 text-xs mt-0.5">{fmtDateTime(s.created_at)}</p>
+                            )}
+                          </td>
                           <td className="px-6 py-4 text-white text-sm">{s.submitted_by_name}</td>
                           <td className="px-6 py-4">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded text-white"
