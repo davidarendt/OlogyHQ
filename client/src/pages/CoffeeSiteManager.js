@@ -200,8 +200,6 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
   const [editBag, setEditBag] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
 
-  const pubUrl = `${process.env.REACT_APP_API_URL || window.location.origin}/api/public/coffee-site`;
-
   const load = async () => {
     const res = await fetch(`${API}/api/coffee-site/bags`, { credentials: 'include' });
     if (res.ok) setBags(await res.json());
@@ -254,13 +252,6 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
       </nav>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        {/* Public endpoint callout */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
-          <p className="text-gray-400 text-xs font-medium mb-1 uppercase tracking-wider">Public JSON Endpoint</p>
-          <code className="text-green-400 text-sm break-all select-all">{pubUrl}</code>
-          <p className="text-gray-500 text-xs mt-1.5">No authentication required — use this URL in any website or app.</p>
-        </div>
-
         {/* Filter bar + Add button */}
         <div className="flex items-center justify-between gap-4 mb-6">
           <div className="flex gap-1.5 overflow-x-auto pb-1 flex-1">
