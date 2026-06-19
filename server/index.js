@@ -5703,7 +5703,7 @@ app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage
 // ── Coffee Site ───────────────────────────────────────────────────────────────
 const CS_BUCKET = 'coffee-site-photos';
 const CS_PUB_BASE = `${process.env.SUPABASE_URL || 'https://ozuhfcinbelfxpidxdai.supabase.co'}/storage/v1/object/public/${CS_BUCKET}`;
-const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, created_by_name, created_at`;
+const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, archived, archived_at, created_by_name, created_at`;
 
 function csBagUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 function csWithUrl(b) { return { ...b, photo_url: csBagUrl(b.photo_filename) }; }
@@ -5730,26 +5730,35 @@ function checkCoffeeSiteManage(req, res, next) {
    .catch(() => res.status(500).json({ error: 'Server error' }));
 }
 
+async function autoArchiveCoffeeSiteBags() {
+  try {
+    await pool.query(
+      `UPDATE coffee_site_bags
+       SET archived=true, archived_at=NOW(), is_featured=false, updated_at=NOW()
+       WHERE archived=false AND sold_out=true AND sold_out_at < NOW() - INTERVAL '14 days'`
+    );
+  } catch {}
+}
+
 // Public — no auth, CORS open
 app.get('/api/public/coffee-site', async (req, res) => {
   try {
     res.header('Access-Control-Allow-Origin', '*');
-    const today = new Date().toISOString().slice(0, 10);
     const { rows } = await pool.query(
-      `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY is_featured DESC, go_live_date DESC NULLS LAST`
+      `SELECT ${CS_COLS} FROM coffee_site_bags WHERE archived=false ORDER BY is_featured DESC, created_at DESC`
     );
     const featured = rows.find(b => b.is_featured)
-      || rows.find(b => b.go_live_date && b.go_live_date <= today && !b.sold_out)
+      || rows.find(b => !b.sold_out)
       || null;
-    const upcoming = rows.filter(b => b.go_live_date && b.go_live_date > today && !b.sold_out);
-    res.json({ featured: featured ? csWithUrl(featured) : null, upcoming: upcoming.map(csWithUrl) });
+    res.json({ featured: featured ? csWithUrl(featured) : null, coffees: rows.map(csWithUrl) });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.get('/api/coffee-site/bags', authenticateToken, checkCoffeeSiteView, async (req, res) => {
   try {
+    await autoArchiveCoffeeSiteBags();
     const { rows } = await pool.query(
-      `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY go_live_date DESC NULLS LAST, created_at DESC`
+      `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY archived ASC, is_featured DESC, created_at DESC`
     );
     res.json(rows.map(csWithUrl));
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
@@ -5801,6 +5810,22 @@ app.patch('/api/coffee-site/bags/:id/feature', authenticateToken, checkCoffeeSit
     const { rows } = await pool.query(
       `UPDATE coffee_site_bags SET is_featured=$1, updated_at=NOW() WHERE id=$2 RETURNING ${CS_COLS}`,
       [!!featured, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(csWithUrl(rows[0]));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/bags/:id/archive', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const archive = req.body.archived !== false;
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_bags
+       SET archived=$1, archived_at=CASE WHEN $1 THEN NOW() ELSE NULL END,
+           is_featured=CASE WHEN $1 THEN false ELSE is_featured END,
+           updated_at=NOW()
+       WHERE id=$2 RETURNING ${CS_COLS}`,
+      [archive, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(csWithUrl(rows[0]));
