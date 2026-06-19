@@ -5732,82 +5732,96 @@ function checkCoffeeSiteManage(req, res, next) {
 
 // Public — no auth, CORS open
 app.get('/api/public/coffee-site', async (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  const today = new Date().toISOString().slice(0, 10);
-  const { rows } = await pool.query(
-    `SELECT ${CS_COLS} FROM coffee_site_bags WHERE go_live_date IS NOT NULL ORDER BY go_live_date DESC`
-  );
-  const featured = rows.find(b => b.go_live_date <= today) || null;
-  const upcoming = rows.filter(b => b.go_live_date > today).reverse();
-  res.json({ featured: featured ? csWithUrl(featured) : null, upcoming: upcoming.map(csWithUrl) });
+  try {
+    res.header('Access-Control-Allow-Origin', '*');
+    const today = new Date().toISOString().slice(0, 10);
+    const { rows } = await pool.query(
+      `SELECT ${CS_COLS} FROM coffee_site_bags WHERE go_live_date IS NOT NULL ORDER BY go_live_date DESC`
+    );
+    const featured = rows.find(b => b.go_live_date <= today) || null;
+    const upcoming = rows.filter(b => b.go_live_date > today).reverse();
+    res.json({ featured: featured ? csWithUrl(featured) : null, upcoming: upcoming.map(csWithUrl) });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.get('/api/coffee-site/bags', authenticateToken, checkCoffeeSiteView, async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY go_live_date DESC NULLS LAST, created_at DESC`
-  );
-  res.json(rows.map(csWithUrl));
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY go_live_date DESC NULLS LAST, created_at DESC`
+    );
+    res.json(rows.map(csWithUrl));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.post('/api/coffee-site/bags/presign', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
-  if (!supabase) return res.status(500).json({ error: 'Storage not configured' });
-  const { filename } = req.body;
-  const ext = (filename || 'photo.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const unique = `bag-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { data, error } = await supabase.storage.from(CS_BUCKET).createSignedUploadUrl(unique);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ signedUrl: data.signedUrl, path: data.path, filename: unique });
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Storage not configured' });
+    const { filename } = req.body;
+    const ext = (filename || 'photo.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const unique = `bag-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { data, error } = await supabase.storage.from(CS_BUCKET).createSignedUploadUrl(unique);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ signedUrl: data.signedUrl, path: data.path, filename: unique });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.post('/api/coffee-site/bags', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
-  const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
-  if (!coffee_name?.trim()) return res.status(400).json({ error: 'coffee_name required' });
-  const { rows } = await pool.query(
-    `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, photo_filename, go_live_date, created_by_id, created_by_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${CS_COLS}`,
-    [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price||null, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
-  );
-  res.status(201).json(csWithUrl(rows[0]));
+  try {
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
+    if (!coffee_name?.trim()) return res.status(400).json({ error: 'coffee_name required' });
+    const { rows } = await pool.query(
+      `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, photo_filename, go_live_date, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${CS_COLS}`,
+      [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
+    );
+    res.status(201).json(csWithUrl(rows[0]));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.patch('/api/coffee-site/bags/:id/sold-out', authenticateToken, checkCoffeeSiteView, async (req, res) => {
-  const { rows } = await pool.query(
-    `UPDATE coffee_site_bags SET sold_out=$1, sold_out_at=CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at=NOW()
-     WHERE id=$2 RETURNING ${CS_COLS}`,
-    [!!req.body.sold_out, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  res.json(csWithUrl(rows[0]));
+  try {
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_bags SET sold_out=$1, sold_out_at=CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at=NOW()
+       WHERE id=$2 RETURNING ${CS_COLS}`,
+      [!!req.body.sold_out, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(csWithUrl(rows[0]));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
-  const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
-  const { rows } = await pool.query(
-    `UPDATE coffee_site_bags
-     SET coffee_name   = COALESCE($1, coffee_name),
-         roaster_name  = $2,
-         origin        = $3,
-         process       = $4,
-         tasting_notes = $5,
-         price         = $6,
-         photo_filename = CASE WHEN $7 IS NOT NULL THEN $7 ELSE photo_filename END,
-         go_live_date  = $8,
-         updated_at    = NOW()
-     WHERE id=$9 RETURNING ${CS_COLS}`,
-    [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price||null, photo_filename||null, go_live_date||null, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  res.json(csWithUrl(rows[0]));
+  try {
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_bags
+       SET coffee_name   = COALESCE($1, coffee_name),
+           roaster_name  = $2,
+           origin        = $3,
+           process       = $4,
+           tasting_notes = $5,
+           price         = $6,
+           photo_filename = CASE WHEN $7 IS NOT NULL THEN $7 ELSE photo_filename END,
+           go_live_date  = $8,
+           updated_at    = NOW()
+       WHERE id=$9 RETURNING ${CS_COLS}`,
+      [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, photo_filename||null, go_live_date||null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(csWithUrl(rows[0]));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 app.delete('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
-  const { rows } = await pool.query('SELECT photo_filename FROM coffee_site_bags WHERE id=$1', [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  if (rows[0].photo_filename && supabase) {
-    await supabase.storage.from(CS_BUCKET).remove([rows[0].photo_filename]).catch(() => {});
-  }
-  await pool.query('DELETE FROM coffee_site_bags WHERE id=$1', [req.params.id]);
-  res.json({ success: true });
+  try {
+    const { rows } = await pool.query('SELECT photo_filename FROM coffee_site_bags WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (rows[0].photo_filename && supabase) {
+      await supabase.storage.from(CS_BUCKET).remove([rows[0].photo_filename]).catch(() => {});
+    }
+    await pool.query('DELETE FROM coffee_site_bags WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
 if (require.main === module) {
