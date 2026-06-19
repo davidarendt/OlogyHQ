@@ -5502,6 +5502,204 @@ app.delete('/api/tank-maintenance/logs/:id', authenticateToken, checkTankMainten
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Distillery Inventory ──────────────────────────────────────────────────────
+
+function checkDistilleryView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'distillery-inventory' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkDistilleryManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'distillery-inventory' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+// Products
+app.get('/api/distillery/products', authenticateToken, checkDistilleryView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM distillery_products WHERE active=true ORDER BY name`
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/distillery/products', authenticateToken, checkDistilleryManage, async (req, res) => {
+  const { name, category, unit_size, current_quantity } = req.body;
+  if (!name?.trim() || !unit_size?.trim()) return res.status(400).json({ message: 'Name and unit size required' });
+  try {
+    const { rows: [p] } = await pool.query(
+      `INSERT INTO distillery_products (name, category, unit_size, current_quantity)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [name.trim(), category?.trim() || null, unit_size.trim(), current_quantity || 0]
+    );
+    res.json(p);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/distillery/products/:id', authenticateToken, checkDistilleryManage, async (req, res) => {
+  const { name, category, unit_size, active } = req.body;
+  try {
+    const { rows: [p] } = await pool.query(
+      `UPDATE distillery_products SET
+        name = COALESCE($1, name),
+        category = COALESCE($2, category),
+        unit_size = COALESCE($3, unit_size),
+        active = COALESCE($4, active)
+       WHERE id=$5 RETURNING *`,
+      [name?.trim() || null, category !== undefined ? (category?.trim() || null) : undefined, unit_size?.trim() || null, active !== undefined ? active : null, req.params.id]
+    );
+    if (!p) return res.status(404).json({ message: 'Not found' });
+    res.json(p);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/distillery/products/:id', authenticateToken, checkDistilleryManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM distillery_products WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Stock adjustment
+app.post('/api/distillery/stock', authenticateToken, checkDistilleryManage, async (req, res) => {
+  const { product_id, type, quantity, notes } = req.body;
+  if (!product_id || !type || quantity === undefined) return res.status(400).json({ message: 'product_id, type, and quantity required' });
+  try {
+    const { rows: [product] } = await pool.query('SELECT * FROM distillery_products WHERE id=$1', [product_id]);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    const before = parseFloat(product.current_quantity);
+    let after;
+    let change;
+    if (type === 'add')    { change = parseFloat(quantity); after = before + change; }
+    else if (type === 'remove') { change = -parseFloat(quantity); after = before + change; }
+    else if (type === 'adjust') { after = parseFloat(quantity); change = after - before; }
+    else return res.status(400).json({ message: 'Invalid type' });
+
+    await pool.query('UPDATE distillery_products SET current_quantity=$1 WHERE id=$2', [after, product_id]);
+    const { rows: [tx] } = await pool.query(
+      `INSERT INTO distillery_transactions (product_id, product_name, type, quantity_change, quantity_before, quantity_after, notes, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [product_id, product.name, type, change, before, after, notes || null, req.user.id, req.user.name]
+    );
+    res.json({ transaction: tx, new_quantity: after });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Transactions
+app.get('/api/distillery/transactions', authenticateToken, checkDistilleryManage, async (req, res) => {
+  try {
+    const { product_id } = req.query;
+    const { rows } = await pool.query(
+      `SELECT * FROM distillery_transactions
+       ${product_id ? 'WHERE product_id=$1' : ''}
+       ORDER BY created_at DESC LIMIT 500`,
+      product_id ? [product_id] : []
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Orders — list and create before /:id
+app.get('/api/distillery/orders', authenticateToken, checkDistilleryView, async (req, res) => {
+  try {
+    const { status } = req.query;
+    const { rows } = await pool.query(
+      `SELECT o.*,
+         COUNT(oi.id)::int AS item_count,
+         SUM(oi.quantity) AS total_qty
+       FROM distillery_orders o
+       LEFT JOIN distillery_order_items oi ON oi.order_id = o.id
+       ${status ? 'WHERE o.status=$1' : ''}
+       GROUP BY o.id
+       ORDER BY o.created_at DESC`,
+      status ? [status] : []
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/distillery/orders', authenticateToken, checkDistilleryView, async (req, res) => {
+  const { recipient, requested_date, notes, items } = req.body;
+  if (!recipient?.trim()) return res.status(400).json({ message: 'Recipient required' });
+  if (!items?.length) return res.status(400).json({ message: 'At least one item required' });
+  try {
+    const { rows: [order] } = await pool.query(
+      `INSERT INTO distillery_orders (requested_by_id, requested_by_name, recipient, requested_date, notes)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.user.id, req.user.name, recipient.trim(), requested_date || null, notes?.trim() || null]
+    );
+    for (const item of items) {
+      const { rows: [prod] } = await pool.query('SELECT name, unit_size FROM distillery_products WHERE id=$1', [item.product_id]);
+      if (!prod) continue;
+      await pool.query(
+        `INSERT INTO distillery_order_items (order_id, product_id, product_name, unit_size, quantity)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [order.id, item.product_id, prod.name, prod.unit_size, item.quantity]
+      );
+    }
+    res.json(order);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.get('/api/distillery/orders/:id', authenticateToken, checkDistilleryView, async (req, res) => {
+  try {
+    const { rows: [order] } = await pool.query('SELECT * FROM distillery_orders WHERE id=$1', [req.params.id]);
+    if (!order) return res.status(404).json({ message: 'Not found' });
+    const { rows: items } = await pool.query(
+      'SELECT * FROM distillery_order_items WHERE order_id=$1 ORDER BY id',
+      [req.params.id]
+    );
+    res.json({ ...order, items });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage, async (req, res) => {
+  const { action } = req.body;
+  if (!['fulfill', 'cancel'].includes(action)) return res.status(400).json({ message: 'action must be fulfill or cancel' });
+  try {
+    const { rows: [order] } = await pool.query('SELECT * FROM distillery_orders WHERE id=$1', [req.params.id]);
+    if (!order) return res.status(404).json({ message: 'Not found' });
+    if (order.status !== 'pending') return res.status(400).json({ message: 'Order is not pending' });
+
+    if (action === 'fulfill') {
+      const { rows: items } = await pool.query('SELECT * FROM distillery_order_items WHERE order_id=$1', [req.params.id]);
+      for (const item of items) {
+        if (!item.product_id) continue;
+        const { rows: [prod] } = await pool.query('SELECT * FROM distillery_products WHERE id=$1', [item.product_id]);
+        if (!prod) continue;
+        const before = parseFloat(prod.current_quantity);
+        const change = -parseFloat(item.quantity);
+        const after = before + change;
+        await pool.query('UPDATE distillery_products SET current_quantity=$1 WHERE id=$2', [after, item.product_id]);
+        await pool.query(
+          `INSERT INTO distillery_transactions (product_id, product_name, type, quantity_change, quantity_before, quantity_after, notes, order_id, created_by_id, created_by_name)
+           VALUES ($1,$2,'remove',$3,$4,$5,$6,$7,$8,$9)`,
+          [item.product_id, item.product_name, change, before, after, `Order #${order.id} to ${order.recipient}`, order.id, req.user.id, req.user.name]
+        );
+      }
+      await pool.query(
+        `UPDATE distillery_orders SET status='fulfilled', fulfilled_by_id=$1, fulfilled_by_name=$2, fulfilled_at=NOW() WHERE id=$3`,
+        [req.user.id, req.user.name, req.params.id]
+      );
+    } else {
+      await pool.query(`UPDATE distillery_orders SET status='cancelled' WHERE id=$1`, [req.params.id]);
+    }
+    const { rows: [updated] } = await pool.query('SELECT * FROM distillery_orders WHERE id=$1', [req.params.id]);
+    res.json(updated);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {

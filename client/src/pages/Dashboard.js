@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
   Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
-  UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen,
+  UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen, FlaskConical,
 } from 'lucide-react';
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
@@ -25,6 +25,7 @@ const TOOL_META = {
   'production-weekly':     { Icon: CalendarCheck,   description: 'Weekly brew and packaging task board',                     page: 'production-weekly' },
   'equipment-manuals':     { Icon: BookOpen,        description: 'Browse and download equipment manuals and documentation',   page: 'equipment-manuals' },
   'tank-maintenance':      { Icon: Wrench,          description: 'Track recurring maintenance tasks per tank',                  page: 'tank-maintenance' },
+  'distillery-inventory':  { Icon: FlaskConical,    description: 'Track distillery product inventory and order requests',        page: 'distillery-inventory' },
   'user-management':       { Icon: Users,           description: 'Manage user accounts and roles',                          page: 'usermanagement' },
 };
 

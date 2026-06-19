@@ -12,6 +12,7 @@ const ROLES = [
   { value: 'hr',              label: 'HR' },
   { value: 'kitchen_manager', label: 'Kitchen Manager' },
   { value: 'cook',            label: 'Cook' },
+  { value: 'distilling',     label: 'Distilling' },
 ];
 
 const ROLE_LABEL = Object.fromEntries(ROLES.map(r => [r.value, r.label]));

@@ -21,6 +21,7 @@ import CoffeeKeeper from './pages/CoffeeKeeper';
 import ProductionWeekly from './pages/ProductionWeekly';
 import EquipmentManuals from './pages/EquipmentManuals';
 import TankMaintenance from './pages/TankMaintenance';
+import DistilleryInventory from './pages/DistilleryInventory';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -134,6 +135,7 @@ function App() {
   if (page === 'production-weekly') return <ProductionWeekly user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'equipment-manuals') return <EquipmentManuals user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'tank-maintenance') return <TankMaintenance user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'distillery-inventory') return <DistilleryInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }
