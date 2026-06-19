@@ -190,7 +190,6 @@ function OrderModal({ products, onClose, onSaved }) {
             </div>
             <div className="space-y-2">
               {items.map((item, i) => {
-                const prod = products.find(p => p.id === parseInt(item.product_id));
                 return (
                   <div key={i} className="flex gap-2 items-center">
                     <select value={item.product_id} onChange={e => setItem(i, 'product_id', e.target.value)}
