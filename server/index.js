@@ -5801,7 +5801,7 @@ app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage,
            process       = $4,
            tasting_notes = $5,
            price         = $6,
-           photo_filename = CASE WHEN $7 IS NOT NULL THEN $7 ELSE photo_filename END,
+           photo_filename = COALESCE($7, photo_filename),
            go_live_date  = $8,
            updated_at    = NOW()
        WHERE id=$9 RETURNING ${CS_COLS}`,
