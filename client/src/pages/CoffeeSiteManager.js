@@ -253,6 +253,17 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
 
   const filtered = filter === 'all' ? bags : bags.filter(b => bagStatus(b) === filter);
 
+  // Which bag is currently showing on the public website
+  const hasExplicitFeatured = bags.some(b => b.is_featured);
+  const autoFeaturedId = (() => {
+    if (hasExplicitFeatured) return null;
+    const today = todayYMD();
+    const live = bags
+      .filter(b => b.go_live_date && b.go_live_date <= today && !b.sold_out)
+      .sort((a, b) => b.go_live_date.localeCompare(a.go_live_date));
+    return live[0]?.id ?? null;
+  })();
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Nav */}
@@ -324,10 +335,15 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
                           <h3 className="text-white font-semibold leading-tight truncate">{bag.coffee_name}</h3>
                           {bag.roaster_name && <p className="text-gray-400 text-sm">{bag.roaster_name}</p>}
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           {bag.is_featured && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1">
-                              ★ Featured
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
+                              ★ On Website
+                            </span>
+                          )}
+                          {!bag.is_featured && bag.id === autoFeaturedId && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400 flex items-center gap-1">
+                              ↑ On Website (auto)
                             </span>
                           )}
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${S.bg} ${S.text}`}>
@@ -359,38 +375,55 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700/60 bg-gray-800/40 flex-wrap">
+                  <div className="border-t border-gray-700/60 bg-gray-800/40">
                     {canUpload && (
-                      bag.is_featured
-                        ? <button onClick={() => setFeatured(bag, false)}
-                            className="px-3 py-1 rounded-lg text-xs font-medium bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition">
-                            ★ Featured — Remove
+                      <div className="px-4 py-2 border-b border-gray-700/40">
+                        {bag.is_featured ? (
+                          <div className="flex items-center justify-between">
+                            <span className="text-yellow-400 text-xs font-medium">★ This bag is currently on the website</span>
+                            <button onClick={() => setFeatured(bag, false)}
+                              className="text-xs text-gray-500 hover:text-gray-300 transition underline">
+                              Remove pin
+                            </button>
+                          </div>
+                        ) : bag.id === autoFeaturedId ? (
+                          <div className="flex items-center justify-between">
+                            <span className="text-blue-400 text-xs">↑ Showing on website automatically (most recent live)</span>
+                            <button onClick={() => setFeatured(bag, true)}
+                              className="text-xs text-yellow-400 hover:text-yellow-300 transition font-medium">
+                              Pin this bag
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setFeatured(bag, true)}
+                            className="text-xs text-gray-400 hover:text-yellow-400 transition font-medium">
+                            ☆ Set as featured on website
                           </button>
-                        : <button onClick={() => setFeatured(bag, true)}
-                            className="px-3 py-1 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:text-yellow-400 hover:bg-yellow-500/15 transition">
-                            ☆ Set as Featured
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 px-4 py-2">
+                      <button onClick={() => toggleSoldOut(bag)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                          bag.sold_out
+                            ? 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
+                            : 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                        }`}>
+                        {bag.sold_out ? 'Mark Available' : 'Mark Sold Out'}
+                      </button>
+                      {canUpload && (
+                        <>
+                          <button onClick={() => setEditBag(bag)}
+                            className="px-3 py-1 rounded-lg text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
+                            Edit
                           </button>
-                    )}
-                    <button onClick={() => toggleSoldOut(bag)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
-                        bag.sold_out
-                          ? 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
-                          : 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
-                      }`}>
-                      {bag.sold_out ? 'Mark Available' : 'Mark Sold Out'}
-                    </button>
-                    {canUpload && (
-                      <>
-                        <button onClick={() => setEditBag(bag)}
-                          className="px-3 py-1 rounded-lg text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
-                          Edit
-                        </button>
-                        <button onClick={() => deleteBag(bag)}
-                          className="px-3 py-1 rounded-lg text-xs text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
-                          Delete
-                        </button>
-                      </>
-                    )}
+                          <button onClick={() => deleteBag(bag)}
+                            className="px-3 py-1 rounded-lg text-xs text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
