@@ -225,6 +225,19 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
     setBags(b => b.filter(x => x.id !== bag.id));
   };
 
+  const setFeatured = async (bag, featured) => {
+    // Optimistic update
+    setBags(b => b.map(x =>
+      x.id === bag.id ? { ...x, is_featured: featured } : { ...x, is_featured: featured ? false : x.is_featured }
+    ));
+    const res = await fetch(`${API}/api/coffee-site/bags/${bag.id}/feature`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featured }),
+    });
+    if (!res.ok) load();
+  };
+
   const onSaved = (saved) => {
     setBags(prev => {
       const idx = prev.findIndex(x => x.id === saved.id);
@@ -311,10 +324,17 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
                           <h3 className="text-white font-semibold leading-tight truncate">{bag.coffee_name}</h3>
                           {bag.roaster_name && <p className="text-gray-400 text-sm">{bag.roaster_name}</p>}
                         </div>
-                        <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${S.bg} ${S.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${S.dot}`} />
-                          {S.label}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {bag.is_featured && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1">
+                              ★ Featured
+                            </span>
+                          )}
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${S.bg} ${S.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${S.dot}`} />
+                            {S.label}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 mt-2">
@@ -339,7 +359,18 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700/60 bg-gray-800/40">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700/60 bg-gray-800/40 flex-wrap">
+                    {canUpload && (
+                      bag.is_featured
+                        ? <button onClick={() => setFeatured(bag, false)}
+                            className="px-3 py-1 rounded-lg text-xs font-medium bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition">
+                            ★ Featured — Remove
+                          </button>
+                        : <button onClick={() => setFeatured(bag, true)}
+                            className="px-3 py-1 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:text-yellow-400 hover:bg-yellow-500/15 transition">
+                            ☆ Set as Featured
+                          </button>
+                    )}
                     <button onClick={() => toggleSoldOut(bag)}
                       className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
                         bag.sold_out

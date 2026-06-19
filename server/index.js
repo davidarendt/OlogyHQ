@@ -5703,7 +5703,7 @@ app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage
 // ── Coffee Site ───────────────────────────────────────────────────────────────
 const CS_BUCKET = 'coffee-site-photos';
 const CS_PUB_BASE = `${process.env.SUPABASE_URL || 'https://ozuhfcinbelfxpidxdai.supabase.co'}/storage/v1/object/public/${CS_BUCKET}`;
-const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, photo_filename, go_live_date, sold_out, sold_out_at, created_by_name, created_at`;
+const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, created_by_name, created_at`;
 
 function csBagUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 function csWithUrl(b) { return { ...b, photo_url: csBagUrl(b.photo_filename) }; }
@@ -5736,10 +5736,12 @@ app.get('/api/public/coffee-site', async (req, res) => {
     res.header('Access-Control-Allow-Origin', '*');
     const today = new Date().toISOString().slice(0, 10);
     const { rows } = await pool.query(
-      `SELECT ${CS_COLS} FROM coffee_site_bags WHERE go_live_date IS NOT NULL ORDER BY go_live_date DESC`
+      `SELECT ${CS_COLS} FROM coffee_site_bags ORDER BY is_featured DESC, go_live_date DESC NULLS LAST`
     );
-    const featured = rows.find(b => b.go_live_date <= today) || null;
-    const upcoming = rows.filter(b => b.go_live_date > today).reverse();
+    const featured = rows.find(b => b.is_featured)
+      || rows.find(b => b.go_live_date && b.go_live_date <= today && !b.sold_out)
+      || null;
+    const upcoming = rows.filter(b => b.go_live_date && b.go_live_date > today && !b.sold_out);
     res.json({ featured: featured ? csWithUrl(featured) : null, upcoming: upcoming.map(csWithUrl) });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
@@ -5784,6 +5786,21 @@ app.patch('/api/coffee-site/bags/:id/sold-out', authenticateToken, checkCoffeeSi
       `UPDATE coffee_site_bags SET sold_out=$1, sold_out_at=CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at=NOW()
        WHERE id=$2 RETURNING ${CS_COLS}`,
       [!!req.body.sold_out, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(csWithUrl(rows[0]));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/bags/:id/feature', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { featured } = req.body;
+    if (featured) {
+      await pool.query('UPDATE coffee_site_bags SET is_featured=false, updated_at=NOW()');
+    }
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_bags SET is_featured=$1, updated_at=NOW() WHERE id=$2 RETURNING ${CS_COLS}`,
+      [!!featured, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(csWithUrl(rows[0]));
