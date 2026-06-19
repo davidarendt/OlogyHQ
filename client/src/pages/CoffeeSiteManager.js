@@ -7,11 +7,6 @@ function fmtPrice(p) {
   return `$${parseFloat(p).toFixed(2)}`;
 }
 
-function fmtDate(d) {
-  if (!d) return '';
-  const [y, m, day] = d.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
 
 const EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '' };
 
