@@ -5740,17 +5740,54 @@ async function autoArchiveCoffeeSiteBags() {
   } catch {}
 }
 
+// ── Coffee Site Merch ─────────────────────────────────────────────────────────
+const CS_MERCH_COLS = `id, name, category, description, price::float AS price, photo_filename, sold_out, sold_out_at, archived, archived_at, sort_order, created_by_name, created_at`;
+
+async function csAttachVariants(items) {
+  if (!items.length) return items;
+  const { rows } = await pool.query(
+    `SELECT id, item_id, variant_type, variant_value, available, sort_order
+     FROM coffee_site_merch_variants WHERE item_id = ANY($1) ORDER BY item_id, sort_order, id`,
+    [items.map(i => i.id)]
+  );
+  const byItem = {};
+  rows.forEach(v => { (byItem[v.item_id] = byItem[v.item_id] || []).push(v); });
+  return items.map(i => ({ ...i, photo_url: csBagUrl(i.photo_filename), variants: byItem[i.id] || [] }));
+}
+
+async function autoArchiveCoffeeSiteMerch() {
+  try {
+    await pool.query(
+      `UPDATE coffee_site_merch SET archived=true, archived_at=NOW(), updated_at=NOW()
+       WHERE archived=false AND sold_out=true AND sold_out_at < NOW() - INTERVAL '14 days'`
+    );
+  } catch {}
+}
+
+async function csReplaceVariants(itemId, variants) {
+  await pool.query('DELETE FROM coffee_site_merch_variants WHERE item_id=$1', [itemId]);
+  if (!Array.isArray(variants) || !variants.length) return;
+  for (let i = 0; i < variants.length; i++) {
+    const { variant_type, variant_value, available } = variants[i];
+    if (!variant_type?.trim() || !variant_value?.trim()) continue;
+    await pool.query(
+      `INSERT INTO coffee_site_merch_variants (item_id, variant_type, variant_value, available, sort_order) VALUES ($1,$2,$3,$4,$5)`,
+      [itemId, variant_type.trim(), variant_value.trim(), available !== false, i]
+    );
+  }
+}
+
 // Public — no auth, CORS open
 app.get('/api/public/coffee-site', async (req, res) => {
   try {
     res.header('Access-Control-Allow-Origin', '*');
-    const { rows } = await pool.query(
-      `SELECT ${CS_COLS} FROM coffee_site_bags WHERE archived=false ORDER BY is_featured DESC, created_at DESC`
-    );
-    const featured = rows.find(b => b.is_featured)
-      || rows.find(b => !b.sold_out)
-      || null;
-    res.json({ featured: featured ? csWithUrl(featured) : null, coffees: rows.map(csWithUrl) });
+    const [bagsRes, merchRes] = await Promise.all([
+      pool.query(`SELECT ${CS_COLS} FROM coffee_site_bags WHERE archived=false ORDER BY is_featured DESC, created_at DESC`),
+      pool.query(`SELECT ${CS_MERCH_COLS} FROM coffee_site_merch WHERE archived=false ORDER BY sort_order ASC, created_at DESC`),
+    ]);
+    const featured = bagsRes.rows.find(b => b.is_featured) || bagsRes.rows.find(b => !b.sold_out) || null;
+    const merch = await csAttachVariants(merchRes.rows);
+    res.json({ featured: featured ? csWithUrl(featured) : null, coffees: bagsRes.rows.map(csWithUrl), merch });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -5862,6 +5899,99 @@ app.delete('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage
       await supabase.storage.from(CS_BUCKET).remove([rows[0].photo_filename]).catch(() => {});
     }
     await pool.query('DELETE FROM coffee_site_bags WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/coffee-site/merch', authenticateToken, checkCoffeeSiteView, async (req, res) => {
+  try {
+    await autoArchiveCoffeeSiteMerch();
+    const { rows } = await pool.query(
+      `SELECT ${CS_MERCH_COLS} FROM coffee_site_merch ORDER BY archived ASC, sort_order ASC, created_at DESC`
+    );
+    res.json(await csAttachVariants(rows));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/coffee-site/merch/presign', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Storage not configured' });
+    const { filename } = req.body;
+    const ext = (filename || 'photo.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const unique = `merch-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { data, error } = await supabase.storage.from(CS_BUCKET).createSignedUploadUrl(unique);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ signedUrl: data.signedUrl, path: data.path, filename: unique });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/coffee-site/merch', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { name, category, description, price, photo_filename, variants } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+    const { rows } = await pool.query(
+      `INSERT INTO coffee_site_merch (name, category, description, price, photo_filename, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${CS_MERCH_COLS}`,
+      [name.trim(), category||null, description||null, price != null && price !== '' ? price : null, photo_filename||null, req.user.id, req.user.name]
+    );
+    await csReplaceVariants(rows[0].id, variants);
+    const [item] = await csAttachVariants(rows);
+    res.status(201).json(item);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/merch/:id/sold-out', authenticateToken, checkCoffeeSiteView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_merch SET sold_out=$1, sold_out_at=CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at=NOW()
+       WHERE id=$2 RETURNING ${CS_MERCH_COLS}`,
+      [!!req.body.sold_out, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const [item] = await csAttachVariants(rows);
+    res.json(item);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/merch/:id/archive', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const archive = req.body.archived !== false;
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_merch SET archived=$1, archived_at=CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at=NOW()
+       WHERE id=$2 RETURNING ${CS_MERCH_COLS}`,
+      [archive, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const [item] = await csAttachVariants(rows);
+    res.json(item);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/merch/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { name, category, description, price, photo_filename, variants } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_merch
+       SET name=COALESCE($1, name), category=$2, description=$3, price=$4,
+           photo_filename=COALESCE($5, photo_filename), updated_at=NOW()
+       WHERE id=$6 RETURNING ${CS_MERCH_COLS}`,
+      [name?.trim()||null, category||null, description||null, price != null && price !== '' ? price : null, photo_filename||null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    await csReplaceVariants(rows[0].id, variants);
+    const [item] = await csAttachVariants(rows);
+    res.json(item);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/coffee-site/merch/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT photo_filename FROM coffee_site_merch WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (rows[0].photo_filename && supabase) {
+      await supabase.storage.from(CS_BUCKET).remove([rows[0].photo_filename]).catch(() => {});
+    }
+    await pool.query('DELETE FROM coffee_site_merch WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
