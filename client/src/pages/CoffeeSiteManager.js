@@ -758,7 +758,7 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
           {[
             { key: 'coffee', label: 'Coffee Bags' },
             { key: 'merch',  label: 'Merch & Gear' },
-            { key: 'menus',  label: 'Menus' },
+            ...(canUpload ? [{ key: 'menus', label: 'Menus' }] : []),
           ].map(s => (
             <button key={s.key} onClick={() => setSection(s.key)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
