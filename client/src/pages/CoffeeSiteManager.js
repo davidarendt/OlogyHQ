@@ -517,12 +517,76 @@ function MerchCard({ item, tab, canUpload, onToggleSoldOut, onArchive, onUnarchi
   );
 }
 
+// ── MenuCard ──────────────────────────────────────────────────────────────────
+function MenuCard({ menu, canUpload, onUpload, onDelete }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const fileRef = useRef();
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setUploadErr('');
+    const err = await onUpload(menu.location, file);
+    if (err) setUploadErr(err);
+    setUploading(false);
+  };
+
+  const label = menu.location === 'midtown' ? 'Midtown' : 'Northside';
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-white font-semibold text-base">{label} Menu</h3>
+          {menu.filename ? (
+            <p className="text-gray-400 text-sm mt-0.5">
+              Updated {new Date(menu.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              {menu.uploaded_by_name && ` by ${menu.uploaded_by_name}`}
+            </p>
+          ) : (
+            <p className="text-gray-500 text-sm mt-0.5">No menu uploaded</p>
+          )}
+          {uploadErr && <p className="text-red-400 text-xs mt-1">{uploadErr}</p>}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {menu.url && (
+            <a href={menu.url} target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
+              View PDF
+            </a>
+          )}
+          {canUpload && (
+            <>
+              <button onClick={() => fileRef.current.click()} disabled={uploading}
+                className="px-3 py-1.5 rounded-lg text-sm text-white font-medium transition disabled:opacity-50 hover:opacity-90"
+                style={{ backgroundColor: '#F05A28' }}>
+                {uploading ? 'Uploading…' : menu.filename ? 'Replace PDF' : 'Upload PDF'}
+              </button>
+              {menu.filename && (
+                <button onClick={() => onDelete(menu.location)}
+                  className="px-3 py-1.5 rounded-lg text-sm text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
+                  Remove
+                </button>
+              )}
+            </>
+          )}
+          <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={handleFile} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function CoffeeSiteManager({ user, canUpload, onBack }) {
   const [section, setSection]           = useState('coffee');
   const [tab, setTab]                   = useState('on_website');
   const [bags, setBags]                 = useState([]);
   const [merch, setMerch]               = useState([]);
+  const [menus, setMenus]               = useState([]);
   const [loading, setLoading]           = useState(true);
   const [editBag, setEditBag]           = useState(null);
   const [showAddBag, setShowAddBag]     = useState(false);
@@ -530,12 +594,14 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
   const [showAddMerch, setShowAddMerch] = useState(false);
 
   const load = async () => {
-    const [bagsRes, merchRes] = await Promise.all([
+    const [bagsRes, merchRes, menusRes] = await Promise.all([
       fetch(`${API}/api/coffee-site/bags`, { credentials: 'include' }),
       fetch(`${API}/api/coffee-site/merch`, { credentials: 'include' }),
+      fetch(`${API}/api/coffee-site/menus`, { credentials: 'include' }),
     ]);
     if (bagsRes.ok)  setBags(await bagsRes.json());
     if (merchRes.ok) setMerch(await merchRes.json());
+    if (menusRes.ok) setMenus(await menusRes.json());
     setLoading(false);
   };
 
@@ -631,6 +697,37 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
     });
   };
 
+  // ── Menu handlers ───────────────────────────────────────────────────────────
+  const handleMenuUpload = async (location, file) => {
+    try {
+      const old_filename = menus.find(m => m.location === location)?.filename || null;
+      const pr = await fetch(`${API}/api/coffee-site/menus/presign`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location }),
+      });
+      if (!pr.ok) return 'Upload failed.';
+      const { signedUrl, filename } = await pr.json();
+      const put = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': 'application/pdf' } });
+      if (!put.ok) return 'Upload failed.';
+      const res = await fetch(`${API}/api/coffee-site/menus/commit`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location, filename, old_filename }),
+      });
+      if (!res.ok) return 'Failed to save.';
+      const updated = await res.json();
+      setMenus(m => m.map(x => x.location === location ? updated : x));
+      return null;
+    } catch { return 'Network error.'; }
+  };
+
+  const handleMenuDelete = async (location) => {
+    if (!window.confirm('Remove this menu PDF?')) return;
+    await fetch(`${API}/api/coffee-site/menus/${location}`, { method: 'DELETE', credentials: 'include' });
+    setMenus(m => m.map(x => x.location === location ? { ...x, filename: null, url: null, uploaded_at: null, uploaded_by_name: null } : x));
+  };
+
   // ── Computed ─────────────────────────────────────────────────────────────────
   const bagsOnSite  = bags.filter(b => !b.archived);
   const bagsArchived = bags.filter(b => b.archived);
@@ -661,6 +758,7 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
           {[
             { key: 'coffee', label: 'Coffee Bags' },
             { key: 'merch',  label: 'Merch & Gear' },
+            { key: 'menus',  label: 'Menus' },
           ].map(s => (
             <button key={s.key} onClick={() => setSection(s.key)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
@@ -672,75 +770,100 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
           ))}
         </div>
 
-        {/* On Website / Archived sub-tabs + Add button */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="flex gap-1.5">
-            {[
-              { key: 'on_website', label: 'On Website', count: section === 'coffee' ? bagsOnSite.length : merchOnSite.length },
-              { key: 'archived',   label: 'Archived',   count: section === 'coffee' ? bagsArchived.length : merchArchived.length },
-            ].map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition ${
-                  tab === t.key ? 'text-white font-medium bg-gray-600' : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700'
-                }`}>
-                {t.label}
-                {t.count > 0 && (
-                  <span className={`text-xs ${tab === t.key ? 'text-gray-300' : 'text-gray-500'}`}>{t.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
-          {canUpload && tab === 'on_website' && (
-            <button onClick={() => section === 'coffee' ? setShowAddBag(true) : setShowAddMerch(true)}
-              className="px-4 py-2 text-sm text-white rounded-lg font-medium flex-shrink-0 transition hover:opacity-90"
-              style={{ backgroundColor: '#F05A28' }}>
-              + {section === 'coffee' ? 'Add Coffee' : 'Add Item'}
-            </button>
-          )}
-        </div>
-
-        {/* Content */}
-        {loading ? (
-          <div className="text-gray-400 text-center py-20">Loading…</div>
-        ) : displayed.length === 0 ? (
-          <div className="text-gray-500 text-center py-20">
-            {tab === 'on_website'
-              ? `No ${section === 'coffee' ? 'coffees' : 'merch items'} yet. Add one to get started.`
-              : 'Nothing archived.'}
-          </div>
-        ) : (
+        {/* Menus section */}
+        {section === 'menus' && (
           <div className="space-y-4">
-            {section === 'coffee'
-              ? displayed.map(bag => (
-                  <BagCard
-                    key={bag.id}
-                    bag={bag}
-                    tab={tab}
+            {loading ? (
+              <div className="text-gray-400 text-center py-20">Loading…</div>
+            ) : (
+              ['midtown', 'northside'].map(loc => {
+                const menu = menus.find(m => m.location === loc) || { location: loc, filename: null, url: null, uploaded_at: null, uploaded_by_name: null };
+                return (
+                  <MenuCard
+                    key={loc}
+                    menu={menu}
                     canUpload={canUpload}
-                    autoFeaturedId={autoFeaturedId}
-                    onToggleSoldOut={() => toggleBagSoldOut(bag)}
-                    onArchive={() => toggleBagArchive(bag, true)}
-                    onUnarchive={() => toggleBagArchive(bag, false)}
-                    onSetFeatured={f => setBagFeatured(bag, f)}
-                    onEdit={() => setEditBag(bag)}
-                    onDelete={() => deleteBag(bag)}
+                    onUpload={handleMenuUpload}
+                    onDelete={handleMenuDelete}
                   />
-                ))
-              : displayed.map(item => (
-                  <MerchCard
-                    key={item.id}
-                    item={item}
-                    tab={tab}
-                    canUpload={canUpload}
-                    onToggleSoldOut={() => toggleMerchSoldOut(item)}
-                    onArchive={() => toggleMerchArchive(item, true)}
-                    onUnarchive={() => toggleMerchArchive(item, false)}
-                    onEdit={() => setEditMerch(item)}
-                    onDelete={() => deleteMerch(item)}
-                  />
-                ))
-            }
+                );
+              })
+            )}
           </div>
+        )}
+
+        {/* On Website / Archived sub-tabs + content — only for coffee/merch sections */}
+        {section !== 'menus' && (
+          <>
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div className="flex gap-1.5">
+                {[
+                  { key: 'on_website', label: 'On Website', count: section === 'coffee' ? bagsOnSite.length : merchOnSite.length },
+                  { key: 'archived',   label: 'Archived',   count: section === 'coffee' ? bagsArchived.length : merchArchived.length },
+                ].map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition ${
+                      tab === t.key ? 'text-white font-medium bg-gray-600' : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700'
+                    }`}>
+                    {t.label}
+                    {t.count > 0 && (
+                      <span className={`text-xs ${tab === t.key ? 'text-gray-300' : 'text-gray-500'}`}>{t.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {canUpload && tab === 'on_website' && (
+                <button onClick={() => section === 'coffee' ? setShowAddBag(true) : setShowAddMerch(true)}
+                  className="px-4 py-2 text-sm text-white rounded-lg font-medium flex-shrink-0 transition hover:opacity-90"
+                  style={{ backgroundColor: '#F05A28' }}>
+                  + {section === 'coffee' ? 'Add Coffee' : 'Add Item'}
+                </button>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="text-gray-400 text-center py-20">Loading…</div>
+            ) : displayed.length === 0 ? (
+              <div className="text-gray-500 text-center py-20">
+                {tab === 'on_website'
+                  ? `No ${section === 'coffee' ? 'coffees' : 'merch items'} yet. Add one to get started.`
+                  : 'Nothing archived.'}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {section === 'coffee'
+                  ? displayed.map(bag => (
+                      <BagCard
+                        key={bag.id}
+                        bag={bag}
+                        tab={tab}
+                        canUpload={canUpload}
+                        autoFeaturedId={autoFeaturedId}
+                        onToggleSoldOut={() => toggleBagSoldOut(bag)}
+                        onArchive={() => toggleBagArchive(bag, true)}
+                        onUnarchive={() => toggleBagArchive(bag, false)}
+                        onSetFeatured={f => setBagFeatured(bag, f)}
+                        onEdit={() => setEditBag(bag)}
+                        onDelete={() => deleteBag(bag)}
+                      />
+                    ))
+                  : displayed.map(item => (
+                      <MerchCard
+                        key={item.id}
+                        item={item}
+                        tab={tab}
+                        canUpload={canUpload}
+                        onToggleSoldOut={() => toggleMerchSoldOut(item)}
+                        onArchive={() => toggleMerchArchive(item, true)}
+                        onUnarchive={() => toggleMerchArchive(item, false)}
+                        onEdit={() => setEditMerch(item)}
+                        onDelete={() => deleteMerch(item)}
+                      />
+                    ))
+                }
+              </div>
+            )}
+          </>
         )}
       </main>
 

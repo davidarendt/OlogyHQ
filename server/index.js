@@ -5707,6 +5707,7 @@ const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, 
 
 function csBagUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 function csWithUrl(b) { return { ...b, photo_url: csBagUrl(b.photo_filename) }; }
+function csMenuUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 
 function checkCoffeeSiteView(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -5781,13 +5782,70 @@ async function csReplaceVariants(itemId, variants) {
 app.get('/api/public/coffee-site', async (req, res) => {
   try {
     res.header('Access-Control-Allow-Origin', '*');
-    const [bagsRes, merchRes] = await Promise.all([
+    const [bagsRes, merchRes, menusRes] = await Promise.all([
       pool.query(`SELECT ${CS_COLS} FROM coffee_site_bags WHERE archived=false ORDER BY is_featured DESC, created_at DESC`),
       pool.query(`SELECT ${CS_MERCH_COLS} FROM coffee_site_merch WHERE archived=false ORDER BY sort_order ASC, created_at DESC`),
+      pool.query(`SELECT location, filename, uploaded_by_name, uploaded_at FROM coffee_site_menus ORDER BY location`),
     ]);
     const featured = bagsRes.rows.find(b => b.is_featured) || bagsRes.rows.find(b => !b.sold_out) || null;
     const merch = await csAttachVariants(merchRes.rows);
-    res.json({ featured: featured ? csWithUrl(featured) : null, coffees: bagsRes.rows.map(csWithUrl), merch });
+    const menus = Object.fromEntries(
+      menusRes.rows.map(r => [r.location, { ...r, url: csMenuUrl(r.filename) }])
+    );
+    res.json({ featured: featured ? csWithUrl(featured) : null, coffees: bagsRes.rows.map(csWithUrl), merch, menus });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/coffee-site/menus', authenticateToken, checkCoffeeSiteView, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT location, filename, uploaded_by_name, uploaded_at FROM coffee_site_menus ORDER BY location`);
+    const byLoc = Object.fromEntries(rows.map(r => [r.location, r]));
+    const result = ['midtown', 'northside'].map(loc => {
+      const r = byLoc[loc] || { location: loc, filename: null, uploaded_by_name: null, uploaded_at: null };
+      return { ...r, url: csMenuUrl(r.filename) };
+    });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/coffee-site/menus/presign', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Storage not configured' });
+    const { location } = req.body;
+    if (!['midtown', 'northside'].includes(location)) return res.status(400).json({ error: 'Invalid location' });
+    const filename = `menu-${location}-${Date.now()}.pdf`;
+    const { data, error } = await supabase.storage.from(CS_BUCKET).createSignedUploadUrl(filename, { upsert: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ signedUrl: data.signedUrl, filename });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/coffee-site/menus/commit', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { location, filename, old_filename } = req.body;
+    if (!['midtown', 'northside'].includes(location)) return res.status(400).json({ error: 'Invalid location' });
+    if (old_filename && supabase) {
+      await supabase.storage.from(CS_BUCKET).remove([old_filename]).catch(() => {});
+    }
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_menus SET filename=$1, uploaded_by_name=$2, uploaded_at=NOW() WHERE location=$3
+       RETURNING location, filename, uploaded_by_name, uploaded_at`,
+      [filename, req.user.name, location]
+    );
+    res.json({ ...rows[0], url: csMenuUrl(rows[0].filename) });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/coffee-site/menus/:location', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { location } = req.params;
+    if (!['midtown', 'northside'].includes(location)) return res.status(400).json({ error: 'Invalid location' });
+    const { rows } = await pool.query('SELECT filename FROM coffee_site_menus WHERE location=$1', [location]);
+    if (rows[0]?.filename && supabase) {
+      await supabase.storage.from(CS_BUCKET).remove([rows[0].filename]).catch(() => {});
+    }
+    await pool.query('UPDATE coffee_site_menus SET filename=NULL, uploaded_by_name=NULL, uploaded_at=NULL WHERE location=$1', [location]);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
