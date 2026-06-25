@@ -5703,7 +5703,7 @@ app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage
 // ── Coffee Site ───────────────────────────────────────────────────────────────
 const CS_BUCKET = 'coffee-site-photos';
 const CS_PUB_BASE = `${process.env.SUPABASE_URL || 'https://ozuhfcinbelfxpidxdai.supabase.co'}/storage/v1/object/public/${CS_BUCKET}`;
-const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, archived, archived_at, created_by_name, created_at`;
+const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, quantity, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, archived, archived_at, created_by_name, created_at`;
 
 function csBagUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 function csWithUrl(b) { return { ...b, photo_url: csBagUrl(b.photo_filename) }; }
@@ -5742,12 +5742,12 @@ async function autoArchiveCoffeeSiteBags() {
 }
 
 // ── Coffee Site Merch ─────────────────────────────────────────────────────────
-const CS_MERCH_COLS = `id, name, category, description, price::float AS price, photo_filename, sold_out, sold_out_at, archived, archived_at, sort_order, created_by_name, created_at`;
+const CS_MERCH_COLS = `id, name, category, description, price::float AS price, quantity, photo_filename, sold_out, sold_out_at, archived, archived_at, sort_order, created_by_name, created_at`;
 
 async function csAttachVariants(items) {
   if (!items.length) return items;
   const { rows } = await pool.query(
-    `SELECT id, item_id, variant_type, variant_value, available, sort_order
+    `SELECT id, item_id, variant_type, variant_value, available, quantity, sort_order
      FROM coffee_site_merch_variants WHERE item_id = ANY($1) ORDER BY item_id, sort_order, id`,
     [items.map(i => i.id)]
   );
@@ -5769,11 +5769,12 @@ async function csReplaceVariants(itemId, variants) {
   await pool.query('DELETE FROM coffee_site_merch_variants WHERE item_id=$1', [itemId]);
   if (!Array.isArray(variants) || !variants.length) return;
   for (let i = 0; i < variants.length; i++) {
-    const { variant_type, variant_value, available } = variants[i];
+    const { variant_type, variant_value, available, quantity } = variants[i];
     if (!variant_type?.trim() || !variant_value?.trim()) continue;
+    const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
     await pool.query(
-      `INSERT INTO coffee_site_merch_variants (item_id, variant_type, variant_value, available, sort_order) VALUES ($1,$2,$3,$4,$5)`,
-      [itemId, variant_type.trim(), variant_value.trim(), available !== false, i]
+      `INSERT INTO coffee_site_merch_variants (item_id, variant_type, variant_value, available, quantity, sort_order) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [itemId, variant_type.trim(), variant_value.trim(), available !== false, qty, i]
     );
   }
 }
@@ -5873,12 +5874,13 @@ app.post('/api/coffee-site/bags/presign', authenticateToken, checkCoffeeSiteMana
 
 app.post('/api/coffee-site/bags', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, quantity, photo_filename, go_live_date } = req.body;
     if (!coffee_name?.trim()) return res.status(400).json({ error: 'coffee_name required' });
+    const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
     const { rows } = await pool.query(
-      `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, photo_filename, go_live_date, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${CS_COLS}`,
-      [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
+      `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, quantity, photo_filename, go_live_date, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ${CS_COLS}`,
+      [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, qty, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
     );
     res.status(201).json(csWithUrl(rows[0]));
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
@@ -5929,7 +5931,8 @@ app.patch('/api/coffee-site/bags/:id/archive', authenticateToken, checkCoffeeSit
 
 app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, photo_filename, go_live_date } = req.body;
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, quantity, photo_filename, go_live_date } = req.body;
+    const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
     const { rows } = await pool.query(
       `UPDATE coffee_site_bags
        SET coffee_name   = COALESCE($1, coffee_name),
@@ -5938,11 +5941,12 @@ app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage,
            process       = $4,
            tasting_notes = $5,
            price         = $6,
-           photo_filename = COALESCE($7, photo_filename),
-           go_live_date  = $8,
+           quantity      = $7,
+           photo_filename = COALESCE($8, photo_filename),
+           go_live_date  = $9,
            updated_at    = NOW()
-       WHERE id=$9 RETURNING ${CS_COLS}`,
-      [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, photo_filename||null, go_live_date||null, req.params.id]
+       WHERE id=$10 RETURNING ${CS_COLS}`,
+      [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, qty, photo_filename||null, go_live_date||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(csWithUrl(rows[0]));
@@ -5985,12 +5989,13 @@ app.post('/api/coffee-site/merch/presign', authenticateToken, checkCoffeeSiteMan
 
 app.post('/api/coffee-site/merch', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { name, category, description, price, photo_filename, variants } = req.body;
+    const { name, category, description, price, quantity, photo_filename, variants } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+    const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
     const { rows } = await pool.query(
-      `INSERT INTO coffee_site_merch (name, category, description, price, photo_filename, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${CS_MERCH_COLS}`,
-      [name.trim(), category||null, description||null, price != null && price !== '' ? price : null, photo_filename||null, req.user.id, req.user.name]
+      `INSERT INTO coffee_site_merch (name, category, description, price, quantity, photo_filename, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${CS_MERCH_COLS}`,
+      [name.trim(), category||null, description||null, price != null && price !== '' ? price : null, qty, photo_filename||null, req.user.id, req.user.name]
     );
     await csReplaceVariants(rows[0].id, variants);
     const [item] = await csAttachVariants(rows);
@@ -6027,13 +6032,14 @@ app.patch('/api/coffee-site/merch/:id/archive', authenticateToken, checkCoffeeSi
 
 app.patch('/api/coffee-site/merch/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { name, category, description, price, photo_filename, variants } = req.body;
+    const { name, category, description, price, quantity, photo_filename, variants } = req.body;
+    const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
     const { rows } = await pool.query(
       `UPDATE coffee_site_merch
-       SET name=COALESCE($1, name), category=$2, description=$3, price=$4,
-           photo_filename=COALESCE($5, photo_filename), updated_at=NOW()
-       WHERE id=$6 RETURNING ${CS_MERCH_COLS}`,
-      [name?.trim()||null, category||null, description||null, price != null && price !== '' ? price : null, photo_filename||null, req.params.id]
+       SET name=COALESCE($1, name), category=$2, description=$3, price=$4, quantity=$5,
+           photo_filename=COALESCE($6, photo_filename), updated_at=NOW()
+       WHERE id=$7 RETURNING ${CS_MERCH_COLS}`,
+      [name?.trim()||null, category||null, description||null, price != null && price !== '' ? price : null, qty, photo_filename||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     await csReplaceVariants(rows[0].id, variants);

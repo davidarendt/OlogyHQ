@@ -11,7 +11,7 @@ const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Gear', 'Drinkware', 'Other'
 const VARIANT_TYPES    = ['Color', 'Size', 'Style', 'Material'];
 
 // ── BagModal ──────────────────────────────────────────────────────────────────
-const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '' };
+const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '', quantity: '0' };
 
 function BagModal({ bag, onClose, onSaved }) {
   const isEdit = !!bag?.id;
@@ -22,6 +22,7 @@ function BagModal({ bag, onClose, onSaved }) {
     process:       bag.process       || '',
     tasting_notes: bag.tasting_notes || '',
     price:         bag.price != null ? String(bag.price) : '',
+    quantity:      bag.quantity != null ? String(bag.quantity) : '0',
   } : { ...BAG_EMPTY });
   const [photoFile, setPhotoFile]       = useState(null);
   const [photoPreview, setPhotoPreview] = useState(bag?.photo_url || null);
@@ -55,7 +56,12 @@ function BagModal({ bag, onClose, onSaved }) {
         if (!put.ok) { setError('Photo upload failed.'); setSaving(false); return; }
         photo_filename = filename;
       }
-      const payload = { ...form, price: form.price !== '' ? parseFloat(form.price) : null, photo_filename };
+      const payload = {
+        ...form,
+        price: form.price !== '' ? parseFloat(form.price) : null,
+        quantity: form.quantity !== '' ? parseInt(form.quantity, 10) : 0,
+        photo_filename,
+      };
       const res = await fetch(`${API}/api/coffee-site/bags${isEdit ? `/${bag.id}` : ''}`, {
         method: isEdit ? 'PATCH' : 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -116,6 +122,10 @@ function BagModal({ bag, onClose, onSaved }) {
               <label className={lbl}>Price</label>
               <input className={inp} type="number" step="0.01" min="0" value={form.price} onChange={set('price')} placeholder="0.00" />
             </div>
+            <div>
+              <label className={lbl}>Quantity in Stock</label>
+              <input className={inp} type="number" step="1" min="0" value={form.quantity} onChange={set('quantity')} placeholder="0" />
+            </div>
             <div className="col-span-2">
               <label className={lbl}>Tasting Notes</label>
               <textarea className={`${inp} resize-none`} rows={3} value={form.tasting_notes} onChange={set('tasting_notes')} placeholder="Blueberry, chocolate, caramel…" />
@@ -137,7 +147,7 @@ function BagModal({ bag, onClose, onSaved }) {
 }
 
 // ── MerchModal ────────────────────────────────────────────────────────────────
-const MERCH_EMPTY = { name: '', category: '', description: '', price: '' };
+const MERCH_EMPTY = { name: '', category: '', description: '', price: '', quantity: '0' };
 
 function MerchModal({ item, onClose, onSaved }) {
   const isEdit = !!item?.id;
@@ -146,9 +156,15 @@ function MerchModal({ item, onClose, onSaved }) {
     category:    item.category    || '',
     description: item.description || '',
     price:       item.price != null ? String(item.price) : '',
+    quantity:    item.quantity != null ? String(item.quantity) : '0',
   } : { ...MERCH_EMPTY });
   const [variants, setVariants]         = useState(
-    (item?.variants || []).map(v => ({ variant_type: v.variant_type, variant_value: v.variant_value, available: v.available }))
+    (item?.variants || []).map(v => ({
+      variant_type: v.variant_type,
+      variant_value: v.variant_value,
+      available: v.available,
+      quantity: v.quantity != null ? String(v.quantity) : '0',
+    }))
   );
   const [photoFile, setPhotoFile]       = useState(null);
   const [photoPreview, setPhotoPreview] = useState(item?.photo_url || null);
@@ -158,7 +174,7 @@ function MerchModal({ item, onClose, onSaved }) {
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const addVariant    = () => setVariants(v => [...v, { variant_type: '', variant_value: '', available: true }]);
+  const addVariant    = () => setVariants(v => [...v, { variant_type: '', variant_value: '', available: true, quantity: '0' }]);
   const removeVariant = i  => setVariants(v => v.filter((_, idx) => idx !== i));
   const setVariant    = (i, field, val) => setVariants(v => v.map((vv, idx) => idx === i ? { ...vv, [field]: val } : vv));
 
@@ -189,8 +205,11 @@ function MerchModal({ item, onClose, onSaved }) {
       const payload = {
         ...form,
         price: form.price !== '' ? parseFloat(form.price) : null,
+        quantity: form.quantity !== '' ? parseInt(form.quantity, 10) : 0,
         photo_filename,
-        variants: variants.filter(v => v.variant_type?.trim() && v.variant_value?.trim()),
+        variants: variants
+          .filter(v => v.variant_type?.trim() && v.variant_value?.trim())
+          .map(v => ({ ...v, quantity: v.quantity !== '' ? parseInt(v.quantity, 10) : 0 })),
       };
       const res = await fetch(`${API}/api/coffee-site/merch${isEdit ? `/${item.id}` : ''}`, {
         method: isEdit ? 'PATCH' : 'POST', credentials: 'include',
@@ -257,6 +276,11 @@ function MerchModal({ item, onClose, onSaved }) {
               <label className={lbl}>Price</label>
               <input className={inp} type="number" step="0.01" min="0" value={form.price} onChange={set('price')} placeholder="0.00" />
             </div>
+            <div>
+              <label className={lbl}>Quantity in Stock</label>
+              <input className={inp} type="number" step="1" min="0" value={form.quantity} onChange={set('quantity')} placeholder="0" />
+              <p className="text-gray-500 text-xs mt-1">Used when item has no variants.</p>
+            </div>
             <div className="col-span-2">
               <label className={lbl}>Description</label>
               <textarea className={`${inp} resize-none`} rows={2} value={form.description} onChange={set('description')} placeholder="Brief description…" />
@@ -278,10 +302,10 @@ function MerchModal({ item, onClose, onSaved }) {
             ) : (
               <div className="space-y-2">
                 {variants.map((v, i) => (
-                  <div key={i} className="flex gap-2 items-center">
+                  <div key={i} className="flex gap-2 items-center flex-wrap">
                     <input
                       list="variant-types"
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 w-28 flex-shrink-0"
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 w-24 flex-shrink-0"
                       value={v.variant_type}
                       onChange={e => setVariant(i, 'variant_type', e.target.value)}
                       placeholder="Type"
@@ -290,10 +314,18 @@ function MerchModal({ item, onClose, onSaved }) {
                       {VARIANT_TYPES.map(t => <option key={t} value={t} />)}
                     </datalist>
                     <input
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 flex-1 min-w-0"
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 flex-1 min-w-[6rem]"
                       value={v.variant_value}
                       onChange={e => setVariant(i, 'variant_value', e.target.value)}
                       placeholder="Value (e.g. Black, XL)"
+                    />
+                    <input
+                      type="number" step="1" min="0"
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 w-16 flex-shrink-0"
+                      value={v.quantity}
+                      onChange={e => setVariant(i, 'quantity', e.target.value)}
+                      placeholder="Qty"
+                      title="Quantity in stock"
                     />
                     <button
                       onClick={() => setVariant(i, 'available', !v.available)}
@@ -379,6 +411,9 @@ function BagCard({ bag, tab, canUpload, autoFeaturedId, onToggleSoldOut, onArchi
             {bag.origin        && <span>{bag.origin}</span>}
             {bag.process       && <span className="text-gray-500">· {bag.process}</span>}
             {bag.price != null && <span className="text-orange-400 font-medium">{fmtPrice(bag.price)}</span>}
+            <span className={bag.quantity > 0 ? 'text-gray-300' : 'text-red-400'}>
+              {bag.quantity ?? 0} in stock
+            </span>
           </div>
           {bag.sold_out && bag.sold_out_at && (
             <p className="text-gray-500 text-xs mt-1">
@@ -468,7 +503,14 @@ function MerchCard({ item, tab, canUpload, onToggleSoldOut, onArchive, onUnarchi
               )}
             </div>
           </div>
-          {item.price != null && <p className="text-orange-400 text-sm font-medium mt-1">{fmtPrice(item.price)}</p>}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 items-center mt-1">
+            {item.price != null && <p className="text-orange-400 text-sm font-medium">{fmtPrice(item.price)}</p>}
+            {Object.keys(variantsByType).length === 0 && (
+              <span className={`text-xs ${item.quantity > 0 ? 'text-gray-300' : 'text-red-400'}`}>
+                {item.quantity ?? 0} in stock
+              </span>
+            )}
+          </div>
           {item.description && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{item.description}</p>}
 
           {Object.keys(variantsByType).length > 0 && (
@@ -476,15 +518,18 @@ function MerchCard({ item, tab, canUpload, onToggleSoldOut, onArchive, onUnarchi
               {Object.entries(variantsByType).map(([type, vals]) => (
                 <div key={type} className="flex flex-wrap gap-1 items-center">
                   <span className="text-gray-500 text-xs w-12 flex-shrink-0">{type}:</span>
-                  {vals.map((v, i) => (
-                    <span key={i} className={`px-1.5 py-0.5 rounded text-xs border ${
-                      v.available
-                        ? 'border-gray-600 text-gray-300 bg-gray-700/50'
-                        : 'border-gray-700 text-gray-600 bg-gray-800 line-through'
-                    }`}>
-                      {v.variant_value}
-                    </span>
-                  ))}
+                  {vals.map((v, i) => {
+                    const out = !v.available || (v.quantity ?? 0) <= 0;
+                    return (
+                      <span key={i} className={`px-1.5 py-0.5 rounded text-xs border ${
+                        out
+                          ? 'border-gray-700 text-gray-600 bg-gray-800 line-through'
+                          : 'border-gray-600 text-gray-300 bg-gray-700/50'
+                      }`} title={`${v.quantity ?? 0} in stock`}>
+                        {v.variant_value} <span className="text-gray-500">×{v.quantity ?? 0}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               ))}
             </div>
