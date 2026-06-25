@@ -5788,13 +5788,163 @@ app.get('/api/public/coffee-site', async (req, res) => {
       pool.query(`SELECT ${CS_MERCH_COLS} FROM coffee_site_merch WHERE archived=false ORDER BY sort_order ASC, created_at DESC`),
       pool.query(`SELECT location, filename, uploaded_by_name, uploaded_at FROM coffee_site_menus ORDER BY location`),
     ]);
-    const featured = bagsRes.rows.find(b => b.is_featured) || bagsRes.rows.find(b => !b.sold_out) || null;
+    const featured = bagsRes.rows.find(b => b.is_featured)
+      || bagsRes.rows.find(b => !b.sold_out && (b.quantity ?? 0) > 0)
+      || null;
     const merch = await csAttachVariants(merchRes.rows);
     const menus = Object.fromEntries(
       menusRes.rows.map(r => [r.location, { ...r, url: csMenuUrl(r.filename) }])
     );
     res.json({ featured: featured ? csWithUrl(featured) : null, coffees: bagsRes.rows.map(csWithUrl), merch, menus });
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// Shared-secret auth for webhook endpoints (e.g. PHP Stripe webhook from coffee site)
+function checkCSWebhookSecret(req, res, next) {
+  const secret = process.env.COFFEE_SITE_WEBHOOK_SECRET;
+  if (!secret) return res.status(500).json({ ok: false, error: 'Webhook secret not configured' });
+  const provided = req.headers['x-coffee-site-secret'];
+  if (!provided || provided !== secret) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  next();
+}
+
+// Pre-flight for browser-callable inventory-check
+app.options('/api/public/coffee-site/inventory-check', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.sendStatus(204);
+});
+
+app.post('/api/public/coffee-site/inventory-check', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items)) return res.status(400).json({ ok: false, error: 'items array required' });
+
+    const results = [];
+    let allOk = true;
+    for (const item of items) {
+      const type = item?.type;
+      const id = parseInt(item?.id, 10);
+      const variant_id = item?.variant_id != null ? parseInt(item.variant_id, 10) : null;
+      const qty = Math.max(0, parseInt(item?.quantity, 10) || 0);
+      let available = 0;
+      let found = false;
+
+      if (type === 'bag') {
+        const r = await pool.query('SELECT quantity FROM coffee_site_bags WHERE id=$1 AND archived=false', [id]);
+        if (r.rows.length) { available = r.rows[0].quantity; found = true; }
+      } else if (type === 'merch' && variant_id) {
+        const r = await pool.query('SELECT quantity FROM coffee_site_merch_variants WHERE id=$1 AND item_id=$2', [variant_id, id]);
+        if (r.rows.length) { available = r.rows[0].quantity; found = true; }
+      } else if (type === 'merch') {
+        const r = await pool.query('SELECT quantity FROM coffee_site_merch WHERE id=$1 AND archived=false', [id]);
+        if (r.rows.length) { available = r.rows[0].quantity; found = true; }
+      }
+
+      const ok = found && available >= qty;
+      if (!ok) allOk = false;
+      results.push({ type, id, variant_id, requested: qty, available, ok, found });
+    }
+    res.json({ ok: allOk, items: results });
+  } catch (e) { res.status(500).json({ ok: false, error: 'Server error' }); }
+});
+
+// Order receive — Stripe webhook target. Auth: X-Coffee-Site-Secret header.
+app.post('/api/public/coffee-site/orders', checkCSWebhookSecret, async (req, res) => {
+  try {
+    const {
+      stripe_payment_id, customer_email, customer_name, shipping_address,
+      subtotal_cents, shipping_cents, tax_cents, total_cents, items, notes,
+    } = req.body || {};
+
+    if (!stripe_payment_id) return res.status(400).json({ ok: false, error: 'stripe_payment_id required' });
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ ok: false, error: 'items required' });
+
+    // Idempotency: if we've already processed this payment, return the existing order untouched.
+    const existing = await pool.query('SELECT id FROM coffee_site_orders WHERE stripe_payment_id=$1', [stripe_payment_id]);
+    if (existing.rows.length) {
+      return res.json({ ok: true, order_id: existing.rows[0].id, duplicate: true });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const issues = [];
+
+      // Validate + decrement each line under row locks
+      for (const item of items) {
+        const type = item?.type;
+        const id = parseInt(item?.id, 10);
+        const variant_id = item?.variant_id != null ? parseInt(item.variant_id, 10) : null;
+        const qty = Math.max(0, parseInt(item?.quantity, 10) || 0);
+        if (qty === 0) continue;
+
+        if (type === 'bag') {
+          const r = await client.query('SELECT quantity FROM coffee_site_bags WHERE id=$1 FOR UPDATE', [id]);
+          if (!r.rows.length) { issues.push({ type, id, error: 'not_found' }); continue; }
+          const available = r.rows[0].quantity;
+          if (available < qty) { issues.push({ type, id, requested: qty, available }); continue; }
+          await client.query('UPDATE coffee_site_bags SET quantity = quantity - $1, updated_at=NOW() WHERE id=$2', [qty, id]);
+        } else if (type === 'merch' && variant_id) {
+          const r = await client.query('SELECT quantity FROM coffee_site_merch_variants WHERE id=$1 AND item_id=$2 FOR UPDATE', [variant_id, id]);
+          if (!r.rows.length) { issues.push({ type, id, variant_id, error: 'not_found' }); continue; }
+          const available = r.rows[0].quantity;
+          if (available < qty) { issues.push({ type, id, variant_id, requested: qty, available }); continue; }
+          await client.query('UPDATE coffee_site_merch_variants SET quantity = quantity - $1 WHERE id=$2', [qty, variant_id]);
+        } else if (type === 'merch') {
+          const r = await client.query('SELECT quantity FROM coffee_site_merch WHERE id=$1 FOR UPDATE', [id]);
+          if (!r.rows.length) { issues.push({ type, id, error: 'not_found' }); continue; }
+          const available = r.rows[0].quantity;
+          if (available < qty) { issues.push({ type, id, requested: qty, available }); continue; }
+          await client.query('UPDATE coffee_site_merch SET quantity = quantity - $1, updated_at=NOW() WHERE id=$2', [qty, id]);
+        } else {
+          issues.push({ type, id, error: 'invalid_type' });
+        }
+      }
+
+      if (issues.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, error: 'insufficient_stock', issues });
+      }
+
+      const orderResult = await client.query(
+        `INSERT INTO coffee_site_orders
+         (stripe_payment_id, customer_email, customer_name, shipping_address, subtotal_cents, shipping_cents, tax_cents, total_cents, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at`,
+        [stripe_payment_id, customer_email||null, customer_name||null,
+         shipping_address ? JSON.stringify(shipping_address) : null,
+         subtotal_cents||null, shipping_cents||null, tax_cents||null, total_cents||null, notes||null]
+      );
+      const orderId = orderResult.rows[0].id;
+
+      for (const item of items) {
+        const qty = Math.max(0, parseInt(item?.quantity, 10) || 0);
+        if (qty === 0) continue;
+        await client.query(
+          `INSERT INTO coffee_site_order_items
+           (order_id, item_type, item_id, variant_id, name, variant_label, unit_price_cents, quantity)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [orderId, item.type, parseInt(item.id, 10),
+           item.variant_id != null ? parseInt(item.variant_id, 10) : null,
+           item.name || '', item.variant_label || null,
+           item.unit_price_cents != null ? parseInt(item.unit_price_cents, 10) : null, qty]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json({ ok: true, order_id: orderId, duplicate: false });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    console.error('Coffee site order error:', e);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
 });
 
 app.get('/api/coffee-site/menus', authenticateToken, checkCoffeeSiteView, async (req, res) => {
