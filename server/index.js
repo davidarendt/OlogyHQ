@@ -5703,7 +5703,7 @@ app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage
 // ── Coffee Site ───────────────────────────────────────────────────────────────
 const CS_BUCKET = 'coffee-site-photos';
 const CS_PUB_BASE = `${process.env.SUPABASE_URL || 'https://ozuhfcinbelfxpidxdai.supabase.co'}/storage/v1/object/public/${CS_BUCKET}`;
-const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, quantity, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, archived, archived_at, created_by_name, created_at`;
+const CS_COLS = `id, coffee_name, roaster_name, origin, process, tasting_notes, price::float AS price, weight_oz::float AS weight_oz, quantity, photo_filename, go_live_date, sold_out, sold_out_at, is_featured, archived, archived_at, created_by_name, created_at`;
 
 function csBagUrl(filename) { return filename ? `${CS_PUB_BASE}/${filename}` : null; }
 function csWithUrl(b) { return { ...b, photo_url: csBagUrl(b.photo_filename) }; }
@@ -5874,13 +5874,14 @@ app.post('/api/coffee-site/bags/presign', authenticateToken, checkCoffeeSiteMana
 
 app.post('/api/coffee-site/bags', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, quantity, photo_filename, go_live_date } = req.body;
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, weight_oz, quantity, photo_filename, go_live_date } = req.body;
     if (!coffee_name?.trim()) return res.status(400).json({ error: 'coffee_name required' });
     const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
+    const weight = weight_oz != null && weight_oz !== '' ? weight_oz : null;
     const { rows } = await pool.query(
-      `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, quantity, photo_filename, go_live_date, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ${CS_COLS}`,
-      [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, qty, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
+      `INSERT INTO coffee_site_bags (coffee_name, roaster_name, origin, process, tasting_notes, price, weight_oz, quantity, photo_filename, go_live_date, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${CS_COLS}`,
+      [coffee_name.trim(), roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, weight, qty, photo_filename||null, go_live_date||null, req.user.id, req.user.name]
     );
     res.status(201).json(csWithUrl(rows[0]));
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
@@ -5931,8 +5932,9 @@ app.patch('/api/coffee-site/bags/:id/archive', authenticateToken, checkCoffeeSit
 
 app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, quantity, photo_filename, go_live_date } = req.body;
+    const { coffee_name, roaster_name, origin, process: proc, tasting_notes, price, weight_oz, quantity, photo_filename, go_live_date } = req.body;
     const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
+    const weight = weight_oz != null && weight_oz !== '' ? weight_oz : null;
     const { rows } = await pool.query(
       `UPDATE coffee_site_bags
        SET coffee_name   = COALESCE($1, coffee_name),
@@ -5941,12 +5943,13 @@ app.patch('/api/coffee-site/bags/:id', authenticateToken, checkCoffeeSiteManage,
            process       = $4,
            tasting_notes = $5,
            price         = $6,
-           quantity      = $7,
-           photo_filename = COALESCE($8, photo_filename),
-           go_live_date  = $9,
+           weight_oz     = $7,
+           quantity      = $8,
+           photo_filename = COALESCE($9, photo_filename),
+           go_live_date  = $10,
            updated_at    = NOW()
-       WHERE id=$10 RETURNING ${CS_COLS}`,
-      [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, qty, photo_filename||null, go_live_date||null, req.params.id]
+       WHERE id=$11 RETURNING ${CS_COLS}`,
+      [coffee_name?.trim()||null, roaster_name||null, origin||null, proc||null, tasting_notes||null, price != null && price !== '' ? price : null, weight, qty, photo_filename||null, go_live_date||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(csWithUrl(rows[0]));

@@ -11,7 +11,7 @@ const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Drinkware'];
 const VARIANT_TYPES    = ['Color', 'Size', 'Style'];
 
 // ── BagModal ──────────────────────────────────────────────────────────────────
-const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '', quantity: '0' };
+const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '', weight_oz: '12', quantity: '0' };
 
 function BagModal({ bag, onClose, onSaved }) {
   const isEdit = !!bag?.id;
@@ -22,6 +22,7 @@ function BagModal({ bag, onClose, onSaved }) {
     process:       bag.process       || '',
     tasting_notes: bag.tasting_notes || '',
     price:         bag.price != null ? String(bag.price) : '',
+    weight_oz:     bag.weight_oz != null ? String(bag.weight_oz) : '',
     quantity:      bag.quantity != null ? String(bag.quantity) : '0',
   } : { ...BAG_EMPTY });
   const [photoFile, setPhotoFile]       = useState(null);
@@ -59,6 +60,7 @@ function BagModal({ bag, onClose, onSaved }) {
       const payload = {
         ...form,
         price: form.price !== '' ? parseFloat(form.price) : null,
+        weight_oz: form.weight_oz !== '' ? parseFloat(form.weight_oz) : null,
         quantity: form.quantity !== '' ? parseInt(form.quantity, 10) : 0,
         photo_filename,
       };
@@ -117,6 +119,10 @@ function BagModal({ bag, onClose, onSaved }) {
             <div>
               <label className={lbl}>Process</label>
               <input className={inp} value={form.process} onChange={set('process')} placeholder="Washed, Natural…" />
+            </div>
+            <div>
+              <label className={lbl}>Bag Size (oz)</label>
+              <input className={inp} type="number" step="0.1" min="0" value={form.weight_oz} onChange={set('weight_oz')} placeholder="12" />
             </div>
             <div>
               <label className={lbl}>Price</label>
@@ -408,9 +414,10 @@ function BagCard({ bag, tab, canUpload, autoFeaturedId, onToggleSoldOut, onArchi
             </div>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 mt-2">
-            {bag.origin        && <span>{bag.origin}</span>}
-            {bag.process       && <span className="text-gray-500">· {bag.process}</span>}
-            {bag.price != null && <span className="text-orange-400 font-medium">{fmtPrice(bag.price)}</span>}
+            {bag.origin            && <span>{bag.origin}</span>}
+            {bag.process           && <span className="text-gray-500">· {bag.process}</span>}
+            {bag.weight_oz != null && <span className="text-gray-300">{bag.weight_oz} oz</span>}
+            {bag.price != null     && <span className="text-orange-400 font-medium">{fmtPrice(bag.price)}</span>}
             <span className={bag.quantity > 0 ? 'text-gray-300' : 'text-red-400'}>
               {bag.quantity ?? 0} in stock
             </span>
