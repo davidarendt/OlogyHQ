@@ -5947,6 +5947,89 @@ app.post('/api/public/coffee-site/orders', checkCSWebhookSecret, async (req, res
   }
 });
 
+// ── Coffee Site Orders (employee fulfillment view) ────────────────────────────
+const CS_ORDER_COLS = `id, stripe_payment_id, customer_email, customer_name, shipping_address,
+  subtotal_cents, shipping_cents, tax_cents, total_cents, status, notes,
+  tracking_number, shipped_at, shipped_by_name, created_at`;
+
+async function csAttachOrderItems(orders) {
+  if (!orders.length) return orders;
+  const { rows } = await pool.query(
+    `SELECT id, order_id, item_type, item_id, variant_id, name, variant_label, unit_price_cents, quantity
+     FROM coffee_site_order_items WHERE order_id = ANY($1) ORDER BY order_id, id`,
+    [orders.map(o => o.id)]
+  );
+  const byOrder = {};
+  rows.forEach(it => { (byOrder[it.order_id] = byOrder[it.order_id] || []).push(it); });
+  return orders.map(o => ({ ...o, items: byOrder[o.id] || [] }));
+}
+
+app.get('/api/coffee-site/orders', authenticateToken, checkCoffeeSiteView, async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = `SELECT ${CS_ORDER_COLS} FROM coffee_site_orders`;
+    const params = [];
+    if (status && status !== 'all') { sql += ` WHERE status = $1`; params.push(status); }
+    sql += ` ORDER BY created_at DESC LIMIT 500`;
+    const { rows } = await pool.query(sql, params);
+    res.json(await csAttachOrderItems(rows));
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/orders/:id/ship', authenticateToken, checkCoffeeSiteView, async (req, res) => {
+  try {
+    const { tracking_number } = req.body || {};
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_orders
+       SET status='shipped', tracking_number=$1, shipped_at=NOW(), shipped_by_name=$2
+       WHERE id=$3 RETURNING ${CS_ORDER_COLS}`,
+      [tracking_number?.trim() || null, req.user.name, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const [order] = await csAttachOrderItems(rows);
+    res.json(order);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/orders/:id/unship', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_orders
+       SET status='paid', tracking_number=NULL, shipped_at=NULL, shipped_by_name=NULL
+       WHERE id=$1 RETURNING ${CS_ORDER_COLS}`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const [order] = await csAttachOrderItems(rows);
+    res.json(order);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.patch('/api/coffee-site/orders/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const { status, notes, tracking_number } = req.body || {};
+    const { rows } = await pool.query(
+      `UPDATE coffee_site_orders
+       SET status = COALESCE($1, status),
+           notes  = $2,
+           tracking_number = $3
+       WHERE id=$4 RETURNING ${CS_ORDER_COLS}`,
+      [status || null, notes ?? null, tracking_number ?? null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const [order] = await csAttachOrderItems(rows);
+    res.json(order);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/coffee-site/orders/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
+  try {
+    const r = await pool.query('DELETE FROM coffee_site_orders WHERE id=$1', [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
 app.get('/api/coffee-site/menus', authenticateToken, checkCoffeeSiteView, async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT location, filename, uploaded_by_name, uploaded_at FROM coffee_site_menus ORDER BY location`);

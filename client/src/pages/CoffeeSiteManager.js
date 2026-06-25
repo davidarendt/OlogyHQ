@@ -7,6 +7,21 @@ function fmtPrice(p) {
   return `$${parseFloat(p).toFixed(2)}`;
 }
 
+function fmtCents(c) {
+  if (c == null) return '—';
+  return `$${(c / 100).toFixed(2)}`;
+}
+
+function fmtOrderDate(s) {
+  if (!s) return '';
+  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function fmtAddress(a) {
+  if (!a) return '';
+  return [a.line1, a.line2, [a.city, a.state, a.postal_code].filter(Boolean).join(', '), a.country].filter(Boolean).join(' · ');
+}
+
 const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Drinkware'];
 const VARIANT_TYPES    = ['Size', 'Style'];
 
@@ -662,28 +677,214 @@ function MenuCard({ menu, canUpload, onUpload, onDelete }) {
   );
 }
 
+// ── ShipModal ─────────────────────────────────────────────────────────────────
+function ShipModal({ order, onClose, onShipped }) {
+  const [tracking, setTracking] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`${API}/api/coffee-site/orders/${order.id}/ship`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tracking_number: tracking }),
+      });
+      if (!res.ok) { setError('Failed to mark shipped.'); setSaving(false); return; }
+      onShipped(await res.json());
+      onClose();
+    } catch { setError('Network error.'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-gray-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-xl border border-gray-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+          <h2 className="text-white font-semibold">Mark Order #{order.id} Shipped</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="block text-gray-400 text-xs mb-1">Tracking Number (optional)</label>
+            <input
+              autoFocus
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              value={tracking}
+              onChange={e => setTracking(e.target.value)}
+              placeholder="e.g. 9400 1112 0234 5678 9012 34"
+            />
+          </div>
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+        </div>
+        <div className="px-5 py-4 border-t border-gray-700 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 rounded-lg transition">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex-1 px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 transition"
+            style={{ backgroundColor: '#F05A28' }}>
+            {saving ? 'Saving…' : 'Mark Shipped'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── OrderCard ─────────────────────────────────────────────────────────────────
+function OrderCard({ order, canUpload, onShip, onUnship, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const isShipped = order.status === 'shipped';
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-white font-semibold">Order #{order.id}</h3>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${
+                isShipped
+                  ? 'bg-green-500/15 text-green-400'
+                  : 'bg-yellow-500/15 text-yellow-400'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isShipped ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                {isShipped ? 'Shipped' : 'Pending'}
+              </span>
+            </div>
+            <p className="text-gray-400 text-sm mt-0.5">
+              {order.customer_name || '—'}
+              {order.customer_email && <span className="text-gray-500"> · {order.customer_email}</span>}
+            </p>
+            <p className="text-gray-500 text-xs mt-0.5">{fmtOrderDate(order.created_at)}</p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-orange-400 font-semibold">{fmtCents(order.total_cents)}</p>
+            <p className="text-gray-500 text-xs">{(order.items || []).reduce((a, it) => a + it.quantity, 0)} items</p>
+          </div>
+        </div>
+
+        {/* Compact item list */}
+        <div className="mt-3 space-y-0.5">
+          {(order.items || []).map(it => (
+            <p key={it.id} className="text-gray-300 text-sm">
+              <span className="text-gray-500">×{it.quantity}</span>{' '}
+              {it.name}
+              {it.variant_label && <span className="text-gray-500"> — {it.variant_label}</span>}
+            </p>
+          ))}
+        </div>
+
+        {/* Shipping address (short form when collapsed) */}
+        {order.shipping_address && (
+          <p className="text-gray-400 text-xs mt-3 line-clamp-1">
+            <span className="text-gray-500">Ship to:</span> {fmtAddress(order.shipping_address)}
+          </p>
+        )}
+
+        {/* Tracking info if shipped */}
+        {isShipped && (
+          <p className="text-gray-400 text-xs mt-2">
+            <span className="text-green-400">✓</span> Shipped {fmtOrderDate(order.shipped_at)}
+            {order.shipped_by_name && <span className="text-gray-500"> by {order.shipped_by_name}</span>}
+            {order.tracking_number && (
+              <span className="ml-2 text-gray-300">Tracking: <span className="font-mono">{order.tracking_number}</span></span>
+            )}
+          </p>
+        )}
+
+        {/* Expand toggle */}
+        <button onClick={() => setExpanded(e => !e)}
+          className="text-orange-400 hover:text-orange-300 text-xs mt-2 transition">
+          {expanded ? 'Hide details' : 'Show details'}
+        </button>
+
+        {expanded && (
+          <div className="mt-3 pt-3 border-t border-gray-700/60 space-y-2 text-xs">
+            <div>
+              <p className="text-gray-500 mb-1">Shipping Address</p>
+              {order.shipping_address ? (
+                <div className="text-gray-300 leading-relaxed">
+                  {order.shipping_address.line1 && <div>{order.shipping_address.line1}</div>}
+                  {order.shipping_address.line2 && <div>{order.shipping_address.line2}</div>}
+                  <div>
+                    {[order.shipping_address.city, order.shipping_address.state, order.shipping_address.postal_code].filter(Boolean).join(', ')}
+                  </div>
+                  {order.shipping_address.country && <div>{order.shipping_address.country}</div>}
+                </div>
+              ) : <p className="text-gray-500">No address provided</p>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-300">
+              <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{fmtCents(order.subtotal_cents)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Shipping</span><span>{fmtCents(order.shipping_cents)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{fmtCents(order.tax_cents)}</span></div>
+              <div className="flex justify-between font-semibold"><span className="text-gray-400">Total</span><span className="text-orange-400">{fmtCents(order.total_cents)}</span></div>
+            </div>
+
+            {order.notes && (
+              <div>
+                <p className="text-gray-500 mb-0.5">Notes</p>
+                <p className="text-gray-300">{order.notes}</p>
+              </div>
+            )}
+
+            <p className="text-gray-600 text-[10px] font-mono">Stripe: {order.stripe_payment_id}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-700/60 bg-gray-800/40 px-4 py-2 flex items-center gap-2 flex-wrap">
+        {!isShipped && (
+          <button onClick={onShip}
+            className="px-3 py-1 rounded-lg text-xs font-medium text-white transition hover:opacity-90"
+            style={{ backgroundColor: '#F05A28' }}>
+            Mark Shipped
+          </button>
+        )}
+        {isShipped && canUpload && (
+          <button onClick={onUnship}
+            className="px-3 py-1 rounded-lg text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
+            Reopen
+          </button>
+        )}
+        {canUpload && (
+          <button onClick={onDelete}
+            className="px-3 py-1 rounded-lg text-xs text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
+            Delete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function CoffeeSiteManager({ user, canUpload, onBack }) {
   const [section, setSection]           = useState('coffee');
   const [tab, setTab]                   = useState('on_website');
+  const [orderTab, setOrderTab]         = useState('pending');
   const [bags, setBags]                 = useState([]);
   const [merch, setMerch]               = useState([]);
   const [menus, setMenus]               = useState([]);
+  const [orders, setOrders]             = useState([]);
   const [loading, setLoading]           = useState(true);
   const [editBag, setEditBag]           = useState(null);
   const [showAddBag, setShowAddBag]     = useState(false);
   const [editMerch, setEditMerch]       = useState(null);
   const [showAddMerch, setShowAddMerch] = useState(false);
+  const [shipOrder, setShipOrder]       = useState(null);
 
   const load = async () => {
-    const [bagsRes, merchRes, menusRes] = await Promise.all([
+    const [bagsRes, merchRes, menusRes, ordersRes] = await Promise.all([
       fetch(`${API}/api/coffee-site/bags`, { credentials: 'include' }),
       fetch(`${API}/api/coffee-site/merch`, { credentials: 'include' }),
       fetch(`${API}/api/coffee-site/menus`, { credentials: 'include' }),
+      fetch(`${API}/api/coffee-site/orders`, { credentials: 'include' }),
     ]);
-    if (bagsRes.ok)  setBags(await bagsRes.json());
-    if (merchRes.ok) setMerch(await merchRes.json());
-    if (menusRes.ok) setMenus(await menusRes.json());
+    if (bagsRes.ok)   setBags(await bagsRes.json());
+    if (merchRes.ok)  setMerch(await merchRes.json());
+    if (menusRes.ok)  setMenus(await menusRes.json());
+    if (ordersRes.ok) setOrders(await ordersRes.json());
     setLoading(false);
   };
 
@@ -804,6 +1005,27 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
     } catch { return 'Network error.'; }
   };
 
+  // ── Order handlers ──────────────────────────────────────────────────────────
+  const onOrderShipped = (updated) => {
+    setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+  };
+
+  const unshipOrder = async (order) => {
+    if (!window.confirm(`Reopen order #${order.id}? This clears the tracking number.`)) return;
+    const res = await fetch(`${API}/api/coffee-site/orders/${order.id}/unship`, {
+      method: 'PATCH', credentials: 'include',
+    });
+    if (!res.ok) { load(); return; }
+    const updated = await res.json();
+    setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
+  };
+
+  const deleteOrder = async (order) => {
+    if (!window.confirm(`Delete order #${order.id}? Inventory is NOT restored. This cannot be undone.`)) return;
+    const res = await fetch(`${API}/api/coffee-site/orders/${order.id}`, { method: 'DELETE', credentials: 'include' });
+    if (res.ok) setOrders(prev => prev.filter(o => o.id !== order.id));
+  };
+
   const handleMenuDelete = async (location) => {
     if (!window.confirm('Remove this menu PDF?')) return;
     await fetch(`${API}/api/coffee-site/menus/${location}`, { method: 'DELETE', credentials: 'include' });
@@ -840,17 +1062,75 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
           {[
             { key: 'coffee', label: 'Coffee Bags' },
             { key: 'merch',  label: 'Merch' },
+            { key: 'orders', label: 'Orders', badge: orders.filter(o => o.status !== 'shipped').length },
             ...(canUpload ? [{ key: 'menus', label: 'Menus' }] : []),
           ].map(s => (
             <button key={s.key} onClick={() => setSection(s.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
                 section === s.key ? 'text-white' : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700'
               }`}
               style={section === s.key ? { backgroundColor: '#F05A28' } : {}}>
               {s.label}
+              {s.badge > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                  section === s.key ? 'bg-white/20 text-white' : 'bg-yellow-500/20 text-yellow-400'
+                }`}>
+                  {s.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
+
+        {/* Orders section */}
+        {section === 'orders' && (
+          <div>
+            <div className="flex gap-1.5 mb-5">
+              {[
+                { key: 'pending',  label: 'Pending',  count: orders.filter(o => o.status !== 'shipped').length },
+                { key: 'shipped',  label: 'Shipped',  count: orders.filter(o => o.status === 'shipped').length },
+                { key: 'all',      label: 'All',      count: orders.length },
+              ].map(t => (
+                <button key={t.key} onClick={() => setOrderTab(t.key)}
+                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition ${
+                    orderTab === t.key ? 'text-white font-medium bg-gray-600' : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700'
+                  }`}>
+                  {t.label}
+                  {t.count > 0 && (
+                    <span className={`text-xs ${orderTab === t.key ? 'text-gray-300' : 'text-gray-500'}`}>{t.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="text-gray-400 text-center py-20">Loading…</div>
+            ) : (() => {
+              const filtered = orderTab === 'all'
+                ? orders
+                : orders.filter(o => orderTab === 'pending' ? o.status !== 'shipped' : o.status === 'shipped');
+              if (filtered.length === 0) return (
+                <div className="text-gray-500 text-center py-20">
+                  {orderTab === 'pending' ? 'No pending orders.' : orderTab === 'shipped' ? 'No shipped orders yet.' : 'No orders yet.'}
+                </div>
+              );
+              return (
+                <div className="space-y-4">
+                  {filtered.map(o => (
+                    <OrderCard
+                      key={o.id}
+                      order={o}
+                      canUpload={canUpload}
+                      onShip={() => setShipOrder(o)}
+                      onUnship={() => unshipOrder(o)}
+                      onDelete={() => deleteOrder(o)}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Menus section */}
         {section === 'menus' && (
@@ -875,7 +1155,7 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
         )}
 
         {/* On Website / Archived sub-tabs + content — only for coffee/merch sections */}
-        {section !== 'menus' && (
+        {section !== 'menus' && section !== 'orders' && (
           <>
             <div className="flex items-center justify-between gap-4 mb-6">
               <div className="flex gap-1.5">
@@ -954,6 +1234,9 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
       )}
       {(showAddMerch || editMerch) && (
         <MerchModal item={editMerch} onClose={() => { setShowAddMerch(false); setEditMerch(null); }} onSaved={onSavedMerch} />
+      )}
+      {shipOrder && (
+        <ShipModal order={shipOrder} onClose={() => setShipOrder(null)} onShipped={onOrderShipped} />
       )}
     </div>
   );
