@@ -17,11 +17,6 @@ function fmtOrderDate(s) {
   return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function fmtAddress(a) {
-  if (!a) return '';
-  return [a.line1, a.line2, [a.city, a.state, a.postal_code].filter(Boolean).join(', '), a.country].filter(Boolean).join(' · ');
-}
-
 const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Drinkware'];
 const VARIANT_TYPES    = ['Size', 'Style'];
 
@@ -734,122 +729,164 @@ function ShipModal({ order, onClose, onShipped }) {
 function OrderCard({ order, canUpload, onShip, onUnship, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const isShipped = order.status === 'shipped';
+  const totalItems = (order.items || []).reduce((a, it) => a + it.quantity, 0);
+  const addr = order.shipping_address || {};
+  const accent = isShipped ? 'border-l-green-500' : 'border-l-orange-500';
+
+  const copyAddress = () => {
+    const lines = [
+      order.customer_name,
+      addr.line1,
+      addr.line2,
+      [addr.city, addr.state, addr.postal_code].filter(Boolean).join(', '),
+      addr.country,
+    ].filter(Boolean).join('\n');
+    if (lines) navigator.clipboard?.writeText(lines);
+  };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-white font-semibold">Order #{order.id}</h3>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${
-                isShipped
-                  ? 'bg-green-500/15 text-green-400'
-                  : 'bg-yellow-500/15 text-yellow-400'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isShipped ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                {isShipped ? 'Shipped' : 'Pending'}
-              </span>
-            </div>
-            <p className="text-gray-400 text-sm mt-0.5">
-              {order.customer_name || '—'}
-              {order.customer_email && <span className="text-gray-500"> · {order.customer_email}</span>}
-            </p>
-            <p className="text-gray-500 text-xs mt-0.5">{fmtOrderDate(order.created_at)}</p>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-orange-400 font-semibold">{fmtCents(order.total_cents)}</p>
-            <p className="text-gray-500 text-xs">{(order.items || []).reduce((a, it) => a + it.quantity, 0)} items</p>
-          </div>
+    <div className={`bg-gray-800 border border-gray-700 border-l-4 rounded-xl overflow-hidden ${accent} ${isShipped ? 'opacity-80' : ''}`}>
+      {/* ── Header strip ────────────────────────────────────────────── */}
+      <div className={`px-5 py-2.5 flex items-center justify-between gap-3 flex-wrap ${isShipped ? 'bg-green-500/5' : 'bg-orange-500/5'}`}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider ${
+            isShipped ? 'bg-green-500/20 text-green-300' : 'bg-orange-500/25 text-orange-300'
+          }`}>
+            {isShipped ? '✓ Shipped' : '● Pending'}
+          </span>
+          <span className="text-gray-400 text-sm font-medium">Order #{order.id}</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-400 text-sm">{fmtOrderDate(order.created_at)}</span>
         </div>
-
-        {/* Compact item list */}
-        <div className="mt-3 space-y-0.5">
-          {(order.items || []).map(it => (
-            <p key={it.id} className="text-gray-300 text-sm">
-              <span className="text-gray-500">×{it.quantity}</span>{' '}
-              {it.name}
-              {it.variant_label && <span className="text-gray-500"> — {it.variant_label}</span>}
-            </p>
-          ))}
+        <div className="text-right">
+          <div className="text-white font-bold text-lg leading-none">{fmtCents(order.total_cents)}</div>
+          <div className="text-gray-500 text-xs mt-0.5">{totalItems} item{totalItems !== 1 ? 's' : ''}</div>
         </div>
+      </div>
 
-        {/* Shipping address (short form when collapsed) */}
-        {order.shipping_address && (
-          <p className="text-gray-400 text-xs mt-3 line-clamp-1">
-            <span className="text-gray-500">Ship to:</span> {fmtAddress(order.shipping_address)}
-          </p>
-        )}
-
-        {/* Tracking info if shipped */}
-        {isShipped && (
-          <p className="text-gray-400 text-xs mt-2">
-            <span className="text-green-400">✓</span> Shipped {fmtOrderDate(order.shipped_at)}
-            {order.shipped_by_name && <span className="text-gray-500"> by {order.shipped_by_name}</span>}
-            {order.tracking_number && (
-              <span className="ml-2 text-gray-300">Tracking: <span className="font-mono">{order.tracking_number}</span></span>
-            )}
-          </p>
-        )}
-
-        {/* Expand toggle */}
-        <button onClick={() => setExpanded(e => !e)}
-          className="text-orange-400 hover:text-orange-300 text-xs mt-2 transition">
-          {expanded ? 'Hide details' : 'Show details'}
-        </button>
-
-        {expanded && (
-          <div className="mt-3 pt-3 border-t border-gray-700/60 space-y-2 text-xs">
-            <div>
-              <p className="text-gray-500 mb-1">Shipping Address</p>
-              {order.shipping_address ? (
-                <div className="text-gray-300 leading-relaxed">
-                  {order.shipping_address.line1 && <div>{order.shipping_address.line1}</div>}
-                  {order.shipping_address.line2 && <div>{order.shipping_address.line2}</div>}
-                  <div>
-                    {[order.shipping_address.city, order.shipping_address.state, order.shipping_address.postal_code].filter(Boolean).join(', ')}
-                  </div>
-                  {order.shipping_address.country && <div>{order.shipping_address.country}</div>}
-                </div>
-              ) : <p className="text-gray-500">No address provided</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-300">
-              <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{fmtCents(order.subtotal_cents)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Shipping</span><span>{fmtCents(order.shipping_cents)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{fmtCents(order.tax_cents)}</span></div>
-              <div className="flex justify-between font-semibold"><span className="text-gray-400">Total</span><span className="text-orange-400">{fmtCents(order.total_cents)}</span></div>
-            </div>
-
-            {order.notes && (
-              <div>
-                <p className="text-gray-500 mb-0.5">Notes</p>
-                <p className="text-gray-300">{order.notes}</p>
-              </div>
-            )}
-
-            <p className="text-gray-600 text-[10px] font-mono">Stripe: {order.stripe_payment_id}</p>
-          </div>
+      {/* ── Customer name (big & prominent) ─────────────────────────── */}
+      <div className="px-5 pt-4 pb-2">
+        <h3 className="text-white font-bold text-xl leading-tight">{order.customer_name || 'Customer'}</h3>
+        {order.customer_email && (
+          <a href={`mailto:${order.customer_email}`} className="text-gray-300 text-sm hover:text-orange-400 transition inline-block mt-0.5">
+            {order.customer_email}
+          </a>
         )}
       </div>
 
-      <div className="border-t border-gray-700/60 bg-gray-800/40 px-4 py-2 flex items-center gap-2 flex-wrap">
+      {/* ── Customer notes (loud if present) ────────────────────────── */}
+      {order.notes && (
+        <div className="px-5 pb-3">
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+            <p className="text-yellow-400 text-[10px] font-bold uppercase tracking-wider mb-1">📝 Customer Notes</p>
+            <p className="text-yellow-100 text-sm">{order.notes}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Items to pack + Ship to (two columns on desktop) ────────── */}
+      <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Items */}
+        <div>
+          <h4 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">📦 Items to Pack</h4>
+          <div className="bg-gray-900/50 border border-gray-700/40 rounded-lg p-3 space-y-2">
+            {(order.items || []).map(it => (
+              <div key={it.id} className="flex items-start gap-3">
+                <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded font-bold text-sm flex-shrink-0 min-w-[2rem] text-center">
+                  ×{it.quantity}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-white text-sm font-medium leading-snug">{it.name}</p>
+                  {it.variant_label && <p className="text-gray-400 text-xs mt-0.5">{it.variant_label}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Address */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">📍 Ship To</h4>
+            {(addr.line1 || addr.city) && (
+              <button onClick={copyAddress} className="text-orange-400 hover:text-orange-300 text-[10px] font-medium uppercase tracking-wider transition">
+                Copy
+              </button>
+            )}
+          </div>
+          <div className="bg-gray-900/50 border border-gray-700/40 rounded-lg p-3 text-sm leading-relaxed">
+            {(addr.line1 || addr.city) ? (
+              <>
+                {order.customer_name && <div className="text-white font-medium">{order.customer_name}</div>}
+                {addr.line1 && <div className="text-gray-200">{addr.line1}</div>}
+                {addr.line2 && <div className="text-gray-200">{addr.line2}</div>}
+                {(addr.city || addr.state || addr.postal_code) && (
+                  <div className="text-gray-200">
+                    {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(', ')}
+                  </div>
+                )}
+                {addr.country && <div className="text-gray-400 text-xs mt-0.5">{addr.country}</div>}
+              </>
+            ) : (
+              <p className="text-gray-500 italic">No shipping address provided</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Shipped confirmation strip ──────────────────────────────── */}
+      {isShipped && (
+        <div className="px-5 pb-4">
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2.5">
+            <p className="text-green-300 text-sm font-semibold">
+              ✓ Shipped {fmtOrderDate(order.shipped_at)}
+              {order.shipped_by_name && <span className="text-green-300/70 font-normal"> by {order.shipped_by_name}</span>}
+            </p>
+            {order.tracking_number && (
+              <p className="text-gray-200 text-sm mt-1">
+                Tracking: <span className="font-mono text-white">{order.tracking_number}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Expanded details (totals + stripe id) ───────────────────── */}
+      {expanded && (
+        <div className="px-5 py-3 border-t border-gray-700/40 bg-gray-900/30 space-y-2.5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="text-gray-200">{fmtCents(order.subtotal_cents)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Shipping</span><span className="text-gray-200">{fmtCents(order.shipping_cents)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Tax</span><span className="text-gray-200">{fmtCents(order.tax_cents)}</span></div>
+            <div className="flex justify-between font-bold"><span className="text-gray-300">Total</span><span className="text-white">{fmtCents(order.total_cents)}</span></div>
+          </div>
+          <p className="text-gray-600 text-[10px] font-mono pt-1 border-t border-gray-700/30">Stripe: {order.stripe_payment_id}</p>
+        </div>
+      )}
+
+      {/* ── Action bar ──────────────────────────────────────────────── */}
+      <div className="border-t border-gray-700/60 bg-gray-800/60 px-5 py-3 flex items-center gap-2 flex-wrap">
         {!isShipped && (
           <button onClick={onShip}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-white transition hover:opacity-90"
+            className="px-5 py-2 rounded-lg text-sm font-bold text-white transition hover:opacity-90 shadow-lg shadow-orange-500/20"
             style={{ backgroundColor: '#F05A28' }}>
-            Mark Shipped
+            ✓ Mark Shipped
           </button>
         )}
         {isShipped && canUpload && (
           <button onClick={onUnship}
-            className="px-3 py-1 rounded-lg text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
+            className="px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition">
             Reopen
           </button>
         )}
+        <button onClick={() => setExpanded(e => !e)}
+          className="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white transition">
+          {expanded ? 'Hide totals' : 'Show totals'}
+        </button>
+        <div className="flex-1" />
         {canUpload && (
           <button onClick={onDelete}
-            className="px-3 py-1 rounded-lg text-xs text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
+            className="px-3 py-1.5 rounded-lg text-sm text-red-400 hover:text-red-300 bg-gray-700 hover:bg-gray-600 transition">
             Delete
           </button>
         )}
