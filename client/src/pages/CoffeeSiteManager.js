@@ -8,7 +8,7 @@ function fmtPrice(p) {
 }
 
 const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Drinkware'];
-const VARIANT_TYPES    = ['Color', 'Size', 'Style'];
+const VARIANT_TYPES    = ['Size', 'Style'];
 
 // ── BagModal ──────────────────────────────────────────────────────────────────
 const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '', weight_oz: '12', quantity: '0' };
