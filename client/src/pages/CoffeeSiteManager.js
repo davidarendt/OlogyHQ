@@ -7,8 +7,8 @@ function fmtPrice(p) {
   return `$${parseFloat(p).toFixed(2)}`;
 }
 
-const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Gear', 'Drinkware', 'Other'];
-const VARIANT_TYPES    = ['Color', 'Size', 'Style', 'Material'];
+const MERCH_CATEGORIES = ['Apparel', 'Accessories', 'Drinkware'];
+const VARIANT_TYPES    = ['Color', 'Size', 'Style'];
 
 // ── BagModal ──────────────────────────────────────────────────────────────────
 const BAG_EMPTY = { coffee_name: '', roaster_name: '', origin: '', process: '', tasting_notes: '', price: '', quantity: '0' };
