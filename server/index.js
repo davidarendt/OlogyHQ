@@ -5742,7 +5742,7 @@ async function autoArchiveCoffeeSiteBags() {
 }
 
 // ── Coffee Site Merch ─────────────────────────────────────────────────────────
-const CS_MERCH_COLS = `id, name, category, description, price::float AS price, quantity, photo_filename, sold_out, sold_out_at, archived, archived_at, sort_order, created_by_name, created_at`;
+const CS_MERCH_COLS = `id, name, category, description, price::float AS price, weight_oz::float AS weight_oz, quantity, photo_filename, sold_out, sold_out_at, archived, archived_at, sort_order, created_by_name, created_at`;
 
 async function csAttachVariants(items) {
   if (!items.length) return items;
@@ -5992,13 +5992,14 @@ app.post('/api/coffee-site/merch/presign', authenticateToken, checkCoffeeSiteMan
 
 app.post('/api/coffee-site/merch', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { name, category, description, price, quantity, photo_filename, variants } = req.body;
+    const { name, category, description, price, weight_oz, quantity, photo_filename, variants } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'name required' });
     const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
+    const weight = weight_oz != null && weight_oz !== '' ? weight_oz : null;
     const { rows } = await pool.query(
-      `INSERT INTO coffee_site_merch (name, category, description, price, quantity, photo_filename, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${CS_MERCH_COLS}`,
-      [name.trim(), category||null, description||null, price != null && price !== '' ? price : null, qty, photo_filename||null, req.user.id, req.user.name]
+      `INSERT INTO coffee_site_merch (name, category, description, price, weight_oz, quantity, photo_filename, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ${CS_MERCH_COLS}`,
+      [name.trim(), category||null, description||null, price != null && price !== '' ? price : null, weight, qty, photo_filename||null, req.user.id, req.user.name]
     );
     await csReplaceVariants(rows[0].id, variants);
     const [item] = await csAttachVariants(rows);
@@ -6035,14 +6036,15 @@ app.patch('/api/coffee-site/merch/:id/archive', authenticateToken, checkCoffeeSi
 
 app.patch('/api/coffee-site/merch/:id', authenticateToken, checkCoffeeSiteManage, async (req, res) => {
   try {
-    const { name, category, description, price, quantity, photo_filename, variants } = req.body;
+    const { name, category, description, price, weight_oz, quantity, photo_filename, variants } = req.body;
     const qty = Number.isFinite(+quantity) ? Math.max(0, Math.floor(+quantity)) : 0;
+    const weight = weight_oz != null && weight_oz !== '' ? weight_oz : null;
     const { rows } = await pool.query(
       `UPDATE coffee_site_merch
-       SET name=COALESCE($1, name), category=$2, description=$3, price=$4, quantity=$5,
-           photo_filename=COALESCE($6, photo_filename), updated_at=NOW()
-       WHERE id=$7 RETURNING ${CS_MERCH_COLS}`,
-      [name?.trim()||null, category||null, description||null, price != null && price !== '' ? price : null, qty, photo_filename||null, req.params.id]
+       SET name=COALESCE($1, name), category=$2, description=$3, price=$4, weight_oz=$5, quantity=$6,
+           photo_filename=COALESCE($7, photo_filename), updated_at=NOW()
+       WHERE id=$8 RETURNING ${CS_MERCH_COLS}`,
+      [name?.trim()||null, category||null, description||null, price != null && price !== '' ? price : null, weight, qty, photo_filename||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     await csReplaceVariants(rows[0].id, variants);

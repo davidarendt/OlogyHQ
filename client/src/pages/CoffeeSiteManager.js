@@ -153,7 +153,7 @@ function BagModal({ bag, onClose, onSaved }) {
 }
 
 // ── MerchModal ────────────────────────────────────────────────────────────────
-const MERCH_EMPTY = { name: '', category: '', description: '', price: '', quantity: '0' };
+const MERCH_EMPTY = { name: '', category: '', description: '', price: '', weight_oz: '', quantity: '0' };
 
 function MerchModal({ item, onClose, onSaved }) {
   const isEdit = !!item?.id;
@@ -162,6 +162,7 @@ function MerchModal({ item, onClose, onSaved }) {
     category:    item.category    || '',
     description: item.description || '',
     price:       item.price != null ? String(item.price) : '',
+    weight_oz:   item.weight_oz != null ? String(item.weight_oz) : '',
     quantity:    item.quantity != null ? String(item.quantity) : '0',
   } : { ...MERCH_EMPTY });
   const [variants, setVariants]         = useState(
@@ -180,9 +181,15 @@ function MerchModal({ item, onClose, onSaved }) {
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const addVariant    = () => setVariants(v => [...v, { variant_type: '', variant_value: '', available: true, quantity: '0' }]);
+  const addVariant    = (type = 'Size') => setVariants(v => [...v, { variant_type: type, variant_value: '', available: true, quantity: '0' }]);
   const removeVariant = i  => setVariants(v => v.filter((_, idx) => idx !== i));
   const setVariant    = (i, field, val) => setVariants(v => v.map((vv, idx) => idx === i ? { ...vv, [field]: val } : vv));
+  const renameType    = (oldType, newType) => {
+    const trimmed = newType.trim();
+    if (!trimmed || trimmed === oldType) return;
+    setVariants(v => v.map(vv => vv.variant_type === oldType ? { ...vv, variant_type: trimmed } : vv));
+  };
+  const removeType    = type => setVariants(v => v.filter(vv => vv.variant_type !== type));
 
   const pickFile = e => {
     const f = e.target.files[0];
@@ -211,6 +218,7 @@ function MerchModal({ item, onClose, onSaved }) {
       const payload = {
         ...form,
         price: form.price !== '' ? parseFloat(form.price) : null,
+        weight_oz: form.weight_oz !== '' ? parseFloat(form.weight_oz) : null,
         quantity: form.quantity !== '' ? parseInt(form.quantity, 10) : 0,
         photo_filename,
         variants: variants
@@ -231,12 +239,15 @@ function MerchModal({ item, onClose, onSaved }) {
   const inp = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500';
   const lbl = 'block text-gray-400 text-xs mb-1';
 
-  // Group variants by type for preview
-  const variantsByType = variants.reduce((acc, v) => {
-    if (!v.variant_type) return acc;
-    (acc[v.variant_type] = acc[v.variant_type] || []).push(v);
-    return acc;
-  }, {});
+  // Group variants by type; orderedTypes preserves first-occurrence order
+  const groupsByType = {};
+  const orderedTypes = [];
+  variants.forEach((v, idx) => {
+    const t = v.variant_type || '';
+    if (!t) return;
+    if (!groupsByType[t]) { groupsByType[t] = []; orderedTypes.push(t); }
+    groupsByType[t].push(idx);
+  });
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -283,10 +294,15 @@ function MerchModal({ item, onClose, onSaved }) {
               <input className={inp} type="number" step="0.01" min="0" value={form.price} onChange={set('price')} placeholder="0.00" />
             </div>
             <div>
-              <label className={lbl}>Quantity in Stock</label>
-              <input className={inp} type="number" step="1" min="0" value={form.quantity} onChange={set('quantity')} placeholder="0" />
-              <p className="text-gray-500 text-xs mt-1">Used when item has no variants.</p>
+              <label className={lbl}>Weight (oz)</label>
+              <input className={inp} type="number" step="0.1" min="0" value={form.weight_oz} onChange={set('weight_oz')} placeholder="—" />
             </div>
+            {variants.length === 0 && (
+              <div className="col-span-2">
+                <label className={lbl}>Quantity in Stock</label>
+                <input className={inp} type="number" step="1" min="0" value={form.quantity} onChange={set('quantity')} placeholder="0" />
+              </div>
+            )}
             <div className="col-span-2">
               <label className={lbl}>Description</label>
               <textarea className={`${inp} resize-none`} rows={2} value={form.description} onChange={set('description')} placeholder="Brief description…" />
@@ -296,68 +312,81 @@ function MerchModal({ item, onClose, onSaved }) {
           {/* Variants */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-gray-400 text-xs">Variants (Color, Size, etc.)</label>
-              <button onClick={addVariant}
+              <label className="text-gray-400 text-xs">Variants (Size, Style, etc.)</label>
+              <button onClick={() => addVariant('Size')}
                 className="text-xs text-orange-400 hover:text-orange-300 transition font-medium">
-                + Add Variant
+                + Add Size
               </button>
             </div>
 
-            {variants.length === 0 ? (
-              <p className="text-gray-600 text-xs italic">No variants — add one if this item comes in different colors or sizes.</p>
+            {orderedTypes.length === 0 ? (
+              <p className="text-gray-600 text-xs italic">No variants — add one if this item comes in different sizes or styles.</p>
             ) : (
-              <div className="space-y-2">
-                {variants.map((v, i) => (
-                  <div key={i} className="flex gap-2 items-center flex-wrap">
-                    <input
-                      list="variant-types"
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 w-24 flex-shrink-0"
-                      value={v.variant_type}
-                      onChange={e => setVariant(i, 'variant_type', e.target.value)}
-                      placeholder="Type"
-                    />
-                    <datalist id="variant-types">
-                      {VARIANT_TYPES.map(t => <option key={t} value={t} />)}
-                    </datalist>
-                    <input
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 flex-1 min-w-[6rem]"
-                      value={v.variant_value}
-                      onChange={e => setVariant(i, 'variant_value', e.target.value)}
-                      placeholder="Value (e.g. Black, XL)"
-                    />
-                    <input
-                      type="number" step="1" min="0"
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 w-16 flex-shrink-0"
-                      value={v.quantity}
-                      onChange={e => setVariant(i, 'quantity', e.target.value)}
-                      placeholder="Qty"
-                      title="Quantity in stock"
-                    />
-                    <button
-                      onClick={() => setVariant(i, 'available', !v.available)}
-                      className={`px-2 py-1 rounded text-xs font-medium flex-shrink-0 transition ${
-                        v.available ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
-                      }`}>
-                      {v.available ? 'In Stock' : 'Out'}
+              <div className="space-y-3">
+                {orderedTypes.map(type => (
+                  <div key={type} className="border border-gray-700/60 rounded-lg p-3 bg-gray-900/30">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <input
+                        key={`type-${type}`}
+                        list="variant-types"
+                        defaultValue={type}
+                        onBlur={e => renameType(type, e.target.value)}
+                        className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs font-semibold w-28 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                      <datalist id="variant-types">
+                        {VARIANT_TYPES.map(t => <option key={t} value={t} />)}
+                      </datalist>
+                      <button onClick={() => removeType(type)}
+                        className="text-xs text-gray-500 hover:text-red-400 transition">
+                        Remove all
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {groupsByType[type].map(i => {
+                        const v = variants[i];
+                        return (
+                          <div key={i} className="flex gap-2 items-center">
+                            <input
+                              className="bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 flex-1 min-w-0"
+                              value={v.variant_value}
+                              onChange={e => setVariant(i, 'variant_value', e.target.value)}
+                              placeholder={type === 'Size' ? 'e.g. S, M, L, XL' : 'Value'}
+                            />
+                            <input
+                              type="number" step="1" min="0"
+                              className="bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs w-14 flex-shrink-0 text-center"
+                              value={v.quantity}
+                              onChange={e => setVariant(i, 'quantity', e.target.value)}
+                              placeholder="0"
+                              title="Quantity in stock"
+                            />
+                            <button
+                              onClick={() => setVariant(i, 'available', !v.available)}
+                              className={`px-2 py-1 rounded text-xs font-medium flex-shrink-0 transition ${
+                                v.available ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+                              }`}
+                              title={v.available ? 'Visible on site' : 'Hidden from site'}>
+                              {v.available ? 'In' : 'Off'}
+                            </button>
+                            <button onClick={() => removeVariant(i)} className="text-gray-500 hover:text-red-400 transition text-sm flex-shrink-0">✕</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button onClick={() => addVariant(type)}
+                      className="text-xs text-orange-400 hover:text-orange-300 transition font-medium mt-2">
+                      + Add {type}
                     </button>
-                    <button onClick={() => removeVariant(i)} className="text-gray-500 hover:text-red-400 transition text-sm flex-shrink-0">✕</button>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {Object.keys(variantsByType).length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-700/60 space-y-1">
-                {Object.entries(variantsByType).map(([type, vals]) => (
-                  <div key={type} className="flex flex-wrap gap-1 items-center">
-                    <span className="text-gray-500 text-xs w-16 flex-shrink-0">{type}:</span>
-                    {vals.map((v, i) => (
-                      <span key={i} className={`px-2 py-0.5 rounded text-xs ${v.available ? 'bg-gray-700 text-gray-300' : 'bg-gray-700/50 text-gray-500 line-through'}`}>
-                        {v.variant_value}
-                      </span>
-                    ))}
-                  </div>
-                ))}
+                <button onClick={() => {
+                  const used = new Set(orderedTypes);
+                  const next = VARIANT_TYPES.find(t => !used.has(t)) || 'Style';
+                  addVariant(next);
+                }}
+                  className="text-xs text-gray-400 hover:text-orange-400 transition">
+                  + Add another variant type
+                </button>
               </div>
             )}
           </div>
@@ -511,7 +540,8 @@ function MerchCard({ item, tab, canUpload, onToggleSoldOut, onArchive, onUnarchi
             </div>
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 items-center mt-1">
-            {item.price != null && <p className="text-orange-400 text-sm font-medium">{fmtPrice(item.price)}</p>}
+            {item.price     != null && <p className="text-orange-400 text-sm font-medium">{fmtPrice(item.price)}</p>}
+            {item.weight_oz != null && <span className="text-gray-400 text-xs">{item.weight_oz} oz</span>}
             {Object.keys(variantsByType).length === 0 && (
               <span className={`text-xs ${item.quantity > 0 ? 'text-gray-300' : 'text-red-400'}`}>
                 {item.quantity ?? 0} in stock
@@ -809,7 +839,7 @@ export default function CoffeeSiteManager({ user, canUpload, onBack }) {
         <div className="flex gap-1.5 mb-5">
           {[
             { key: 'coffee', label: 'Coffee Bags' },
-            { key: 'merch',  label: 'Merch & Gear' },
+            { key: 'merch',  label: 'Merch' },
             ...(canUpload ? [{ key: 'menus', label: 'Menus' }] : []),
           ].map(s => (
             <button key={s.key} onClick={() => setSection(s.key)}
