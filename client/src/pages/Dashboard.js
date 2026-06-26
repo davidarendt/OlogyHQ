@@ -42,29 +42,15 @@ function Dashboard({ user, onLogout, onNavigate }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Top Nav */}
-      <nav className="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-        <button onClick={() => {}} className="flex items-center gap-3 cursor-default">
-          <span className="text-2xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
-          <span className="text-cream font-semibold text-xl">HQ</span>
-        </button>
-        <div className="flex items-center gap-3">
-          <span className="text-gray-400 text-sm hidden sm:inline">Welcome, {user.name}</span>
-          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-white transition">
-            Sign Out
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="mb-8 text-center">
-          <h2 className="text-cream text-4xl font-bold">Dashboard</h2>
+    <div className="min-h-screen bg-gray-900 flex">
+      {/* Sidebar Nav */}
+      <aside className="w-64 shrink-0 bg-gray-800 border-r border-gray-700 flex flex-col min-h-screen sticky top-0 self-start max-h-screen">
+        <div className="px-5 py-5 border-b border-gray-700 flex items-center gap-2">
+          <span className="text-xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+          <span className="text-cream font-semibold text-lg">HQ</span>
         </div>
 
-        {/* Tool Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <nav className="flex-1 overflow-y-auto py-3">
           {tools.map((tool) => {
             const meta = TOOL_META[tool.slug] || DEFAULT_META;
             const { Icon } = meta;
@@ -77,36 +63,52 @@ function Dashboard({ user, onLogout, onNavigate }) {
               : undefined;
 
             return (
-              <div
+              <button
                 key={tool.id}
                 onClick={handleClick}
-                className={`relative bg-gray-800 rounded-xl p-6 border border-gray-700 transition group overflow-hidden ${
-                  isLive ? 'hover:border-orange-500 cursor-pointer' : 'cursor-default opacity-75'
+                disabled={!isLive}
+                className={`w-full flex items-center gap-3 px-5 py-2.5 text-left transition group ${
+                  isLive
+                    ? 'text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer'
+                    : 'text-gray-500 cursor-default'
                 }`}
+                title={meta.description || tool.description || ''}
               >
                 <Icon
-                  size={40}
-                  className="mb-4 transition group-hover:text-orange-400"
-                  style={{ color: '#F05A28' }}
+                  size={20}
+                  className="shrink-0 transition"
+                  style={{ color: isLive ? '#F05A28' : '#636363' }}
                 />
-                <h3 className={`font-semibold text-lg transition ${isLive ? 'text-white group-hover:text-orange-400' : 'text-white'}`}>
-                  {tool.name}
-                </h3>
-                <p className="text-gray-400 text-sm mt-2">{meta.description || tool.description || ''}</p>
-
-                {/* Coming Soon ribbon */}
+                <span className="text-sm font-medium truncate flex-1">{tool.name}</span>
                 {!isLive && (
-                  <div
-                    className="absolute top-4 right-[-28px] rotate-45 text-xs font-bold tracking-widest px-10 py-1 text-white"
+                  <span
+                    className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white"
                     style={{ backgroundColor: '#F05A28' }}
                   >
                     SOON
-                  </div>
+                  </span>
                 )}
-              </div>
+              </button>
             );
           })}
+        </nav>
 
+        <div className="px-5 py-4 border-t border-gray-700">
+          <div className="text-gray-400 text-xs mb-2 truncate">Welcome, {user.name}</div>
+          <button
+            onClick={onLogout}
+            className="text-sm text-gray-400 hover:text-white transition"
+          >
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 px-6 py-10">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-cream text-4xl font-bold mb-2">Dashboard</h2>
+          <p className="text-gray-400">Select a tool from the sidebar to get started.</p>
         </div>
       </main>
     </div>
