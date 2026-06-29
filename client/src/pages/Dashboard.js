@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
   Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
-  UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen, FlaskConical, Globe,
+  UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen, FlaskConical, Globe, Martini,
 } from 'lucide-react';
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
@@ -27,6 +27,7 @@ const TOOL_META = {
   'tank-maintenance':      { Icon: Wrench,          description: 'Track recurring maintenance tasks per tank',                  page: 'tank-maintenance' },
   'distillery-inventory':  { Icon: FlaskConical,    description: 'Track distillery product inventory and order requests',        page: 'distillery-inventory' },
   'coffee-site':           { Icon: Globe,           description: 'Manage featured bags and content for the coffee website',        page: 'coffee-site' },
+  'spirits-ordering':      { Icon: Martini,         description: 'Weekly spirits inventory counts and order requests to the distillery', page: 'spirits-ordering' },
   'user-management':       { Icon: Users,           description: 'Manage user accounts and roles',                          page: 'usermanagement' },
 };
 

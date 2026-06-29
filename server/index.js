@@ -5700,6 +5700,364 @@ app.patch('/api/distillery/orders/:id', authenticateToken, checkDistilleryManage
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
+// ── Spirits Ordering ──────────────────────────────────────────────────────────
+
+const { sendSpiritsOrderEmail, buildOrderRows: buildSpiritsOrderRows } = require('./spiritsEmail');
+const SPIRITS_LOCATIONS = new Set(['midtown', 'northside', 'power_mill', 'tampa']);
+
+function isoWeekStart(d = new Date()) {
+  // Monday of the ISO week for the given date, returned as YYYY-MM-DD (local).
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  const dow = date.getDay(); // 0=Sun..6=Sat
+  const offset = dow === 0 ? -6 : 1 - dow;
+  date.setDate(date.getDate() + offset);
+  return date.toLocaleDateString('en-CA'); // YYYY-MM-DD
+}
+
+function checkSpiritsView(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'spirits-ordering' AND p.permission_level IN ('view','upload')`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function checkSpiritsManage(req, res, next) {
+  if (req.user.roles.includes('admin')) return next();
+  pool.query(
+    `SELECT 1 FROM permissions p JOIN tools t ON t.id = p.tool_id
+     WHERE p.role = ANY($1::text[]) AND t.slug = 'spirits-ordering' AND p.permission_level = 'upload'`,
+    [req.user.roles]
+  ).then(r => r.rows.length ? next() : res.status(403).json({ message: 'Forbidden' }))
+   .catch(() => res.status(500).json({ message: 'Server error' }));
+}
+
+function pickField(obj, names) {
+  for (const n of names) {
+    if (obj[n] !== undefined && obj[n] !== null && String(obj[n]).trim() !== '') return obj[n];
+  }
+  return undefined;
+}
+
+// Normalize the production API payload into [{external_id, name, quantity, unit_size, category}]
+function normalizeSpiritsFeed(payload) {
+  let arr = payload;
+  if (!Array.isArray(arr)) {
+    if (Array.isArray(payload?.items)) arr = payload.items;
+    else if (Array.isArray(payload?.data)) arr = payload.data;
+    else if (Array.isArray(payload?.spirits)) arr = payload.spirits;
+    else if (Array.isArray(payload?.products)) arr = payload.products;
+    else return [];
+  }
+  return arr.map(raw => {
+    const name = pickField(raw, ['name', 'spirit_name', 'product_name', 'title']);
+    if (!name) return null;
+    const quantity = pickField(raw, ['quantity', 'quantity_available', 'available', 'qty', 'qty_available', 'current_quantity']);
+    return {
+      external_id: pickField(raw, ['id', 'external_id', 'sku', 'product_id']) ?? null,
+      name: String(name).trim(),
+      quantity: quantity !== undefined ? parseFloat(quantity) : null,
+      unit_size: pickField(raw, ['unit_size', 'size', 'volume']) ?? null,
+      category: pickField(raw, ['category', 'type']) ?? null,
+    };
+  }).filter(Boolean);
+}
+
+// ── Items ─────────────────────────────────────────────────────────────────────
+
+app.get('/api/spirits/items', authenticateToken, checkSpiritsView, async (req, res) => {
+  try {
+    const includeHidden = req.query.includeHidden === '1' || req.query.includeHidden === 'true';
+    const { rows } = await pool.query(
+      `SELECT * FROM spirits_items
+       ${includeHidden ? '' : 'WHERE hidden = false'}
+       ORDER BY sort_order, LOWER(name)`
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/spirits/items', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { name, category, unit_size, production_quantity } = req.body;
+  if (!name?.trim()) return res.status(400).json({ message: 'Name is required' });
+  try {
+    const { rows: [item] } = await pool.query(
+      `INSERT INTO spirits_items (name, category, unit_size, production_quantity)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [name.trim(), category?.trim() || null, unit_size?.trim() || null,
+       production_quantity != null && production_quantity !== '' ? parseFloat(production_quantity) : null]
+    );
+    res.json(item);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ message: 'An item with that name already exists.' });
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.patch('/api/spirits/items/reorder', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { orderedIds } = req.body;
+  if (!Array.isArray(orderedIds)) return res.status(400).json({ message: 'orderedIds required' });
+  try {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await pool.query('UPDATE spirits_items SET sort_order=$1 WHERE id=$2', [i, orderedIds[i]]);
+    }
+    res.json({ message: 'OK' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/spirits/items/:id', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { name, category, unit_size, hidden, production_quantity } = req.body;
+  try {
+    const { rows: [item] } = await pool.query(
+      `UPDATE spirits_items SET
+        name = COALESCE($1, name),
+        category = CASE WHEN $2::text IS NOT NULL THEN NULLIF($2, '') ELSE category END,
+        unit_size = CASE WHEN $3::text IS NOT NULL THEN NULLIF($3, '') ELSE unit_size END,
+        hidden = COALESCE($4, hidden),
+        production_quantity = CASE WHEN $5::text IS NOT NULL THEN NULLIF($5, '')::numeric ELSE production_quantity END
+       WHERE id=$6 RETURNING *`,
+      [
+        name?.trim() || null,
+        category !== undefined ? (category ?? '') : null,
+        unit_size !== undefined ? (unit_size ?? '') : null,
+        hidden !== undefined ? hidden : null,
+        production_quantity !== undefined ? String(production_quantity ?? '') : null,
+        req.params.id,
+      ]
+    );
+    if (!item) return res.status(404).json({ message: 'Not found' });
+    res.json(item);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/spirits/items/:id', authenticateToken, checkSpiritsManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM spirits_items WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Pull production inventory from configured external API and upsert items.
+app.post('/api/spirits/items/sync', authenticateToken, checkSpiritsManage, async (req, res) => {
+  try {
+    const { rows: [settings] } = await pool.query('SELECT distillery_api_url FROM spirits_settings WHERE id=1');
+    const url = settings?.distillery_api_url?.trim();
+    if (!url) return res.status(400).json({ message: 'Set the distillery API URL in Manage → Settings first.' });
+
+    let payload;
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!r.ok) throw new Error(`Upstream returned ${r.status}`);
+      payload = await r.json();
+    } catch (err) {
+      await pool.query('UPDATE spirits_settings SET last_sync_error=$1 WHERE id=1', [err.message]);
+      return res.status(502).json({ message: `Failed to fetch distillery API: ${err.message}` });
+    }
+
+    const items = normalizeSpiritsFeed(payload);
+    if (items.length === 0) {
+      await pool.query('UPDATE spirits_settings SET last_sync_at=NOW(), last_sync_error=$1 WHERE id=1',
+        ['Feed returned 0 items — check the API response shape.']);
+      return res.status(422).json({ message: 'Distillery API returned no recognizable items.' });
+    }
+
+    let added = 0, updated = 0;
+    for (const it of items) {
+      const { rows: [existing] } = await pool.query(
+        'SELECT id FROM spirits_items WHERE LOWER(name) = LOWER($1) LIMIT 1', [it.name]
+      );
+      if (existing) {
+        await pool.query(
+          `UPDATE spirits_items SET
+             external_id = COALESCE($1, external_id),
+             production_quantity = $2,
+             category = COALESCE(category, $3),
+             unit_size = COALESCE(unit_size, $4),
+             last_seen_at = NOW()
+           WHERE id=$5`,
+          [it.external_id, it.quantity, it.category, it.unit_size, existing.id]
+        );
+        updated++;
+      } else {
+        await pool.query(
+          `INSERT INTO spirits_items (external_id, name, category, unit_size, production_quantity)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [it.external_id, it.name, it.category, it.unit_size, it.quantity]
+        );
+        added++;
+      }
+    }
+    await pool.query('UPDATE spirits_settings SET last_sync_at=NOW(), last_sync_error=NULL WHERE id=1');
+    res.json({ added, updated, total: items.length });
+  } catch (err) {
+    console.error('spirits sync error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── Pars (per-location) ───────────────────────────────────────────────────────
+
+app.get('/api/spirits/pars', authenticateToken, checkSpiritsView, async (req, res) => {
+  const { location } = req.query;
+  if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT item_id, par_level FROM spirits_pars WHERE location=$1', [location]
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/spirits/pars', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { item_id, location, par_level } = req.body;
+  if (!item_id || !SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'item_id and valid location required' });
+  const par = parseFloat(par_level);
+  if (isNaN(par) || par < 0) return res.status(400).json({ message: 'par_level must be ≥ 0' });
+  try {
+    await pool.query(
+      `INSERT INTO spirits_pars (item_id, location, par_level)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (item_id, location) DO UPDATE
+         SET par_level = EXCLUDED.par_level, updated_at = NOW()`,
+      [item_id, location, par]
+    );
+    res.json({ item_id, location, par_level: par });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Weekly counts ─────────────────────────────────────────────────────────────
+
+app.get('/api/spirits/counts', authenticateToken, checkSpiritsView, async (req, res) => {
+  const { location } = req.query;
+  const week_start = req.query.week_start || isoWeekStart();
+  if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT item_id, count_qty, submitted_by_name, updated_at
+       FROM spirits_counts WHERE location=$1 AND week_start=$2`,
+      [location, week_start]
+    );
+    res.json({ week_start, counts: rows });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/spirits/counts', authenticateToken, checkSpiritsView, async (req, res) => {
+  const { item_id, location, count_qty } = req.body;
+  const week_start = req.body.week_start || isoWeekStart();
+  if (!item_id || !SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'item_id and valid location required' });
+  const qty = parseFloat(count_qty);
+  if (isNaN(qty) || qty < 0) return res.status(400).json({ message: 'count_qty must be ≥ 0' });
+  try {
+    await pool.query(
+      `INSERT INTO spirits_counts (location, week_start, item_id, count_qty, submitted_by_id, submitted_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (location, week_start, item_id) DO UPDATE
+         SET count_qty = EXCLUDED.count_qty,
+             submitted_by_id = EXCLUDED.submitted_by_id,
+             submitted_by_name = EXCLUDED.submitted_by_name,
+             updated_at = NOW()`,
+      [location, week_start, item_id, qty, req.user.id, req.user.name]
+    );
+    res.json({ item_id, location, week_start, count_qty: qty });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Email recipients ──────────────────────────────────────────────────────────
+
+app.get('/api/spirits/email-recipients', authenticateToken, checkSpiritsView, async (_req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM spirits_email_recipients ORDER BY email');
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/spirits/email-recipients', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'Valid email required' });
+  try {
+    const { rows: [row] } = await pool.query(
+      `INSERT INTO spirits_email_recipients (email) VALUES ($1)
+       ON CONFLICT (email) DO NOTHING RETURNING *`,
+      [email]
+    );
+    if (!row) return res.status(409).json({ message: 'Already on the list' });
+    res.json(row);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.delete('/api/spirits/email-recipients/:id', authenticateToken, checkSpiritsManage, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM spirits_email_recipients WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Removed' });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+app.get('/api/spirits/settings', authenticateToken, checkSpiritsView, async (_req, res) => {
+  try {
+    const { rows: [s] } = await pool.query('SELECT * FROM spirits_settings WHERE id=1');
+    res.json(s || {});
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.patch('/api/spirits/settings', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { distillery_api_url } = req.body;
+  try {
+    const { rows: [s] } = await pool.query(
+      `UPDATE spirits_settings SET
+        distillery_api_url = CASE WHEN $1::text IS NOT NULL THEN NULLIF($1, '') ELSE distillery_api_url END
+       WHERE id=1 RETURNING *`,
+      [distillery_api_url !== undefined ? String(distillery_api_url ?? '') : null]
+    );
+    res.json(s);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// ── Order preview + send ──────────────────────────────────────────────────────
+
+app.get('/api/spirits/order-preview', authenticateToken, checkSpiritsView, async (req, res) => {
+  const { location } = req.query;
+  const week_start = req.query.week_start || isoWeekStart();
+  if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
+  try {
+    const rows = await buildSpiritsOrderRows(location, week_start);
+    res.json({ week_start, location, rows });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+app.post('/api/spirits/send-order', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { location, overrides } = req.body;
+  const week_start = req.body.week_start || isoWeekStart();
+  if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
+  try {
+    const result = await sendSpiritsOrderEmail({
+      location, week_start, overrides: overrides || {},
+      sender: { id: req.user.id, name: req.user.name },
+    });
+    res.json({ message: `Order email sent to ${result.to}`, ...result });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Server error' });
+  }
+});
+
+app.get('/api/spirits/order-log', authenticateToken, checkSpiritsManage, async (req, res) => {
+  try {
+    const { location } = req.query;
+    const params = [];
+    let where = '';
+    if (location && SPIRITS_LOCATIONS.has(location)) { params.push(location); where = `WHERE location=$1`; }
+    const { rows } = await pool.query(
+      `SELECT id, location, week_start, sent_to, sent_by_name, sent_at
+       FROM spirits_order_log ${where} ORDER BY sent_at DESC LIMIT 100`, params
+    );
+    res.json(rows);
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
 // ── Coffee Site ───────────────────────────────────────────────────────────────
 const CS_BUCKET = 'coffee-site-photos';
 const CS_PUB_BASE = `${process.env.SUPABASE_URL || 'https://ozuhfcinbelfxpidxdai.supabase.co'}/storage/v1/object/public/${CS_BUCKET}`;

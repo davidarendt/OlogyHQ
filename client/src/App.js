@@ -6,7 +6,7 @@ import Permissions from './pages/Permissions';
 import HRDocuments from './pages/HRDocuments';
 import ProductionPhotos from './pages/ProductionPhotos';
 import DistroTaproomOrders from './pages/DistroTaproomOrders';
-import SOPsChecklists from './pages/SOPsChecklists';
+import SOPsChecklists from './pages/SopsChecklists';
 import Checklists from './pages/Checklists';
 import LabelInventory from './pages/LabelInventory';
 import TaproomInventory from './pages/TaproomInventory';
@@ -23,6 +23,7 @@ import EquipmentManuals from './pages/EquipmentManuals';
 import TankMaintenance from './pages/TankMaintenance';
 import DistilleryInventory from './pages/DistilleryInventory';
 import CoffeeSiteManager from './pages/CoffeeSiteManager';
+import SpiritsOrdering from './pages/SpiritsOrdering';
 
 const API = process.env.REACT_APP_API_URL || '';
 
@@ -138,6 +139,7 @@ function App() {
   if (page === 'tank-maintenance') return <TankMaintenance user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'distillery-inventory') return <DistilleryInventory user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
   if (page === 'coffee-site') return <CoffeeSiteManager user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
+  if (page === 'spirits-ordering') return <SpiritsOrdering user={user} canUpload={pageProps.canUpload} onBack={() => handleNavigate('dashboard')} />;
 
   return <Dashboard user={user} onLogout={handleLogout} onNavigate={handleNavigate} />;
 }
