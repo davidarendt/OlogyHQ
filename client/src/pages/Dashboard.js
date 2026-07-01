@@ -8,6 +8,11 @@ import {
 
 const API = process.env.REACT_APP_API_URL || '';
 
+// Slack HTML-encodes &, <, > in message text — decode them before rendering.
+function decodeSlackEntities(s) {
+  return String(s).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
 // Convert Slack mrkdwn to React nodes. Handles <url|text>, <url>, <@USER>,
 // *bold*, _italic_, `code`, and preserves newlines.
 function renderSlackText(raw) {
@@ -19,33 +24,34 @@ function renderSlackText(raw) {
     let last = 0;
     let m;
     while ((m = tokenRe.exec(line)) !== null) {
-      if (m.index > last) parts.push(line.slice(last, m.index));
+      if (m.index > last) parts.push(decodeSlackEntities(line.slice(last, m.index)));
       const [full, url, urlText, bold, italic, code] = m;
       if (url) {
+        const label = decodeSlackEntities(urlText || url);
         if (url.startsWith('@')) {
-          parts.push(<span key={`u${li}-${m.index}`} className="text-orange-400">@{urlText || url.slice(1)}</span>);
+          parts.push(<span key={`u${li}-${m.index}`} className="text-orange-400">@{decodeSlackEntities(urlText || url.slice(1))}</span>);
         } else if (url.startsWith('#')) {
-          parts.push(<span key={`c${li}-${m.index}`} className="text-orange-400">#{urlText || url.slice(1)}</span>);
+          parts.push(<span key={`c${li}-${m.index}`} className="text-orange-400">#{decodeSlackEntities(urlText || url.slice(1))}</span>);
         } else {
           parts.push(
             <a key={`a${li}-${m.index}`} href={url} target="_blank" rel="noopener noreferrer"
               className="underline hover:text-white" style={{ color: '#F05A28' }}>
-              {urlText || url}
+              {label}
             </a>
           );
         }
       } else if (bold) {
-        parts.push(<strong key={`b${li}-${m.index}`} className="text-white">{bold}</strong>);
+        parts.push(<strong key={`b${li}-${m.index}`} className="text-white">{decodeSlackEntities(bold)}</strong>);
       } else if (italic) {
-        parts.push(<em key={`i${li}-${m.index}`}>{italic}</em>);
+        parts.push(<em key={`i${li}-${m.index}`}>{decodeSlackEntities(italic)}</em>);
       } else if (code) {
-        parts.push(<code key={`k${li}-${m.index}`} className="bg-gray-700 px-1 py-0.5 rounded text-xs">{code}</code>);
+        parts.push(<code key={`k${li}-${m.index}`} className="bg-gray-700 px-1 py-0.5 rounded text-xs">{decodeSlackEntities(code)}</code>);
       } else {
-        parts.push(full);
+        parts.push(decodeSlackEntities(full));
       }
       last = m.index + full.length;
     }
-    if (last < line.length) parts.push(line.slice(last));
+    if (last < line.length) parts.push(decodeSlackEntities(line.slice(last)));
     return (
       <Fragment key={li}>
         {parts}
