@@ -189,13 +189,13 @@ function InventoryTab({ location, items, counts, overrides, pars, weekStart, can
     (i.category || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSaveCount = async (itemId, qty) => {
+  const handleSaveArea = async (itemId, area, qty) => {
     const r = await fetch(`${API}/api/spirits/counts`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemId, location, week_start: weekStart, count_qty: qty }),
+      body: JSON.stringify({ item_id: itemId, location, week_start: weekStart, area, count_qty: qty }),
     });
-    if (r.ok) onCountSaved(itemId, qty);
+    if (r.ok) onCountSaved(itemId, area, qty);
   };
 
   const handleSaveOverride = async (itemId, override) => {
@@ -211,15 +211,19 @@ function InventoryTab({ location, items, counts, overrides, pars, weekStart, can
   const overrideById = new Map(overrides.map(o => [o.item_id, parseFloat(o.order_override)]));
   const parById = new Map(pars.map(p => [p.item_id, parseFloat(p.par_level)]));
 
-  const computeNeeded = (item) => {
-    const override = overrideById.get(item.id);
-    if (override != null) return { value: override, isOverride: true };
+  const rowFor = (item) => {
+    const c = countById.get(item.id);
+    const display = c ? parseFloat(c.display_qty) || 0 : 0;
+    const storage = c ? parseFloat(c.storage_qty) || 0 : 0;
+    const hasCount = c && (parseFloat(c.display_qty) > 0 || parseFloat(c.storage_qty) > 0);
+    const total = display + storage;
     const par = parById.get(item.id);
-    const count = countById.get(item.id);
-    const auto = par != null && count?.count_qty != null
-      ? Math.max(0, par - parseFloat(count.count_qty))
-      : par != null ? par : null;
-    return { value: auto, isOverride: false };
+    const override = overrideById.get(item.id);
+    const auto = par != null
+      ? Math.max(0, par - total)
+      : null;
+    const needed = override != null ? override : auto;
+    return { c, display, storage, hasCount, total, par, override, auto, needed };
   };
 
   return (
@@ -242,51 +246,44 @@ function InventoryTab({ location, items, counts, overrides, pars, weekStart, can
           {/* Mobile cards */}
           <div className="sm:hidden space-y-2">
             {filtered.map(item => {
-              const count = countById.get(item.id);
-              const par = parById.get(item.id);
-              const override = overrideById.get(item.id);
-              const auto = par != null && count?.count_qty != null
-                ? Math.max(0, par - parseFloat(count.count_qty))
-                : par != null ? par : null;
-              const needed = override != null ? override : auto;
+              const { c, display, storage, hasCount, total, par, override, auto } = rowFor(item);
               return (
                 <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-white text-sm font-medium truncate">{item.name}</p>
-                      <p className="text-gray-500 text-xs">
-                        {[item.category, item.unit_size].filter(Boolean).join(' · ') || '—'}
-                      </p>
+                  <div className="mb-2">
+                    <p className="text-white text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-gray-500 text-xs">
+                      {[item.category, item.unit_size].filter(Boolean).join(' · ') || '—'}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-1">
+                    <div>
+                      <label className="text-gray-500 text-[10px] uppercase tracking-wider block mb-1">Display</label>
+                      <CountCell value={c ? display : null} onSave={q => handleSaveArea(item.id, 'display', q)} />
                     </div>
                     <div>
-                      <p className="text-gray-500 text-[10px] uppercase tracking-wider text-right mb-0.5">Count</p>
-                      <CountCell
-                        value={count?.count_qty}
-                        onSave={qty => handleSaveCount(item.id, qty)}
-                      />
+                      <label className="text-gray-500 text-[10px] uppercase tracking-wider block mb-1">Storage</label>
+                      <CountCell value={c ? storage : null} onSave={q => handleSaveArea(item.id, 'storage', q)} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs mb-2">
-                    <span className="text-gray-500">Par: <span className="text-gray-300">{par != null ? fmtQty(par) : '—'}</span></span>
-                    {item.production_quantity != null && (
-                      <span className="text-gray-500">Avail: <span className="text-gray-300">{fmtQty(item.production_quantity)}</span></span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-700">
-                    <span className="text-gray-400 text-xs uppercase tracking-wider">Order</span>
-                    {canUpload ? (
-                      <OrderOverrideCell
-                        overrideValue={override}
-                        autoValue={auto}
-                        onSave={v => handleSaveOverride(item.id, v)}
-                      />
-                    ) : (
-                      <span className={`text-sm font-semibold ${needed > 0 ? 'text-orange-400' : 'text-gray-500'}`}>
-                        {needed != null ? fmtQty(needed) : '—'}
-                        {override != null && <span className="ml-1 text-[10px] uppercase" style={{ color: '#F05A28' }}>override</span>}
-                      </span>
-                    )}
-                  </div>
+                  {canUpload && (
+                    <>
+                      <div className="flex items-center justify-between text-xs mt-3 pt-2 border-t border-gray-700">
+                        <span className="text-gray-500">Bottles: <span className="text-gray-300">{hasCount ? fmtQty(total) : '—'}</span></span>
+                        <span className="text-gray-500">Par: <span className="text-gray-300">{par != null ? fmtQty(par) : '—'}</span></span>
+                        {item.production_quantity != null && (
+                          <span className="text-gray-500">Avail: <span className="text-gray-300">{fmtQty(item.production_quantity)}</span></span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-gray-400 text-xs uppercase tracking-wider">Order</span>
+                        <OrderOverrideCell
+                          overrideValue={override}
+                          autoValue={auto}
+                          onSave={v => handleSaveOverride(item.id, v)}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -298,52 +295,50 @@ function InventoryTab({ location, items, counts, overrides, pars, weekStart, can
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Spirit</th>
-                  <th className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3 hidden md:table-cell">Category</th>
-                  <th className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3 hidden md:table-cell">Size</th>
-                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Par</th>
-                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">This Week</th>
-                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Order Qty</th>
-                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3 hidden lg:table-cell">In Production</th>
+                  <th className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Category</th>
+                  <th className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Size</th>
+                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Display</th>
+                  <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Storage</th>
+                  {canUpload && (
+                    <>
+                      <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Bottles</th>
+                      <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Par</th>
+                      <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3">Order Qty</th>
+                      <th className="text-right text-gray-400 text-xs font-medium uppercase tracking-wider px-5 py-3 hidden lg:table-cell">In Production</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(item => {
-                  const { value: needed, isOverride } = computeNeeded(item);
-                  const count = countById.get(item.id);
-                  const par = parById.get(item.id);
-                  const override = overrideById.get(item.id);
-                  const auto = par != null && count?.count_qty != null
-                    ? Math.max(0, par - parseFloat(count.count_qty))
-                    : par != null ? par : null;
+                  const { c, display, storage, hasCount, total, par, override, auto } = rowFor(item);
                   return (
                     <tr key={item.id} className="border-b border-gray-700/50 last:border-0 hover:bg-gray-700/20 transition">
                       <td className="px-5 py-2.5 text-white font-medium">{item.name}</td>
-                      <td className="px-5 py-2.5 text-gray-400 text-sm hidden md:table-cell">{item.category || '—'}</td>
-                      <td className="px-5 py-2.5 text-gray-400 text-sm hidden md:table-cell">{item.unit_size || '—'}</td>
-                      <td className="px-5 py-2.5 text-right text-gray-300 text-sm">{par != null ? fmtQty(par) : '—'}</td>
+                      <td className="px-5 py-2.5 text-gray-400 text-sm">{item.category || '—'}</td>
+                      <td className="px-5 py-2.5 text-gray-400 text-sm">{item.unit_size || '—'}</td>
                       <td className="px-5 py-2.5 text-right">
-                        <CountCell
-                          value={count?.count_qty}
-                          onSave={qty => handleSaveCount(item.id, qty)}
-                        />
+                        <CountCell value={c ? display : null} onSave={q => handleSaveArea(item.id, 'display', q)} />
                       </td>
                       <td className="px-5 py-2.5 text-right">
-                        {canUpload ? (
-                          <OrderOverrideCell
-                            overrideValue={override}
-                            autoValue={auto}
-                            onSave={v => handleSaveOverride(item.id, v)}
-                          />
-                        ) : (
-                          <span className={`text-sm font-semibold ${needed > 0 ? (isOverride ? 'text-orange-400' : 'text-orange-400') : 'text-gray-500'}`}>
-                            {needed != null ? fmtQty(needed) : '—'}
-                            {isOverride && <span className="ml-1.5 text-[10px] uppercase tracking-wider" style={{ color: '#F05A28' }}>override</span>}
-                          </span>
-                        )}
+                        <CountCell value={c ? storage : null} onSave={q => handleSaveArea(item.id, 'storage', q)} />
                       </td>
-                      <td className="px-5 py-2.5 text-right text-gray-400 text-sm hidden lg:table-cell">
-                        {item.production_quantity != null ? fmtQty(item.production_quantity) : '—'}
-                      </td>
+                      {canUpload && (
+                        <>
+                          <td className="px-5 py-2.5 text-right text-white text-sm font-semibold">{hasCount ? fmtQty(total) : '—'}</td>
+                          <td className="px-5 py-2.5 text-right text-gray-300 text-sm">{par != null ? fmtQty(par) : '—'}</td>
+                          <td className="px-5 py-2.5 text-right">
+                            <OrderOverrideCell
+                              overrideValue={override}
+                              autoValue={auto}
+                              onSave={v => handleSaveOverride(item.id, v)}
+                            />
+                          </td>
+                          <td className="px-5 py-2.5 text-right text-gray-400 text-sm hidden lg:table-cell">
+                            {item.production_quantity != null ? fmtQty(item.production_quantity) : '—'}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}
@@ -866,11 +861,12 @@ export default function SpiritsOrdering({ user, canUpload, onBack }) {
     Promise.all([loadItems(), loadCounts(), loadPars()]).finally(() => setLoading(false));
   }, [location, loadItems, loadCounts, loadPars]);
 
-  const handleCountSaved = (itemId, qty) => {
+  const handleCountSaved = (itemId, area, qty) => {
+    const key = area === 'display' ? 'display_qty' : 'storage_qty';
     setCounts(prev => {
       const existing = prev.find(c => c.item_id === itemId);
-      if (existing) return prev.map(c => c.item_id === itemId ? { ...c, count_qty: qty } : c);
-      return [...prev, { item_id: itemId, count_qty: qty, submitted_by_name: user.name }];
+      if (existing) return prev.map(c => c.item_id === itemId ? { ...c, [key]: qty } : c);
+      return [...prev, { item_id: itemId, display_qty: 0, storage_qty: 0, [key]: qty, submitted_by_name: user.name }];
     });
   };
 

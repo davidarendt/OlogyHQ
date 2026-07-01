@@ -23,7 +23,7 @@ async function buildOrderRows(location, week_start, overrides = {}) {
   const itemsRes = await pool.query(
     `SELECT i.id, i.name, i.category, i.unit_size, i.production_quantity, i.hidden,
             p.par_level,
-            c.count_qty,
+            c.display_qty, c.storage_qty,
             o.order_override,
             o.set_by_name AS override_by
      FROM spirits_items i
@@ -37,7 +37,9 @@ async function buildOrderRows(location, week_start, overrides = {}) {
 
   return itemsRes.rows.map(r => {
     const par = parseFloat(r.par_level) || 0;
-    const count = parseFloat(r.count_qty) || 0;
+    const display = parseFloat(r.display_qty) || 0;
+    const storage = parseFloat(r.storage_qty) || 0;
+    const count = display + storage;
     const persistedOverride = r.order_override != null ? parseFloat(r.order_override) : null;
     const defaultNeeded = persistedOverride != null
       ? Math.max(0, persistedOverride)
@@ -53,6 +55,8 @@ async function buildOrderRows(location, week_start, overrides = {}) {
       unit_size: r.unit_size,
       production_quantity: r.production_quantity != null ? parseFloat(r.production_quantity) : null,
       par,
+      display,
+      storage,
       count,
       needed,
       override: persistedOverride,

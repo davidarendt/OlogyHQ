@@ -6004,7 +6004,7 @@ app.get('/api/spirits/counts', authenticateToken, checkSpiritsView, async (req, 
   if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
   try {
     const countsRes = await pool.query(
-      `SELECT item_id, count_qty, submitted_by_name, updated_at
+      `SELECT item_id, display_qty, storage_qty, submitted_by_name, updated_at
        FROM spirits_counts WHERE location=$1 AND week_start=$2`,
       [location, week_start]
     );
@@ -6051,23 +6051,25 @@ app.patch('/api/spirits/order-override', authenticateToken, checkSpiritsManage, 
 });
 
 app.patch('/api/spirits/counts', authenticateToken, checkSpiritsView, async (req, res) => {
-  const { item_id, location, count_qty } = req.body;
+  const { item_id, location, area, count_qty } = req.body;
   const week_start = req.body.week_start || isoWeekStart();
   if (!item_id || !SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'item_id and valid location required' });
+  if (!['display', 'storage'].includes(area)) return res.status(400).json({ message: "area must be 'display' or 'storage'" });
   const qty = parseFloat(count_qty);
   if (isNaN(qty) || qty < 0) return res.status(400).json({ message: 'count_qty must be ≥ 0' });
+  const col = area === 'display' ? 'display_qty' : 'storage_qty';
   try {
     await pool.query(
-      `INSERT INTO spirits_counts (location, week_start, item_id, count_qty, submitted_by_id, submitted_by_name)
+      `INSERT INTO spirits_counts (location, week_start, item_id, ${col}, submitted_by_id, submitted_by_name)
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (location, week_start, item_id) DO UPDATE
-         SET count_qty = EXCLUDED.count_qty,
+         SET ${col} = EXCLUDED.${col},
              submitted_by_id = EXCLUDED.submitted_by_id,
              submitted_by_name = EXCLUDED.submitted_by_name,
              updated_at = NOW()`,
       [location, week_start, item_id, qty, req.user.id, req.user.name]
     );
-    res.json({ item_id, location, week_start, count_qty: qty });
+    res.json({ item_id, location, week_start, area, count_qty: qty });
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
