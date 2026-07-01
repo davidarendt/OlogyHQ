@@ -3,6 +3,7 @@ import {
   Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
   Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
   UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen, FlaskConical, Globe, Martini,
+  Menu, X,
 } from 'lucide-react';
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
@@ -33,8 +34,56 @@ const TOOL_META = {
 
 const DEFAULT_META = { Icon: Wrench, description: '', page: null };
 
+function NavList({ tools, onNavigate, onClose }) {
+  return (
+    <nav className="flex-1 overflow-y-auto py-3">
+      {tools.map((tool) => {
+        const meta = TOOL_META[tool.slug] || DEFAULT_META;
+        const { Icon } = meta;
+        const isLive = !!(tool.url || meta.page);
+
+        const handleClick = isLive
+          ? tool.url
+            ? () => { window.open(tool.url, '_blank', 'noopener,noreferrer'); onClose?.(); }
+            : () => { onNavigate(meta.page, { canUpload: tool.has_upload_permission }); onClose?.(); }
+          : undefined;
+
+        return (
+          <button
+            key={tool.id}
+            onClick={handleClick}
+            disabled={!isLive}
+            className={`w-full flex items-center gap-3 px-5 py-3 sm:py-2.5 text-left transition group ${
+              isLive
+                ? 'text-gray-300 hover:bg-gray-700 hover:text-white active:bg-gray-700 cursor-pointer'
+                : 'text-gray-500 cursor-default'
+            }`}
+            title={meta.description || tool.description || ''}
+          >
+            <Icon
+              size={20}
+              className="shrink-0 transition"
+              style={{ color: isLive ? '#F05A28' : '#636363' }}
+            />
+            <span className="text-sm font-medium truncate flex-1">{tool.name}</span>
+            {!isLive && (
+              <span
+                className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white"
+                style={{ backgroundColor: '#F05A28' }}
+              >
+                SOON
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 function Dashboard({ user, onLogout, onNavigate }) {
   const [tools, setTools] = useState([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_API_URL || ''}/api/my-tools`, { credentials: 'include' })
@@ -42,57 +91,27 @@ function Dashboard({ user, onLogout, onNavigate }) {
       .then((data) => setTools(Array.isArray(data) ? data : []));
   }, []);
 
+  // Lock body scroll while the mobile drawer is open
+  useEffect(() => {
+    if (drawerOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [drawerOpen]);
+
+  const closeDrawer = () => setDrawerOpen(false);
+
   return (
     <div className="min-h-screen bg-gray-900 flex">
-      {/* Sidebar Nav */}
-      <aside className="w-64 shrink-0 bg-gray-800 border-r border-gray-700 flex flex-col min-h-screen sticky top-0 self-start max-h-screen">
+      {/* ── Desktop sidebar ── */}
+      <aside className="hidden sm:flex w-64 shrink-0 bg-gray-800 border-r border-gray-700 flex-col min-h-screen sticky top-0 self-start max-h-screen">
         <div className="px-5 py-5 border-b border-gray-700 flex items-center gap-2">
           <span className="text-xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
           <span className="text-cream font-semibold text-lg">HQ</span>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-3">
-          {tools.map((tool) => {
-            const meta = TOOL_META[tool.slug] || DEFAULT_META;
-            const { Icon } = meta;
-            const isLive = !!(tool.url || meta.page);
-
-            const handleClick = isLive
-              ? tool.url
-                ? () => window.open(tool.url, '_blank', 'noopener,noreferrer')
-                : () => onNavigate(meta.page, { canUpload: tool.has_upload_permission })
-              : undefined;
-
-            return (
-              <button
-                key={tool.id}
-                onClick={handleClick}
-                disabled={!isLive}
-                className={`w-full flex items-center gap-3 px-5 py-2.5 text-left transition group ${
-                  isLive
-                    ? 'text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer'
-                    : 'text-gray-500 cursor-default'
-                }`}
-                title={meta.description || tool.description || ''}
-              >
-                <Icon
-                  size={20}
-                  className="shrink-0 transition"
-                  style={{ color: isLive ? '#F05A28' : '#636363' }}
-                />
-                <span className="text-sm font-medium truncate flex-1">{tool.name}</span>
-                {!isLive && (
-                  <span
-                    className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white"
-                    style={{ backgroundColor: '#F05A28' }}
-                  >
-                    SOON
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+        <NavList tools={tools} onNavigate={onNavigate} />
 
         <div className="px-5 py-4 border-t border-gray-700">
           <div className="text-gray-400 text-xs mb-2 truncate">Welcome, {user.name}</div>
@@ -105,13 +124,71 @@ function Dashboard({ user, onLogout, onNavigate }) {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 px-6 py-10">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-cream text-4xl font-bold mb-2">Dashboard</h2>
-          <p className="text-gray-400">Select a tool from the sidebar to get started.</p>
+      {/* ── Main column ── */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile top bar */}
+        <header className="sm:hidden bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+            <span className="text-cream font-semibold text-lg">HQ</span>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Open menu"
+            className="text-gray-300 hover:text-white p-2 -mr-2"
+          >
+            <Menu size={24} />
+          </button>
+        </header>
+
+        <main className="flex-1 px-4 sm:px-6 py-8 sm:py-10">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-cream text-3xl sm:text-4xl font-bold mb-2">Dashboard</h2>
+            <p className="text-gray-400 text-sm sm:text-base">
+              <span className="sm:hidden">Tap the menu to pick a tool.</span>
+              <span className="hidden sm:inline">Select a tool from the sidebar to get started.</span>
+            </p>
+          </div>
+        </main>
+      </div>
+
+      {/* ── Mobile drawer ── */}
+      {drawerOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={closeDrawer}
+            aria-hidden="true"
+          />
+          <aside className="relative w-72 max-w-[85vw] bg-gray-800 border-r border-gray-700 flex flex-col h-full shadow-2xl">
+            <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold" style={{ color: '#F05A28' }}>OLOGY</span>
+                <span className="text-cream font-semibold text-lg">HQ</span>
+              </div>
+              <button
+                onClick={closeDrawer}
+                aria-label="Close menu"
+                className="text-gray-400 hover:text-white p-1 -mr-1"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <NavList tools={tools} onNavigate={onNavigate} onClose={closeDrawer} />
+
+            <div className="px-5 py-4 border-t border-gray-700">
+              <div className="text-gray-400 text-xs mb-2 truncate">Welcome, {user.name}</div>
+              <button
+                onClick={() => { closeDrawer(); onLogout(); }}
+                className="text-sm text-gray-400 hover:text-white transition"
+              >
+                Sign Out
+              </button>
+            </div>
+          </aside>
         </div>
-      </main>
+      )}
     </div>
   );
 }
