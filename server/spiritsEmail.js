@@ -15,15 +15,21 @@ function fmtQty(n) {
 }
 
 // Build the rows that would be ordered for a given location + week.
-// Returns [{ item, par, count, needed }]
+// Precedence for the "needed" quantity:
+//   1. per-send `overrides` map (transient, from the Send modal)
+//   2. persisted per-week override in spirits_order_overrides
+//   3. par - count (default recommendation)
 async function buildOrderRows(location, week_start, overrides = {}) {
   const itemsRes = await pool.query(
     `SELECT i.id, i.name, i.category, i.unit_size, i.production_quantity, i.hidden,
             p.par_level,
-            c.count_qty
+            c.count_qty,
+            o.order_override,
+            o.set_by_name AS override_by
      FROM spirits_items i
      LEFT JOIN spirits_pars p ON p.item_id = i.id AND p.location = $1
      LEFT JOIN spirits_counts c ON c.item_id = i.id AND c.location = $1 AND c.week_start = $2
+     LEFT JOIN spirits_order_overrides o ON o.item_id = i.id AND o.location = $1 AND o.week_start = $2
      WHERE i.hidden = false
      ORDER BY i.sort_order, LOWER(i.name)`,
     [location, week_start]
@@ -32,10 +38,13 @@ async function buildOrderRows(location, week_start, overrides = {}) {
   return itemsRes.rows.map(r => {
     const par = parseFloat(r.par_level) || 0;
     const count = parseFloat(r.count_qty) || 0;
-    const defaultNeeded = Math.max(0, par - count);
-    const override = overrides[r.id];
-    const needed = override !== undefined && override !== null && override !== ''
-      ? Math.max(0, parseFloat(override) || 0)
+    const persistedOverride = r.order_override != null ? parseFloat(r.order_override) : null;
+    const defaultNeeded = persistedOverride != null
+      ? Math.max(0, persistedOverride)
+      : Math.max(0, par - count);
+    const sendOverride = overrides[r.id];
+    const needed = sendOverride !== undefined && sendOverride !== null && sendOverride !== ''
+      ? Math.max(0, parseFloat(sendOverride) || 0)
       : defaultNeeded;
     return {
       id: r.id,
@@ -46,6 +55,8 @@ async function buildOrderRows(location, week_start, overrides = {}) {
       par,
       count,
       needed,
+      override: persistedOverride,
+      override_by: r.override_by || null,
     };
   });
 }

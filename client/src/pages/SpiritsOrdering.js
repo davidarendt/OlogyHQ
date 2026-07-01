@@ -119,9 +119,69 @@ function LocationLanding({ onSelect, lastSync }) {
   );
 }
 
+// ── Order-override editor (managers only) ─────────────────────────────────────
+// Blank input = auto (par − count). Any number entered persists as override.
+
+function OrderOverrideCell({ overrideValue, autoValue, onSave }) {
+  const isOverride = overrideValue != null;
+  const [val, setVal] = useState(isOverride ? String(overrideValue) : '');
+  const initial = useRef(isOverride ? String(overrideValue) : '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!saving) {
+      const incoming = overrideValue != null ? String(overrideValue) : '';
+      setVal(incoming);
+      initial.current = incoming;
+    }
+  }, [overrideValue, saving]);
+
+  const commit = async () => {
+    if (val === initial.current) return;
+    if (val !== '' && (isNaN(parseFloat(val)) || parseFloat(val) < 0)) {
+      setVal(initial.current);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(val === '' ? null : parseFloat(val));
+      initial.current = val;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayAuto = autoValue != null ? fmtQty(autoValue) : '—';
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {isOverride && (
+        <span
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+          style={{ backgroundColor: '#F05A2820', color: '#F05A28' }}
+          title="Overridden by manager"
+        >
+          Override
+        </span>
+      )}
+      <input
+        type="number" min="0" step="0.5" inputMode="decimal"
+        value={val}
+        placeholder={displayAuto}
+        onChange={e => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setVal(initial.current); e.currentTarget.blur(); } }}
+        className={`w-20 bg-gray-700 border rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+          isOverride ? 'border-orange-500/60 text-orange-400 font-semibold' : 'border-gray-600 text-white placeholder-gray-500'
+        }`}
+      />
+    </div>
+  );
+}
+
 // ── Inventory (count entry) tab ───────────────────────────────────────────────
 
-function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }) {
+function InventoryTab({ location, items, counts, overrides, pars, weekStart, canUpload, onCountSaved, onOverrideSaved }) {
   const [search, setSearch] = useState('');
   const filtered = items.filter(i =>
     !search ||
@@ -129,7 +189,7 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
     (i.category || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSave = async (itemId, qty) => {
+  const handleSaveCount = async (itemId, qty) => {
     const r = await fetch(`${API}/api/spirits/counts`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -138,8 +198,29 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
     if (r.ok) onCountSaved(itemId, qty);
   };
 
+  const handleSaveOverride = async (itemId, override) => {
+    const r = await fetch(`${API}/api/spirits/order-override`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId, location, week_start: weekStart, order_override: override }),
+    });
+    if (r.ok) onOverrideSaved(itemId, override);
+  };
+
   const countById = new Map(counts.map(c => [c.item_id, c]));
+  const overrideById = new Map(overrides.map(o => [o.item_id, parseFloat(o.order_override)]));
   const parById = new Map(pars.map(p => [p.item_id, parseFloat(p.par_level)]));
+
+  const computeNeeded = (item) => {
+    const override = overrideById.get(item.id);
+    if (override != null) return { value: override, isOverride: true };
+    const par = parById.get(item.id);
+    const count = countById.get(item.id);
+    const auto = par != null && count?.count_qty != null
+      ? Math.max(0, par - parseFloat(count.count_qty))
+      : par != null ? par : null;
+    return { value: auto, isOverride: false };
+  };
 
   return (
     <>
@@ -163,9 +244,11 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
             {filtered.map(item => {
               const count = countById.get(item.id);
               const par = parById.get(item.id);
-              const needed = par != null && count?.count_qty != null
+              const override = overrideById.get(item.id);
+              const auto = par != null && count?.count_qty != null
                 ? Math.max(0, par - parseFloat(count.count_qty))
                 : par != null ? par : null;
+              const needed = override != null ? override : auto;
               return (
                 <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-xl p-3">
                   <div className="flex items-center justify-between gap-3 mb-2">
@@ -175,16 +258,33 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
                         {[item.category, item.unit_size].filter(Boolean).join(' · ') || '—'}
                       </p>
                     </div>
-                    <CountCell
-                      value={count?.count_qty}
-                      onSave={qty => handleSave(item.id, qty)}
-                    />
+                    <div>
+                      <p className="text-gray-500 text-[10px] uppercase tracking-wider text-right mb-0.5">Count</p>
+                      <CountCell
+                        value={count?.count_qty}
+                        onSave={qty => handleSaveCount(item.id, qty)}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center justify-between text-xs mb-2">
                     <span className="text-gray-500">Par: <span className="text-gray-300">{par != null ? fmtQty(par) : '—'}</span></span>
-                    <span className="text-gray-500">Need: <span className={needed > 0 ? 'text-orange-400 font-semibold' : 'text-gray-400'}>{needed != null ? fmtQty(needed) : '—'}</span></span>
                     {item.production_quantity != null && (
                       <span className="text-gray-500">Avail: <span className="text-gray-300">{fmtQty(item.production_quantity)}</span></span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-700">
+                    <span className="text-gray-400 text-xs uppercase tracking-wider">Order</span>
+                    {canUpload ? (
+                      <OrderOverrideCell
+                        overrideValue={override}
+                        autoValue={auto}
+                        onSave={v => handleSaveOverride(item.id, v)}
+                      />
+                    ) : (
+                      <span className={`text-sm font-semibold ${needed > 0 ? 'text-orange-400' : 'text-gray-500'}`}>
+                        {needed != null ? fmtQty(needed) : '—'}
+                        {override != null && <span className="ml-1 text-[10px] uppercase" style={{ color: '#F05A28' }}>override</span>}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -208,9 +308,11 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
               </thead>
               <tbody>
                 {filtered.map(item => {
+                  const { value: needed, isOverride } = computeNeeded(item);
                   const count = countById.get(item.id);
                   const par = parById.get(item.id);
-                  const needed = par != null && count?.count_qty != null
+                  const override = overrideById.get(item.id);
+                  const auto = par != null && count?.count_qty != null
                     ? Math.max(0, par - parseFloat(count.count_qty))
                     : par != null ? par : null;
                   return (
@@ -222,11 +324,22 @@ function InventoryTab({ location, items, counts, pars, weekStart, onCountSaved }
                       <td className="px-5 py-2.5 text-right">
                         <CountCell
                           value={count?.count_qty}
-                          onSave={qty => handleSave(item.id, qty)}
+                          onSave={qty => handleSaveCount(item.id, qty)}
                         />
                       </td>
-                      <td className={`px-5 py-2.5 text-right text-sm font-semibold ${needed > 0 ? 'text-orange-400' : 'text-gray-500'}`}>
-                        {needed != null ? fmtQty(needed) : '—'}
+                      <td className="px-5 py-2.5 text-right">
+                        {canUpload ? (
+                          <OrderOverrideCell
+                            overrideValue={override}
+                            autoValue={auto}
+                            onSave={v => handleSaveOverride(item.id, v)}
+                          />
+                        ) : (
+                          <span className={`text-sm font-semibold ${needed > 0 ? (isOverride ? 'text-orange-400' : 'text-orange-400') : 'text-gray-500'}`}>
+                            {needed != null ? fmtQty(needed) : '—'}
+                            {isOverride && <span className="ml-1.5 text-[10px] uppercase tracking-wider" style={{ color: '#F05A28' }}>override</span>}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-2.5 text-right text-gray-400 text-sm hidden lg:table-cell">
                         {item.production_quantity != null ? fmtQty(item.production_quantity) : '—'}
@@ -711,6 +824,7 @@ export default function SpiritsOrdering({ user, canUpload, onBack }) {
   const [tab, setTab] = useState('inventory');
   const [items, setItems] = useState([]);
   const [counts, setCounts] = useState([]);
+  const [overrides, setOverrides] = useState([]);
   const [pars, setPars] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -729,6 +843,7 @@ export default function SpiritsOrdering({ user, canUpload, onBack }) {
     if (r.ok) {
       const d = await r.json();
       setCounts(d.counts || []);
+      setOverrides(d.overrides || []);
     }
   }, [location, weekStart]);
 
@@ -756,6 +871,15 @@ export default function SpiritsOrdering({ user, canUpload, onBack }) {
       const existing = prev.find(c => c.item_id === itemId);
       if (existing) return prev.map(c => c.item_id === itemId ? { ...c, count_qty: qty } : c);
       return [...prev, { item_id: itemId, count_qty: qty, submitted_by_name: user.name }];
+    });
+  };
+
+  const handleOverrideSaved = (itemId, override) => {
+    setOverrides(prev => {
+      if (override == null) return prev.filter(o => o.item_id !== itemId);
+      const existing = prev.find(o => o.item_id === itemId);
+      if (existing) return prev.map(o => o.item_id === itemId ? { ...o, order_override: override } : o);
+      return [...prev, { item_id: itemId, order_override: override, set_by_name: user.name }];
     });
   };
 
@@ -820,9 +944,12 @@ export default function SpiritsOrdering({ user, canUpload, onBack }) {
             location={location}
             items={items.filter(i => !i.hidden)}
             counts={counts}
+            overrides={overrides}
             pars={pars}
             weekStart={weekStart}
+            canUpload={canUpload}
             onCountSaved={handleCountSaved}
+            onOverrideSaved={handleOverrideSaved}
           />
         ) : (
           <ManageTab

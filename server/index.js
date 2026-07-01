@@ -6003,12 +6003,50 @@ app.get('/api/spirits/counts', authenticateToken, checkSpiritsView, async (req, 
   const week_start = req.query.week_start || isoWeekStart();
   if (!SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'Valid location required' });
   try {
-    const { rows } = await pool.query(
+    const countsRes = await pool.query(
       `SELECT item_id, count_qty, submitted_by_name, updated_at
        FROM spirits_counts WHERE location=$1 AND week_start=$2`,
       [location, week_start]
     );
-    res.json({ week_start, counts: rows });
+    const overridesRes = await pool.query(
+      `SELECT item_id, order_override, set_by_name, updated_at
+       FROM spirits_order_overrides WHERE location=$1 AND week_start=$2`,
+      [location, week_start]
+    );
+    res.json({ week_start, counts: countsRes.rows, overrides: overridesRes.rows });
+  } catch { res.status(500).json({ message: 'Server error' }); }
+});
+
+// Per-week manager override of the recommended order quantity.
+// Pass `order_override: null` (or empty string) to clear the override.
+app.patch('/api/spirits/order-override', authenticateToken, checkSpiritsManage, async (req, res) => {
+  const { item_id, location, order_override } = req.body;
+  const week_start = req.body.week_start || isoWeekStart();
+  if (!item_id || !SPIRITS_LOCATIONS.has(location)) return res.status(400).json({ message: 'item_id and valid location required' });
+
+  const raw = order_override;
+  const clearing = raw === null || raw === undefined || raw === '';
+  try {
+    if (clearing) {
+      await pool.query(
+        `DELETE FROM spirits_order_overrides WHERE item_id=$1 AND location=$2 AND week_start=$3`,
+        [item_id, location, week_start]
+      );
+      return res.json({ item_id, location, week_start, order_override: null });
+    }
+    const val = parseFloat(raw);
+    if (isNaN(val) || val < 0) return res.status(400).json({ message: 'order_override must be ≥ 0' });
+    await pool.query(
+      `INSERT INTO spirits_order_overrides (location, week_start, item_id, order_override, set_by_id, set_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (location, week_start, item_id) DO UPDATE
+         SET order_override = EXCLUDED.order_override,
+             set_by_id = EXCLUDED.set_by_id,
+             set_by_name = EXCLUDED.set_by_name,
+             updated_at = NOW()`,
+      [location, week_start, item_id, val, req.user.id, req.user.name]
+    );
+    res.json({ item_id, location, week_start, order_override: val });
   } catch { res.status(500).json({ message: 'Server error' }); }
 });
 
