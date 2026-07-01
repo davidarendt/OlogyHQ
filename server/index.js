@@ -402,6 +402,74 @@ app.get('/api/tools', authenticateToken, async (req, res) => {
   }
 });
 
+// ── Slack: latest "WEEKLY UPDATE" message from a channel ──────────────────────
+// Env vars: SLACK_BOT_TOKEN (xoxb-...), SLACK_WEEKLY_CHANNEL_ID (Cxxxxxxxx)
+// Requires bot token scopes: channels:history (or groups:history for private), users:read
+
+let slackWeeklyCache = { data: null, at: 0 };
+const SLACK_CACHE_MS = 5 * 60 * 1000;
+
+async function slackApi(method, params, token) {
+  const url = `https://slack.com/api/${method}?${new URLSearchParams(params)}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await r.json();
+  if (!data.ok) throw new Error(data.error || `Slack ${method} failed`);
+  return data;
+}
+
+app.get('/api/slack/weekly-update', authenticateToken, async (req, res) => {
+  const token = process.env.SLACK_BOT_TOKEN;
+  const channel = process.env.SLACK_WEEKLY_CHANNEL_ID;
+  if (!token || !channel) return res.json({ configured: false });
+
+  const bust = req.query.refresh === '1';
+  if (!bust && slackWeeklyCache.data && (Date.now() - slackWeeklyCache.at) < SLACK_CACHE_MS) {
+    return res.json(slackWeeklyCache.data);
+  }
+
+  try {
+    const history = await slackApi('conversations.history', { channel, limit: 100 }, token);
+    const match = (history.messages || []).find(m =>
+      typeof m.text === 'string' && m.text.trim().toUpperCase().startsWith('WEEKLY UPDATE')
+    );
+
+    if (!match) {
+      const data = { configured: true, found: false };
+      slackWeeklyCache = { data, at: Date.now() };
+      return res.json(data);
+    }
+
+    let author = null;
+    if (match.user) {
+      try {
+        const u = await slackApi('users.info', { user: match.user }, token);
+        author = u.user?.profile?.display_name || u.user?.profile?.real_name || u.user?.name || null;
+      } catch {}
+    } else if (match.username) {
+      author = match.username;
+    }
+
+    let permalink = null;
+    try {
+      const p = await slackApi('chat.getPermalink', { channel, message_ts: match.ts }, token);
+      permalink = p.permalink || null;
+    } catch {}
+
+    const data = {
+      configured: true,
+      found: true,
+      text: match.text,
+      ts: parseFloat(match.ts) * 1000,
+      author,
+      permalink,
+    };
+    slackWeeklyCache = { data, at: Date.now() };
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ message: err.message || 'Slack API error' });
+  }
+});
+
 // Get all permissions
 app.get('/api/permissions', authenticateToken, async (req, res) => {
   try {

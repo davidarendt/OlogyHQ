@@ -1,10 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Beer, Truck, Camera, Tag, FolderOpen, ScrollText, ListChecks,
   Wine, UtensilsCrossed, ClipboardCheck, TrendingUp, CalendarDays,
   UserX, Package, Users, Wrench, Coffee, CalendarCheck, BookOpen, FlaskConical, Globe, Martini,
-  Menu, X,
+  Menu, X, Megaphone,
 } from 'lucide-react';
+
+const API = process.env.REACT_APP_API_URL || '';
+
+// Convert Slack mrkdwn to React nodes. Handles <url|text>, <url>, <@USER>,
+// *bold*, _italic_, `code`, and preserves newlines.
+function renderSlackText(raw) {
+  if (!raw) return null;
+  const tokenRe = /<([^<>|]+)(?:\|([^<>]+))?>|\*([^*\n]+)\*|_([^_\n]+)_|`([^`\n]+)`/g;
+  const lines = raw.split('\n');
+  return lines.map((line, li) => {
+    const parts = [];
+    let last = 0;
+    let m;
+    while ((m = tokenRe.exec(line)) !== null) {
+      if (m.index > last) parts.push(line.slice(last, m.index));
+      const [full, url, urlText, bold, italic, code] = m;
+      if (url) {
+        if (url.startsWith('@')) {
+          parts.push(<span key={`u${li}-${m.index}`} className="text-orange-400">@{urlText || url.slice(1)}</span>);
+        } else if (url.startsWith('#')) {
+          parts.push(<span key={`c${li}-${m.index}`} className="text-orange-400">#{urlText || url.slice(1)}</span>);
+        } else {
+          parts.push(
+            <a key={`a${li}-${m.index}`} href={url} target="_blank" rel="noopener noreferrer"
+              className="underline hover:text-white" style={{ color: '#F05A28' }}>
+              {urlText || url}
+            </a>
+          );
+        }
+      } else if (bold) {
+        parts.push(<strong key={`b${li}-${m.index}`} className="text-white">{bold}</strong>);
+      } else if (italic) {
+        parts.push(<em key={`i${li}-${m.index}`}>{italic}</em>);
+      } else if (code) {
+        parts.push(<code key={`k${li}-${m.index}`} className="bg-gray-700 px-1 py-0.5 rounded text-xs">{code}</code>);
+      } else {
+        parts.push(full);
+      }
+      last = m.index + full.length;
+    }
+    if (last < line.length) parts.push(line.slice(last));
+    return (
+      <Fragment key={li}>
+        {parts}
+        {li < lines.length - 1 && <br />}
+      </Fragment>
+    );
+  });
+}
+
+function fmtRelative(ts) {
+  if (!ts) return '';
+  const now = Date.now();
+  const diff = now - ts;
+  const min = 60 * 1000, hr = 60 * min, day = 24 * hr;
+  if (diff < min) return 'just now';
+  if (diff < hr) return `${Math.floor(diff / min)}m ago`;
+  if (diff < day) return `${Math.floor(diff / hr)}h ago`;
+  if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function WeeklyUpdateCard() {
+  const [state, setState] = useState({ status: 'loading' });
+
+  useEffect(() => {
+    fetch(`${API}/api/slack/weekly-update`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => {
+        if (!d.configured) return setState({ status: 'hidden' });
+        if (!d.found) return setState({ status: 'empty' });
+        setState({ status: 'ready', data: d });
+      })
+      .catch(() => setState({ status: 'hidden' }));
+  }, []);
+
+  if (state.status === 'loading' || state.status === 'hidden') return null;
+
+  return (
+    <div className="mb-6 bg-gray-800 border border-gray-700 rounded-2xl p-5 sm:p-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Megaphone size={18} style={{ color: '#F05A28' }} />
+        <h3 className="text-white font-semibold text-sm uppercase tracking-wider">Weekly Update</h3>
+        {state.status === 'ready' && (
+          <span className="text-gray-500 text-xs ml-auto">
+            {state.data.author ? `${state.data.author} · ` : ''}{fmtRelative(state.data.ts)}
+          </span>
+        )}
+      </div>
+      {state.status === 'empty' ? (
+        <p className="text-gray-500 text-sm">No weekly update posted yet.</p>
+      ) : (
+        <div className="text-gray-300 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">
+          {renderSlackText(state.data.text)}
+        </div>
+      )}
+      {state.status === 'ready' && state.data.permalink && (
+        <a href={state.data.permalink} target="_blank" rel="noopener noreferrer"
+          className="inline-block mt-4 text-xs font-medium hover:underline" style={{ color: '#F05A28' }}>
+          Open in Slack →
+        </a>
+      )}
+    </div>
+  );
+}
 
 // page: internal route | url: from DB (external) | null: not yet built → shows Coming Soon
 const TOOL_META = {
@@ -144,10 +249,11 @@ function Dashboard({ user, onLogout, onNavigate }) {
         <main className="flex-1 px-4 sm:px-6 py-8 sm:py-10">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-cream text-3xl sm:text-4xl font-bold mb-2">Dashboard</h2>
-            <p className="text-gray-400 text-sm sm:text-base">
+            <p className="text-gray-400 text-sm sm:text-base mb-6">
               <span className="sm:hidden">Tap the menu to pick a tool.</span>
               <span className="hidden sm:inline">Select a tool from the sidebar to get started.</span>
             </p>
+            <WeeklyUpdateCard />
           </div>
         </main>
       </div>
